@@ -62,6 +62,17 @@ def minimal_child_env(home: Path, extra: dict[str, str] | None = None) -> dict[s
     return env
 
 
+def git_subprocess_env() -> dict[str, str]:
+    """git 훅·글로벌 설정·부모 클라우드 키를 타지 않는 최소 환경."""
+    return {
+        "PATH": trusted_path_value(),
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_SYSTEM": os.devnull,
+        "LANG": "C",
+        "LC_ALL": "C",
+    }
+
+
 def trusted_path_value() -> str:
     """자식 프로세스에 줄 PATH. 허용 디렉터리만 포함한다."""
     return os.pathsep.join(str(path) for path in trusted_bin_dirs()) or "/usr/bin:/bin"

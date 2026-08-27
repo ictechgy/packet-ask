@@ -138,11 +138,12 @@ def _glm_child_env(home: Path, key: str) -> dict[str, str]:
     }
 
 
-def _glm_argv() -> list[str]:
-    """무도구 plan 원샷. --bare 는 Anthropic OAuth 대신 자식 키만 쓰게 한다."""
+def glm_argv() -> list[str]:
+    """무도구 plan 원샷. -p 의 다음 인자는 빈 프롬프트라 --tools 를 삼키지 않는다."""
     return [
         "--bare",
         "-p",
+        "",
         "--tools",
         "",
         "--permission-mode",
@@ -151,6 +152,11 @@ def _glm_argv() -> list[str]:
         "--setting-sources",
         "",
     ]
+
+
+def _glm_argv() -> list[str]:
+    """glm_argv 별칭. 기존 호출부를 깨지 않는다."""
+    return glm_argv()
 
 
 def launch_glm(packet: Packet, timeout: int) -> str:

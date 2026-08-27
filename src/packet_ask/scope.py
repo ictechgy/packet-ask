@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import os
 import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 from packet_ask.errors import BudgetError, ScopeError
-from packet_ask.paths import resolve_trusted_executable, trusted_path_value
+from packet_ask.paths import git_subprocess_env, resolve_trusted_executable
 
 DEFAULT_MAX_FILES = 25
 DEFAULT_MAX_BYTES = 256 * 1024
@@ -61,8 +60,8 @@ def resolve_worktree(start: Path) -> Path:
 
 
 def is_vcs_path(path: Path) -> bool:
-    """.git 메타데이터 경로인지 본다."""
-    return ".git" in path.parts
+    """.git 메타데이터 경로인지 본다. 대소문자를 가리지 않는다."""
+    return any(part.lower() == ".git" for part in path.parts)
 
 
 def is_secret_path(path: Path) -> bool:
@@ -136,13 +135,7 @@ def _git_executable() -> str:
 
 def _git_env() -> dict[str, str]:
     """글로벌 git 설정과 외부 diff 훅을 타지 않는 최소 환경."""
-    return {
-        "PATH": trusted_path_value(),
-        "GIT_CONFIG_GLOBAL": os.devnull,
-        "GIT_CONFIG_SYSTEM": os.devnull,
-        "LANG": "C",
-        "LC_ALL": "C",
-    }
+    return git_subprocess_env()
 
 
 def _git_range_args(
@@ -189,6 +182,8 @@ def _diff_guard_args() -> list[str]:
         "diff.mnemonicPrefix=false",
         "-c",
         "core.quotepath=false",
+        "-c",
+        "core.fsmonitor=false",
         "diff",
         "--no-ext-diff",
         "--no-textconv",

@@ -31,7 +31,7 @@ def has_cli_flag(help_text: str, flag: str) -> bool:
 
 def claude_supports_isolated_print(help_text: str) -> bool:
     """Claude Code help에 격리 원샷에 필요한 플래그가 있는지 본다."""
-    needed = ("--bare", "--tools", "--no-session-persistence", "--setting-sources")
+    needed = ("--bare", "-p", "--tools", "--permission-mode", "--no-session-persistence", "--setting-sources")
     return all(has_cli_flag(help_text, flag) for flag in needed)
 
 
@@ -41,11 +41,9 @@ def kimi_supports_print(help_text: str) -> bool:
 
 
 def kimi_supports_isolated_print(help_text: str) -> bool:
-    """무도구 원샷에 필요한 agent-file 과 work-dir 이 있는지 본다."""
-    has_prompt = kimi_supports_print(help_text) or has_cli_flag(help_text, "--quiet")
-    has_agent = has_cli_flag(help_text, "--agent-file")
-    has_workdir = has_cli_flag(help_text, "--work-dir") or has_cli_flag(help_text, "-w")
-    return has_prompt and has_agent and has_workdir
+    """launch 가 실제로 넣는 quiet/agent-file/work-dir/skills-dir 이 있는지 본다."""
+    needed = ("--quiet", "--agent-file", "--work-dir", "--skills-dir")
+    return all(has_cli_flag(help_text, flag) for flag in needed)
 
 
 def _help_text(executable: str) -> str | None:

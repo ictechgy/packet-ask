@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from packet_ask.errors import RedactionFailed
-from packet_ask.paths import resolve_trusted_executable
+from packet_ask.paths import git_subprocess_env, resolve_trusted_executable
 from packet_ask.redact import RedactionError, RedactionReport, scrub_text, verify_scrubbed
 from packet_ask.scope import ScopedFile
 
@@ -63,15 +63,12 @@ def _git_executable() -> str:
 
 def _init_git_boundary(root: Path) -> None:
     """상위 CLAUDE.md 탐색을 막기 위한 로컬 git 경계만 만든다."""
-    env = os.environ.copy()
-    env["GIT_CONFIG_GLOBAL"] = "/dev/null"
-    env["GIT_CONFIG_SYSTEM"] = "/dev/null"
     subprocess.run(
         [_git_executable(), "init"],
         cwd=root,
         check=True,
         capture_output=True,
-        env=env,
+        env=git_subprocess_env(),
     )
 
 
@@ -132,7 +129,10 @@ def build_packet(
             rendered.append(f"## Diff\n\n```\n{diff_body}\n```\n")
         _write_private(root / "packet.md", "\n".join(rendered))
         merged = _merge_reports(reports)
-        verify_scrubbed((root / "packet.md").read_text(encoding="utf-8"))
+        try:
+            verify_scrubbed((root / "packet.md").read_text(encoding="utf-8"))
+        except RedactionError as exc:
+            raise RedactionFailed(str(exc)) from exc
         manifest = {
             "mode": mode,
             "file_count": len(files) + (1 if diff_text else 0),

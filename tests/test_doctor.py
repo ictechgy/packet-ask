@@ -9,7 +9,7 @@ from packet_ask.doctor import claude_supports_isolated_print, kimi_supports_prin
 
 def test_claude_help_with_required_flags() -> None:
     """필수 플래그가 있으면 실행 후보가 된다."""
-    help_text = "--bare\n--tools\n--no-session-persistence\n--setting-sources\n"
+    help_text = "--bare\n-p\n--tools\n--permission-mode\n--no-session-persistence\n--setting-sources\n"
     assert claude_supports_isolated_print(help_text) is True
 
 
@@ -28,9 +28,10 @@ def test_kimi_isolated_print_needs_agent_file_and_workdir() -> None:
     """도구 없는 원샷은 agent-file 과 work-dir 이 필요하다."""
     from packet_ask.doctor import kimi_supports_isolated_print
 
-    full = "--prompt\n--quiet\n--agent-file\n--work-dir\n"
+    full = "--quiet\n--agent-file\n--work-dir\n--skills-dir\n"
     assert kimi_supports_isolated_print(full) is True
     assert kimi_supports_isolated_print("--prompt\n--quiet\n") is False
+    assert kimi_supports_isolated_print("-p\n--agent-file\n--work-dir\n") is False
 
 
 def test_kimi_print_flag_not_confused_with_permission() -> None:

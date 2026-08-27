@@ -132,6 +132,54 @@ def test_kimi_config_disables_tools_without_star_allowlist(tmp_path: Path) -> No
     assert "packet-ask-no-such-tool" in text
 
 
+def test_glm_print_flag_does_not_eat_tools() -> None:
+    """-p 가 --tools 를 프롬프트로 삼키지 않게 빈 프롬프트를 둔다."""
+    from packet_ask.launch import glm_argv
+
+    args = glm_argv()
+    assert "--tools" in args
+    assert args[args.index("--tools") + 1] == ""
+    if "-p" in args:
+        assert args[args.index("-p") + 1] != "--tools"
+    else:
+        assert "--print" in args
+
+
+def test_glm_passes_key_in_child_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """GLM 키와 Z.ai 엔드포인트는 자식 환경에만 들어간다."""
+    from packet_ask.launch import launch_glm
+
+    monkeypatch.setenv("PACKET_ASK_GLM_KEY", "glm-child-key")
+    monkeypatch.setattr("packet_ask.launch.require_launchable", lambda _name: None)
+    monkeypatch.setattr(
+        "packet_ask.launch.resolve_trusted_executable",
+        lambda name: Path("/usr/bin/true") if name == "claude" else None,
+    )
+    monkeypatch.setattr("packet_ask.launch.provider_home", lambda _name: tmp_path)
+    captured: dict[str, object] = {}
+
+    def fake_run(executable, argv, stdin_text, cwd, env, timeout):  # noqa: ANN001
+        captured["argv"] = argv
+        captured["env"] = env
+        return "ok"
+
+    monkeypatch.setattr("packet_ask.launch.run_isolated_command", fake_run)
+    dummy = Packet(root=tmp_path, report=RedactionReport())
+    (tmp_path / "packet.md").write_text("hello\n", encoding="utf-8")
+    assert launch_glm(dummy, 1) == "ok"
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert env["ANTHROPIC_API_KEY"] == "glm-child-key"
+    assert env["ANTHROPIC_AUTH_TOKEN"] == "glm-child-key"
+    assert env["ANTHROPIC_BASE_URL"] == "https://api.z.ai/api/anthropic"
+    argv = captured["argv"]
+    assert isinstance(argv, list)
+    assert "--bare" in argv
+    assert "--tools" in argv
+
+
 def test_kimi_passes_key_in_env_not_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

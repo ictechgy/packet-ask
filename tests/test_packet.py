@@ -67,6 +67,36 @@ def test_packet_stores_payload_away_from_control_files(tmp_path: Path) -> None:
     packet.destroy()
 
 
+def test_git_boundary_does_not_copy_parent_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """패킷 git init 은 부모 클라우드 키를 물려주지 않는다."""
+    import subprocess
+
+    captured: dict[str, object] = {}
+    real = subprocess.run
+
+    def wrapper(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured["env"] = kwargs.get("env")
+        return real(*args, **kwargs)
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "parent-secret")
+    monkeypatch.setattr("packet_ask.packet.subprocess.run", wrapper)
+    files = [ScopedFile(relative="a.py", content="x = 1\n")]
+    packet = build_packet(
+        mode="review",
+        question="이 파일을 리뷰해줘",
+        files=files,
+        diff_text=None,
+        parent=tmp_path,
+    )
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert "parent-secret" not in env.values()
+    assert "ANTHROPIC_API_KEY" not in env
+    packet.destroy()
+
+
 def test_packet_rejects_git_relative_path(tmp_path: Path) -> None:
     """.git 상대경로는 패킷에 쓰지 않는다."""
     files = [ScopedFile(relative=".git/config", content="[core]\n")]
