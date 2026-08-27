@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 from packet_ask.errors import BudgetError, ScopeError
+from packet_ask.paths import resolve_trusted_executable
 
 DEFAULT_MAX_FILES = 25
 DEFAULT_MAX_BYTES = 256 * 1024
@@ -28,6 +30,11 @@ _SECRET_NAMES = {
     "credentials.json",
     ".env",
 }
+# tokenizer.py 같은 부분문자열은 빼고, token/secret 을 경로 조각으로만 본다.
+_SECRET_SEGMENT_RE = re.compile(
+    r"(?i)(?:^|[._-])(?:token|secret|password|credential|passwd)(?:[._-]|$)"
+)
+_DIFF_GIT_RE = re.compile(r"^diff --git a/(.+) b/(.+)$", re.MULTILINE)
 
 
 @dataclass(frozen=True)
@@ -41,7 +48,7 @@ class ScopedFile:
 def resolve_worktree(start: Path) -> Path:
     """start에서 git 최상위 디렉터리를 찾는다."""
     result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
+        [_git_executable(), "rev-parse", "--show-toplevel"],
         cwd=start,
         check=False,
         capture_output=True,
@@ -52,14 +59,24 @@ def resolve_worktree(start: Path) -> Path:
     return Path(result.stdout.strip()).resolve()
 
 
+def is_vcs_path(path: Path) -> bool:
+    """.git 메타데이터 경로인지 본다."""
+    return ".git" in path.parts
+
+
 def is_secret_path(path: Path) -> bool:
-    """시크릿으로 보이는 파일명을 가린다."""
-    name = path.name.lower()
-    if name in _SECRET_NAMES or name.startswith(".env"):
+    """시크릿으로 보이는 파일명을 가린다. token 부분문자열만으로는 맞추지 않는다."""
+    return any(_name_is_secret(part) for part in path.parts)
+
+
+def _name_is_secret(name: str) -> bool:
+    """경로 한 조각이 시크릿 파일명 규칙에 맞는지 본다."""
+    lowered = name.lower()
+    if lowered in _SECRET_NAMES or lowered.startswith(".env"):
         return True
-    if "credential" in name or "token" in name:
+    if any(lowered.endswith(suffix) for suffix in _SECRET_SUFFIXES):
         return True
-    return any(name.endswith(suffix) for suffix in _SECRET_SUFFIXES)
+    return _SECRET_SEGMENT_RE.search(name) is not None
 
 
 def _must_stay_inside(worktree: Path, candidate: Path) -> Path:
@@ -90,20 +107,35 @@ def collect_files(
     total = 0
     for raw in paths:
         real = _must_stay_inside(worktree, raw)
-        if is_secret_path(real):
-            raise ScopeError(f"시크릿 파일명은 보낼 수 없습니다: {real.name}")
+        relative = real.relative_to(worktree)
+        _reject_blocked_relative(relative)
         data = real.read_bytes()
         total += len(data)
         if total > max_bytes:
             raise BudgetError(f"총 용량이 {max_bytes}바이트를 넘습니다.")
-        relative = real.relative_to(worktree).as_posix()
-        collected.append(ScopedFile(relative=relative, content=data.decode("utf-8", errors="replace")))
+        collected.append(ScopedFile(relative=relative.as_posix(), content=data.decode("utf-8", errors="replace")))
     return collected
+
+
+def _reject_blocked_relative(relative: Path) -> None:
+    """git 메타데이터와 시크릿 파일명을 거절한다."""
+    if is_vcs_path(relative):
+        raise ScopeError(f"git 메타데이터는 보낼 수 없습니다: {relative.as_posix()}")
+    if is_secret_path(relative):
+        raise ScopeError(f"시크릿 파일명은 보낼 수 없습니다: {relative.name}")
+
+
+def _git_executable() -> str:
+    """신뢰 경로의 git 만 쓴다."""
+    found = resolve_trusted_executable("git")
+    if found is None:
+        raise ScopeError("신뢰 경로에서 git 을 찾지 못했습니다.")
+    return str(found)
 
 
 def _run_git_diff(worktree: Path, args: list[str]) -> str:
     """git diff를 셸 없이 실행한다."""
-    command = ["git", "diff", "--no-ext-diff", *args]
+    command = [_git_executable(), "diff", "--no-ext-diff", *args]
     result = subprocess.run(
         command,
         cwd=worktree,
@@ -116,25 +148,54 @@ def _run_git_diff(worktree: Path, args: list[str]) -> str:
     return result.stdout
 
 
+def _diff_paths(text: str) -> list[str]:
+    """diff --git 헤더에서 b/ 경로를 모은다."""
+    return [match.group(2) for match in _DIFF_GIT_RE.finditer(text)]
+
+
+def _reject_oversized_diff(text: str, max_bytes: int) -> None:
+    """diff 용량 예산을 넘기면 거절한다."""
+    if len(text.encode("utf-8")) > max_bytes:
+        raise BudgetError(f"총 용량이 {max_bytes}바이트를 넘습니다.")
+
+
+def _reject_secret_diff_paths(text: str) -> None:
+    """diff 안의 시크릿·git 경로는 일부를 지우는 대신 전체를 거절한다."""
+    for relative in _diff_paths(text):
+        path = Path(relative)
+        if is_vcs_path(path) or is_secret_path(path):
+            raise ScopeError(f"시크릿 또는 git 경로가 diff에 있습니다: {path.name}")
+
+
 def collect_git_diff(
     worktree: Path,
     range_spec: str | None = None,
     unstaged: bool = False,
     staged: bool = False,
+    max_bytes: int = DEFAULT_MAX_BYTES,
 ) -> str:
     """요청한 diff를 텍스트로 모은다. 사용자 문자열을 셸에 넣지 않는다."""
-    if range_spec is not None:
-        if range_spec.startswith("-") or ".." not in range_spec and "..." not in range_spec:
-            # 단일 SHA도 허용하되 옵션 주입은 막는다.
-            if range_spec.startswith("-"):
-                raise ScopeError("잘못된 diff 범위입니다.")
-        text = _run_git_diff(worktree, [range_spec])
-    elif staged:
-        text = _run_git_diff(worktree, ["--cached"])
-    elif unstaged:
-        text = _run_git_diff(worktree, [])
-    else:
-        raise ScopeError("diff 범위를 지정하세요.")
+    text = _git_diff_text(worktree, range_spec, unstaged, staged)
     if not text.strip():
         raise ScopeError("범위에 변경이 없습니다.")
+    _reject_oversized_diff(text, max_bytes)
+    _reject_secret_diff_paths(text)
     return text
+
+
+def _git_diff_text(
+    worktree: Path,
+    range_spec: str | None,
+    unstaged: bool,
+    staged: bool,
+) -> str:
+    """범위 인자를 고른 뒤 git diff 를 실행한다."""
+    if range_spec is not None:
+        if range_spec.startswith("-"):
+            raise ScopeError("잘못된 diff 범위입니다.")
+        return _run_git_diff(worktree, [range_spec])
+    if staged:
+        return _run_git_diff(worktree, ["--cached"])
+    if unstaged:
+        return _run_git_diff(worktree, [])
+    raise ScopeError("diff 범위를 지정하세요.")

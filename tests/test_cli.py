@@ -11,6 +11,7 @@ from packet_ask.cli import main
 
 def _init_repo(root: Path) -> Path:
     """테스트용 저장소를 만든다."""
+    root.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
     subprocess.run(["git", "config", "user.email", "dev@example.com"], cwd=root, check=True)
     subprocess.run(["git", "config", "user.name", "Dev"], cwd=root, check=True)
@@ -43,7 +44,7 @@ def test_review_paste_prints_untrusted_packet(
     assert "UNTRUSTED PROVIDER OUTPUT" in captured.out
     assert "print(1)" in captured.out
     leftover = repo / ".packet-ask-tmp"
-    assert not leftover.exists() or not any(leftover.iterdir())
+    assert not leftover.exists()
 
 
 def test_rejects_implementation_without_vendor(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -88,7 +89,10 @@ def test_kimi_without_cli_is_missing(
     """kimi 바이너리가 없으면 벤더를 실행하지 않는다."""
     repo = _init_repo(tmp_path)
     monkeypatch.chdir(repo)
-    monkeypatch.setattr("packet_ask.launch.shutil.which", lambda name: None if name == "kimi" else __import__("shutil").which(name))
+    monkeypatch.setattr(
+        "packet_ask.launch.resolve_trusted_executable",
+        lambda name: None if name == "kimi" else __import__("packet_ask.paths", fromlist=["resolve_trusted_executable"]).resolve_trusted_executable(name),
+    )
     code = main(
         [
             "review",
@@ -101,3 +105,28 @@ def test_kimi_without_cli_is_missing(
         ]
     )
     assert code == codes.PROVIDER_MISSING
+
+
+def test_review_paste_uses_cache_dir_not_repo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """패킷 부모는 OS 캐시이며 레포 안에 만들지 않는다."""
+    repo = _init_repo(tmp_path / "repo")
+    cache = tmp_path / "cache"
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("PACKET_ASK_CACHE_DIR", str(cache))
+    code = main(
+        [
+            "review",
+            "--provider",
+            "paste",
+            "--files",
+            "src/app.py",
+            "--question",
+            "이 코드의 문제를 찾아줘",
+        ]
+    )
+    assert code == codes.SUCCESS
+    assert not (repo / ".packet-ask-tmp").exists()
+    leftovers = list(cache.glob("packet-ask-*")) if cache.exists() else []
+    assert leftovers == []

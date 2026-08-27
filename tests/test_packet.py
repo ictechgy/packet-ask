@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from packet_ask.errors import RedactionFailed
 from packet_ask.packet import build_packet
 from packet_ask.scope import ScopedFile
 
@@ -48,3 +49,16 @@ def test_packet_md_contains_task_and_files(tmp_path: Path) -> None:
     assert "a.py" in blob
     assert "x = 1" in blob
     packet.destroy()
+
+
+def test_packet_rejects_git_relative_path(tmp_path: Path) -> None:
+    """.git 상대경로는 패킷에 쓰지 않는다."""
+    files = [ScopedFile(relative=".git/config", content="[core]\n")]
+    with pytest.raises(RedactionFailed):
+        build_packet(
+            mode="review",
+            question="이 설정을 리뷰해줘",
+            files=files,
+            diff_text=None,
+            parent=tmp_path,
+        )

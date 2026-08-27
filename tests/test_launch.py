@@ -1,5 +1,7 @@
 """격리 실행기와 Kimi 기본 거절."""
 
+import os
+import time
 from pathlib import Path
 
 import pytest
@@ -62,9 +64,95 @@ def test_kimi_agent_file_disables_all_tools(tmp_path: Path) -> None:
 
 def test_kimi_launch_missing_binary(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """kimi 바이너리가 없으면 실행하지 않는다."""
-    monkeypatch.setattr("packet_ask.launch.shutil.which", lambda _: None)
+    monkeypatch.setattr("packet_ask.launch.resolve_trusted_executable", lambda _: None)
     dummy = Packet(root=tmp_path, report=RedactionReport())
     (tmp_path / "packet.md").write_text("hello\n", encoding="utf-8")
     with pytest.raises(PacketAskError) as exc:
         launch_kimi(dummy, 1)
     assert exc.value.code == codes.PROVIDER_MISSING
+
+
+def _pid_is_alive(pid: int) -> bool:
+    """프로세스가 아직 있는지 본다. 시그널은 보내지 않는다."""
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def test_timeout_kills_process_group(tmp_path: Path) -> None:
+    """timeout 시 자식의 손자까지 프로세스 그룹으로 죽인다."""
+    pid_file = tmp_path / "child.pid"
+    script = tmp_path / "spawn.sh"
+    script.write_text(
+        "#!/bin/sh\n"
+        f'sleep 30 &\n'
+        f'echo $! > "{pid_file}"\n'
+        "wait\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o700)
+    with pytest.raises(PacketAskError) as exc:
+        run_isolated_command(
+            script,
+            [],
+            "",
+            tmp_path,
+            isolated_env(tmp_path, {}),
+            timeout=1,
+        )
+    assert exc.value.code == codes.PROVIDER_FAILED
+    deadline = time.time() + 2
+    while time.time() < deadline and not pid_file.is_file():
+        time.sleep(0.05)
+    assert pid_file.is_file(), "자식 pid를 기록하기 전에 종료되면 안 된다"
+    child_pid = int(pid_file.read_text(encoding="utf-8").strip())
+    time.sleep(0.3)
+    assert _pid_is_alive(child_pid) is False
+
+
+def test_kimi_config_does_not_write_api_key(tmp_path: Path) -> None:
+    """격리 config.toml 에 API 키를 쓰지 않는다."""
+    from packet_ask.launch import ensure_kimi_config
+
+    ensure_kimi_config(tmp_path)
+    text = (tmp_path / "config.toml").read_text(encoding="utf-8")
+    assert "KIMI_API_KEY" not in text
+    assert "api_key" not in text.lower()
+
+
+def test_kimi_config_disables_tools_without_star_allowlist(tmp_path: Path) -> None:
+    """도구 차단은 매칭되지 않는 명시적 allowlist 로 한다. '*' 관용구는 오해를 부른다."""
+    from packet_ask.launch import ensure_kimi_config
+
+    ensure_kimi_config(tmp_path)
+    text = (tmp_path / "config.toml").read_text(encoding="utf-8")
+    assert 'enabled = ["*"]' not in text
+    assert "packet-ask-no-such-tool" in text
+
+
+def test_kimi_passes_key_in_env_not_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """PACKET_ASK_KIMI_KEY 는 자식 환경으로만 넘긴다."""
+    monkeypatch.setenv("PACKET_ASK_KIMI_KEY", "sk-env-only-key")
+    monkeypatch.setattr("packet_ask.launch.require_launchable", lambda _name: None)
+    monkeypatch.setattr(
+        "packet_ask.launch.resolve_trusted_executable",
+        lambda name: Path("/usr/bin/true") if name == "kimi" else None,
+    )
+    monkeypatch.setattr("packet_ask.launch.provider_home", lambda _name: tmp_path)
+    captured: dict[str, dict[str, str]] = {}
+
+    def fake_run(executable, argv, stdin_text, cwd, env, timeout):  # noqa: ANN001
+        captured["env"] = env
+        return "ok"
+
+    monkeypatch.setattr("packet_ask.launch.run_isolated_command", fake_run)
+    dummy = Packet(root=tmp_path, report=RedactionReport())
+    (tmp_path / "packet.md").write_text("hello\n", encoding="utf-8")
+    assert launch_kimi(dummy, 1) == "ok"
+    assert captured["env"]["KIMI_API_KEY"] == "sk-env-only-key"
+    config = (tmp_path / "kimi-code" / "config.toml").read_text(encoding="utf-8")
+    assert "sk-env-only-key" not in config

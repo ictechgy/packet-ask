@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from dataclasses import dataclass
+
+from packet_ask.paths import resolve_trusted_executable
 
 
 @dataclass(frozen=True)
@@ -37,12 +38,12 @@ def kimi_supports_isolated_print(help_text: str) -> bool:
 
 
 def _help_text(executable: str) -> str | None:
-    """--help 출력을 가져온다. 실패하면 None."""
-    path = shutil.which(executable)
+    """--help 출력을 가져온다. 실패하면 None. 신뢰 경로만 본다."""
+    path = resolve_trusted_executable(executable)
     if path is None:
         return None
     result = subprocess.run(
-        [path, "--help"],
+        [str(path), "--help"],
         check=False,
         capture_output=True,
         text=True,
@@ -76,7 +77,7 @@ def inspect_providers() -> list[ProviderStatus]:
                 "kimi",
                 True,
                 True,
-                "kimi quiet/print + --agent-file(tools: []) + --work-dir 로 원샷합니다. 키는 PACKET_ASK_KIMI_KEY 입니다.",
+                "kimi quiet/print + --agent-file(tools: []) + --work-dir 로 원샷합니다. 키는 PACKET_ASK_KIMI_KEY 이며 디스크에 쓰지 않습니다.",
             )
         )
     elif kimi_supports_print(kimi_help):

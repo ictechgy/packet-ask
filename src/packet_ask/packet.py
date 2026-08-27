@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from packet_ask.errors import RedactionFailed
+from packet_ask.paths import resolve_trusted_executable
 from packet_ask.redact import RedactionError, RedactionReport, scrub_text, verify_scrubbed
 from packet_ask.scope import ScopedFile
 
@@ -46,13 +47,27 @@ def _scrub_or_raise(text: str) -> tuple[str, RedactionReport]:
     return scrubbed, report
 
 
+def _assert_packet_relative(relative: Path) -> None:
+    """패킷 안 상대경로만 허용한다. .git 과 상위 탈출은 거절한다."""
+    if relative.is_absolute() or ".." in relative.parts or ".git" in relative.parts:
+        raise RedactionFailed("상대경로가 아닌 파일은 패킷에 넣지 않습니다.")
+
+
+def _git_executable() -> str:
+    """신뢰 경로의 git 만 쓴다."""
+    found = resolve_trusted_executable("git")
+    if found is None:
+        raise RedactionFailed("신뢰 경로에서 git 을 찾지 못했습니다.")
+    return str(found)
+
+
 def _init_git_boundary(root: Path) -> None:
     """상위 CLAUDE.md 탐색을 막기 위한 로컬 git 경계만 만든다."""
     env = os.environ.copy()
     env["GIT_CONFIG_GLOBAL"] = "/dev/null"
     env["GIT_CONFIG_SYSTEM"] = "/dev/null"
     subprocess.run(
-        ["git", "init"],
+        [_git_executable(), "init"],
         cwd=root,
         check=True,
         capture_output=True,
@@ -109,8 +124,7 @@ def build_packet(
             body, report = _scrub_or_raise(item.content)
             reports.append(report)
             relative = Path(item.relative)
-            if relative.is_absolute() or ".." in relative.parts:
-                raise RedactionFailed("상대경로가 아닌 파일은 패킷에 넣지 않습니다.")
+            _assert_packet_relative(relative)
             _write_private(root / relative, body)
             rendered.append(f"## File: {item.relative}\n\n```\n{body}\n```\n")
         if diff_text:

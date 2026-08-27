@@ -14,6 +14,7 @@ from packet_ask.launch import launch_glm, launch_kimi
 from packet_ask.output import wrap_untrusted
 from packet_ask.packet import Packet, build_packet
 from packet_ask.policy import assert_allowed_task
+from packet_ask.paths import packet_cache_dir
 from packet_ask.scope import (
     DEFAULT_MAX_BYTES,
     DEFAULT_MAX_FILES,
@@ -77,12 +78,13 @@ def _collect_scope(args: argparse.Namespace, worktree: Path) -> tuple[list, str 
             max_bytes=args.max_bytes,
         )
     diff_text = None
+    budget = args.max_bytes
     if args.staged:
-        diff_text = collect_git_diff(worktree, staged=True)
+        diff_text = collect_git_diff(worktree, staged=True, max_bytes=budget)
     elif args.diff:
-        diff_text = collect_git_diff(worktree, range_spec=args.diff)
+        diff_text = collect_git_diff(worktree, range_spec=args.diff, max_bytes=budget)
     elif args.command == "review" and not scoped_files:
-        diff_text = collect_git_diff(worktree, unstaged=True)
+        diff_text = collect_git_diff(worktree, unstaged=True, max_bytes=budget)
     return scoped_files, diff_text
 
 
@@ -132,7 +134,7 @@ def _run_task(args: argparse.Namespace) -> int:
     scoped_files, diff_text = _collect_scope(args, worktree)
     if args.command == "review" and not scoped_files and not diff_text:
         raise PacketAskError("review는 --files, --diff, --staged 중 하나가 필요합니다.", codes.SCOPE)
-    parent = Path.cwd() / ".packet-ask-tmp"
+    parent = packet_cache_dir()
     packet = build_packet(
         mode=args.command,
         question=question,
