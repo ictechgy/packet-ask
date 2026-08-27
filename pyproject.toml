@@ -1,0 +1,22 @@
+[project]
+name = "packet-ask"
+version = "0.1.0"
+description = "Send only a scrubbed packet to personal Kimi/GLM coding subscriptions."
+readme = "README.md"
+authors = [
+    { name = "Coden", email = "ictechgy@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+packet-ask = "packet_ask:main"
+
+[build-system]
+requires = ["uv_build>=0.10.9,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
