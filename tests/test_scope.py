@@ -76,6 +76,8 @@ def test_tokenizer_filename_is_not_secret() -> None:
     assert is_secret_path(Path("src/tokenizer.py")) is False
     assert is_secret_path(Path("src/access_token.json")) is True
     assert is_secret_path(Path("src/id_rsa")) is True
+    assert is_secret_path(Path("config/secrets.yml")) is True
+    assert is_secret_path(Path("client_secrets.json")) is True
 
 
 def test_rejects_git_metadata_file(tmp_path: Path) -> None:

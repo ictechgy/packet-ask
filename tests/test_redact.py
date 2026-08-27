@@ -75,6 +75,14 @@ def test_redacts_quoted_api_key_literal() -> None:
     assert report.secret_lines + report.secret_values >= 1
 
 
+def test_redacts_inline_json_api_key() -> None:
+    """한 줄 JSON 의 api_key 값도 가린다."""
+    text, report = scrub_text('{"ok":1,"api_key":"supersecretvalue123456","x":2}\n')
+    assert "supersecretvalue123456" not in text
+    assert "[REDACTED]" in text
+    assert report.secret_values >= 1
+
+
 def test_redacts_url_userinfo() -> None:
     """URL userinfo 비밀번호를 가린다."""
     text, report = scrub_text("postgres://user:supersecretpass@db.example.com/app\n")

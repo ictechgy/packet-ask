@@ -26,6 +26,9 @@ _SECRET_KEY_FRAGMENT = (
     r"access[_-]?key|client[_-]?secret|secret[_-]?key|secret[_-]?token|"
     r"auth[_-]?token|service[_-]?account[_-]?key)[A-Za-z0-9_.-]*"
 )
+_INLINE_SECRET_JSON_RE = re.compile(
+    rf'(?i)([\'\"]{_SECRET_KEY_FRAGMENT}[\'\"]\s*:\s*)([\'\"])(.*?)(\2)'
+)
 _SECRET_ASSIGNMENT_RE = re.compile(
     rf"(?im)^(?P<prefix>\s*(?:(?:(?:export|const|let|var|ENV)\s+)?"
     rf"{_SECRET_KEY_FRAGMENT}\s*[:=]|[\'\"]{_SECRET_KEY_FRAGMENT}[\'\"]\s*:)"
@@ -157,6 +160,8 @@ def scrub_text(text: str, home: str | None = None) -> tuple[str, RedactionReport
         text, n = pat.subn("[REDACTED]", text)
         report.secret_values += n
     text, n = _URL_USERINFO_RE.subn(r"\1[REDACTED]\3", text)
+    report.secret_values += n
+    text, n = _INLINE_SECRET_JSON_RE.subn(r'\1\2[REDACTED]\2', text)
     report.secret_values += n
     for variant in _home_strings(home):
         if variant and variant in text:

@@ -32,7 +32,7 @@ _SECRET_NAMES = {
 }
 # tokenizer.py 같은 부분문자열은 빼고, token/secret 을 경로 조각으로만 본다.
 _SECRET_SEGMENT_RE = re.compile(
-    r"(?i)(?:^|[._-])(?:token|secret|password|credential|passwd)(?:[._-]|$)"
+    r"(?i)(?:^|[._-])(?:token|secret|password|credential|passwd)s?(?:[._-]|$)"
 )
 
 

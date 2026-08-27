@@ -80,6 +80,27 @@ def test_trusted_bin_override_must_be_absolute(
     assert resolve_trusted_executable("kimi") is None
 
 
+def test_packet_ask_bin_dirs_ignores_relative(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PACKET_ASK_BIN_DIRS 상대경로는 신뢰 목록에 넣지 않는다."""
+    monkeypatch.setenv("PACKET_ASK_BIN_DIRS", "relative/bin")
+    dirs = trusted_bin_dirs()
+    assert all(path.is_absolute() for path in dirs)
+    assert not any(path.as_posix().endswith("relative/bin") for path in dirs)
+
+
+def test_packet_ask_bin_dirs_accepts_absolute(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PACKET_ASK_BIN_DIRS 절대경로는 앞에 붙는다."""
+    extra = tmp_path / "official"
+    extra.mkdir()
+    monkeypatch.setenv("PACKET_ASK_BIN_DIRS", str(extra))
+    dirs = trusted_bin_dirs()
+    assert extra in dirs
+
+
 def test_trusted_bin_dirs_include_local_and_system() -> None:
     """홈브류·시스템·~/.local/bin 은 기본 허용 목록에 있다."""
     dirs = trusted_bin_dirs()
