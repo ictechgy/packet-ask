@@ -105,13 +105,11 @@ def build_packet(
     """스크럽된 패킷 디렉터리를 parent 아래에 만든다."""
     parent.mkdir(parents=True, exist_ok=True)
     previous_umask = os.umask(0o077)
+    root: Path | None = None
+    reports: list[RedactionReport] = []
     try:
         root = Path(tempfile.mkdtemp(prefix="packet-ask-", dir=str(parent)))
         root.chmod(stat.S_IRWXU)
-    finally:
-        os.umask(previous_umask)
-    reports: list[RedactionReport] = []
-    try:
         question_text, report = _scrub_or_raise(question)
         reports.append(report)
         task = f"# Task\n\nmode: {mode}\n\n{question_text}\n\n{_TASK_CONTRACT}\n"
@@ -125,12 +123,12 @@ def build_packet(
             reports.append(report)
             relative = Path(item.relative)
             _assert_packet_relative(relative)
-            _write_private(root / relative, body)
+            _write_private(root / "files" / relative, body)
             rendered.append(f"## File: {item.relative}\n\n```\n{body}\n```\n")
         if diff_text:
             diff_body, report = _scrub_or_raise(diff_text)
             reports.append(report)
-            _write_private(root / "src" / "changes.patch", diff_body)
+            _write_private(root / "files" / "changes.patch", diff_body)
             rendered.append(f"## Diff\n\n```\n{diff_body}\n```\n")
         _write_private(root / "packet.md", "\n".join(rendered))
         merged = _merge_reports(reports)
@@ -147,5 +145,8 @@ def build_packet(
         _init_git_boundary(root)
         return Packet(root=root, report=merged)
     except Exception:
-        shutil.rmtree(root, ignore_errors=True)
+        if root is not None:
+            shutil.rmtree(root, ignore_errors=True)
         raise
+    finally:
+        os.umask(previous_umask)

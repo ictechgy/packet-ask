@@ -12,7 +12,7 @@ from packet_ask import codes
 from packet_ask.doctor import inspect_providers
 from packet_ask.errors import PacketAskError
 from packet_ask.packet import Packet
-from packet_ask.paths import resolve_trusted_executable, trusted_path_value
+from packet_ask.paths import minimal_child_env, resolve_trusted_executable
 
 GLM_ENDPOINT = "https://api.z.ai/api/anthropic"
 KIMI_DISABLED_TOOL_SENTINEL = "packet-ask-no-such-tool"
@@ -31,15 +31,7 @@ def provider_home(name: str) -> Path:
 
 def isolated_env(home: Path, extra: dict[str, str]) -> dict[str, str]:
     """부모의 클라우드 키를 복사하지 않는 최소 환경."""
-    env = {
-        "HOME": str(home),
-        "PATH": trusted_path_value(),
-        "LANG": os.environ.get("LANG", "C"),
-        "LC_ALL": os.environ.get("LC_ALL", "C"),
-        "TMPDIR": str(home / "tmp"),
-    }
-    env.update(extra)
-    return env
+    return minimal_child_env(home, extra)
 
 
 def run_isolated_command(

@@ -29,9 +29,14 @@ def _default_cache_dir() -> Path:
 
 def trusted_bin_dirs() -> list[Path]:
     """공식 CLI를 찾을 디렉터리. 사용자 PATH 전체를 쓰지 않는다."""
-    extras = [
-        Path(item) for item in os.environ.get("PACKET_ASK_BIN_DIRS", "").split(os.pathsep) if item.strip()
-    ]
+    extras = []
+    for item in os.environ.get("PACKET_ASK_BIN_DIRS", "").split(os.pathsep):
+        raw = item.strip()
+        if not raw:
+            continue
+        path = Path(raw)
+        if path.is_absolute():
+            extras.append(path)
     return extras + [
         Path("/opt/homebrew/bin"),
         Path("/usr/local/bin"),
@@ -39,6 +44,22 @@ def trusted_bin_dirs() -> list[Path]:
         Path("/bin"),
         Path.home() / ".local" / "bin",
     ]
+
+
+def minimal_child_env(home: Path, extra: dict[str, str] | None = None) -> dict[str, str]:
+    """부모 클라우드 키를 복사하지 않는 최소 환경."""
+    tmp = home / "tmp"
+    tmp.mkdir(parents=True, exist_ok=True)
+    env = {
+        "HOME": str(home),
+        "PATH": trusted_path_value(),
+        "LANG": os.environ.get("LANG", "C"),
+        "LC_ALL": os.environ.get("LC_ALL", "C"),
+        "TMPDIR": str(tmp),
+    }
+    if extra:
+        env.update(extra)
+    return env
 
 
 def trusted_path_value() -> str:

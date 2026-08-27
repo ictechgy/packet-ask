@@ -101,6 +101,41 @@ def test_collect_git_diff_rejects_secret_path(tmp_path: Path) -> None:
         collect_git_diff(repo, unstaged=True)
 
 
+def test_collect_git_diff_rejects_secret_rename(tmp_path: Path) -> None:
+    """시크릿 파일을 안전한 이름으로 바꿔도 diff 전체를 거절한다."""
+    import subprocess
+
+    repo = _init_repo(tmp_path)
+    key_file = repo / "src" / "id_rsa"
+    key_file.write_text("placeholder\n", encoding="utf-8")
+    subprocess.run(["git", "add", "src/id_rsa"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "key"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "mv", "src/id_rsa", "src/harmless.txt"], cwd=repo, check=True, capture_output=True)
+    with pytest.raises(ScopeError, match="시크릿"):
+        collect_git_diff(repo, staged=True)
+
+
+def test_git_diff_disables_textconv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """git diff 는 textconv 과 외부 diff 를 끈다."""
+    import subprocess
+
+    repo = _init_repo(tmp_path)
+    (repo / "src" / "app.py").write_text("print(2)\n", encoding="utf-8")
+    seen: list[list[str]] = []
+    real = subprocess.run
+
+    def wrapper(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        cmd = list(args[0]) if args else list(kwargs.get("args", []))  # type: ignore[arg-type]
+        seen.append([str(part) for part in cmd])
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr("packet_ask.scope.subprocess.run", wrapper)
+    collect_git_diff(repo, unstaged=True)
+    joined = [" ".join(item) for item in seen]
+    assert any("--no-textconv" in item for item in joined)
+    assert any("--name-status" in item and "-z" in item for item in joined)
+
+
 def test_collect_git_diff_budget(tmp_path: Path) -> None:
     """diff 용량이 예산을 넘기면 BudgetError."""
     repo = _init_repo(tmp_path)

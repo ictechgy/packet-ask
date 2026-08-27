@@ -12,12 +12,15 @@ from pathlib import Path
 
 _SECRET_HEADER_PATTERNS = (
     re.compile(r"(?im)^(\s*(?:Proxy-)?Authorization\s*:\s*)([^\r\n]*)(\r?)$"),
+    re.compile(r"(?im)^(\s*(?:Cookie|Set-Cookie)\s*:\s*)([^\r\n]*)(\r?)$"),
     re.compile(
         r"(?im)^(\s*(?:AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|"
         r"GOOGLE_APPLICATION_CREDENTIALS|AZURE_CLIENT_SECRET)\s*[:=]\s*)"
         r"([^\r\n]*)(\r?)$"
     ),
 )
+_URL_USERINFO_RE = re.compile(r"(?i)(\b[a-z][a-z0-9+.-]*://[^/\s:@]+:)([^/\s@]+)(@)")
+_VERIFY_URL_USERINFO_RE = re.compile(r"(?i)://[^/\s:@]+:(?!\[REDACTED\])[^/\s@]+@")
 _SECRET_KEY_FRAGMENT = (
     r"[A-Za-z0-9_.-]*(?:api[_-]?key|token|password|private[_-]?key|"
     r"access[_-]?key|client[_-]?secret|secret[_-]?key|secret[_-]?token|"
@@ -106,8 +109,26 @@ def _redact_secret_rest(rest: str) -> str:
     return f'{leading}"[REDACTED]"{trailing}{comment}'
 
 
+def _looks_like_secret_literal(rest: str) -> bool:
+    """식별자·타입 애노테이션은 남기고 리터럴만 가린다."""
+    stripped = rest.strip().rstrip(",;")
+    if not stripped:
+        return True
+    if stripped[0] in {"'", '"'}:
+        return True
+    if re.match(r"^(?:int|str|bool|bytes|float|None|list|dict|tuple|Path|Optional)\b", stripped):
+        return False
+    if re.match(r"^[A-Za-z_][A-Za-z0-9_\.]*(\(|$)", stripped):
+        return bool(re.fullmatch(r"[A-Za-z0-9_\-]{16,}", stripped))
+    return True
+
+
 def _assignment_replacer(match: re.Match[str]) -> str:
-    return f"{match.group('prefix')}{_redact_secret_rest(match.group('rest'))}{match.group('cr')}"
+    """리터럴 우변만 가린다. 소스 식별자를 깨지 않기 위해서다."""
+    rest = match.group("rest")
+    if not _looks_like_secret_literal(rest):
+        return match.group(0)
+    return f"{match.group('prefix')}{_redact_secret_rest(rest)}{match.group('cr')}"
 
 
 def _home_strings(home: str) -> tuple[str, ...]:
@@ -135,6 +156,8 @@ def scrub_text(text: str, home: str | None = None) -> tuple[str, RedactionReport
     for pat in _SECRET_VALUE_PATTERNS:
         text, n = pat.subn("[REDACTED]", text)
         report.secret_values += n
+    text, n = _URL_USERINFO_RE.subn(r"\1[REDACTED]\3", text)
+    report.secret_values += n
     for variant in _home_strings(home):
         if variant and variant in text:
             count = text.count(variant)
@@ -161,6 +184,8 @@ def verify_scrubbed(text: str, home: str | None = None) -> None:
     if _VERIFY_PHONE_RE.search(compact):
         leftovers.append("phone")
     if _VERIFY_KEY_RE.search(text) or "PRIVATE KEY-----" in text:
+        leftovers.append("secret")
+    if _VERIFY_URL_USERINFO_RE.search(text):
         leftovers.append("secret")
     if leftovers:
         raise RedactionError("재검증에서 민감 값이 남았습니다: " + ", ".join(leftovers))

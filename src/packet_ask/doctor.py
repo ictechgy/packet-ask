@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import re
+import shutil
 import subprocess
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 
-from packet_ask.paths import resolve_trusted_executable
+from packet_ask.paths import minimal_child_env, resolve_trusted_executable
+
+_HELP_TIMEOUT_SECONDS = 10
 
 
 @dataclass(frozen=True)
@@ -18,37 +24,53 @@ class ProviderStatus:
     note: str
 
 
+def has_cli_flag(help_text: str, flag: str) -> bool:
+    """help 텍스트에서 플래그를 단어 경계로 찾는다. -p 가 --path 에 오탐하지 않게 한다."""
+    return re.search(rf"(?<![\w-]){re.escape(flag)}(?![\w-])", help_text) is not None
+
+
 def claude_supports_isolated_print(help_text: str) -> bool:
     """Claude Code help에 격리 원샷에 필요한 플래그가 있는지 본다."""
     needed = ("--bare", "--tools", "--no-session-persistence", "--setting-sources")
-    return all(flag in help_text for flag in needed)
+    return all(has_cli_flag(help_text, flag) for flag in needed)
 
 
 def kimi_supports_print(help_text: str) -> bool:
     """Kimi help에 print/prompt 원샷이 있는지 본다. 도구 차단은 별도."""
-    return "-p" in help_text or "--prompt" in help_text or "--print" in help_text
+    return any(has_cli_flag(help_text, flag) for flag in ("-p", "--prompt", "--print"))
 
 
 def kimi_supports_isolated_print(help_text: str) -> bool:
     """무도구 원샷에 필요한 agent-file 과 work-dir 이 있는지 본다."""
-    has_prompt = kimi_supports_print(help_text) or "--quiet" in help_text
-    has_agent = "--agent-file" in help_text
-    has_workdir = "--work-dir" in help_text or " -w " in f" {help_text} "
+    has_prompt = kimi_supports_print(help_text) or has_cli_flag(help_text, "--quiet")
+    has_agent = has_cli_flag(help_text, "--agent-file")
+    has_workdir = has_cli_flag(help_text, "--work-dir") or has_cli_flag(help_text, "-w")
     return has_prompt and has_agent and has_workdir
 
 
 def _help_text(executable: str) -> str | None:
-    """--help 출력을 가져온다. 실패하면 None. 신뢰 경로만 본다."""
+    """--help 를 최소 환경에서 가져온다. 실패하면 None."""
     path = resolve_trusted_executable(executable)
     if path is None:
         return None
-    result = subprocess.run(
-        [str(path), "--help"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    return (result.stdout or "") + (result.stderr or "")
+    probe = Path(tempfile.mkdtemp(prefix="packet-ask-probe-"))
+    probe.chmod(0o700)
+    try:
+        result = subprocess.run(
+            [str(path), "--help"],
+            check=False,
+            capture_output=True,
+            text=True,
+            cwd=probe,
+            env=minimal_child_env(probe),
+            timeout=_HELP_TIMEOUT_SECONDS,
+            stdin=subprocess.DEVNULL,
+        )
+        return (result.stdout or "") + (result.stderr or "")
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    finally:
+        shutil.rmtree(probe, ignore_errors=True)
 
 
 def inspect_providers() -> list[ProviderStatus]:

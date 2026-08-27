@@ -1,5 +1,9 @@
 """doctor 플래그 판정."""
 
+from pathlib import Path
+
+import pytest
+
 from packet_ask.doctor import claude_supports_isolated_print, kimi_supports_print
 
 
@@ -27,3 +31,43 @@ def test_kimi_isolated_print_needs_agent_file_and_workdir() -> None:
     full = "--prompt\n--quiet\n--agent-file\n--work-dir\n"
     assert kimi_supports_isolated_print(full) is True
     assert kimi_supports_isolated_print("--prompt\n--quiet\n") is False
+
+
+def test_kimi_print_flag_not_confused_with_permission() -> None:
+    """-p 부분문자열은 --permission-mode 에 오탐하지 않는다."""
+    from packet_ask.doctor import kimi_supports_print
+
+    assert kimi_supports_print("--permission-mode\n--path") is False
+    assert kimi_supports_print("-p\n--prompt") is True
+
+
+def test_help_probe_does_not_inherit_parent_secrets(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """--help 프로브는 부모 키를 물려주지 않고 timeout 을 둔다."""
+    import subprocess
+    from pathlib import Path as PathType
+
+    captured: dict[str, object] = {}
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured["env"] = kwargs.get("env")
+        captured["timeout"] = kwargs.get("timeout")
+        captured["cwd"] = kwargs.get("cwd")
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="--quiet\n", stderr="")
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "parent-secret")
+    monkeypatch.setattr("packet_ask.doctor.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "packet_ask.doctor.resolve_trusted_executable",
+        lambda name: PathType("/usr/bin/true"),
+    )
+    from packet_ask.doctor import _help_text
+
+    _help_text("claude")
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert "parent-secret" not in env.values()
+    assert "ANTHROPIC_API_KEY" not in env
+    assert captured["timeout"] == 10
+    assert captured["cwd"] is not None

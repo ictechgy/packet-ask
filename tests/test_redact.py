@@ -53,3 +53,32 @@ def test_verify_passes_after_scrub() -> None:
     home = str(Path.home())
     text, _ = scrub_text(f"log {home}/proj email a@b.co 010-1111-2222\n")
     verify_scrubbed(text)
+
+
+def test_keeps_identifier_and_type_assignments() -> None:
+    """시크릿 이름 식별자·타입 애노테이션은 소스 문법을 깨지 않는다."""
+    source = (
+        "api_key = os.environ.get('PACKET_ASK_GLM_KEY', '').strip()\n"
+        '        "ANTHROPIC_API_KEY": key,\n'
+        "private_key_blocks: int = 0\n"
+    )
+    text, _ = scrub_text(source)
+    assert "os.environ.get" in text
+    assert ": key," in text
+    assert "private_key_blocks: int = 0" in text
+
+
+def test_redacts_quoted_api_key_literal() -> None:
+    """따옴표 리터럴 키 값은 가린다."""
+    text, report = scrub_text('api_key = "sk-abcdefghijklmnopqrstuvwxyz012345"\n')
+    assert "sk-abcdefghijklmnopqrstuvwxyz012345" not in text
+    assert report.secret_lines + report.secret_values >= 1
+
+
+def test_redacts_url_userinfo() -> None:
+    """URL userinfo 비밀번호를 가린다."""
+    text, report = scrub_text("postgres://user:supersecretpass@db.example.com/app\n")
+    assert "supersecretpass" not in text
+    assert "[REDACTED]" in text
+    assert report.secret_values >= 1
+    verify_scrubbed(text)

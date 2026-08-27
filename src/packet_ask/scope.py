@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 from packet_ask.errors import BudgetError, ScopeError
-from packet_ask.paths import resolve_trusted_executable
+from packet_ask.paths import resolve_trusted_executable, trusted_path_value
 
 DEFAULT_MAX_FILES = 25
 DEFAULT_MAX_BYTES = 256 * 1024
@@ -34,7 +35,6 @@ _SECRET_NAMES = {
 _SECRET_SEGMENT_RE = re.compile(
     r"(?i)(?:^|[._-])(?:token|secret|password|credential|passwd)(?:[._-]|$)"
 )
-_DIFF_GIT_RE = re.compile(r"^diff --git a/(.+) b/(.+)$", re.MULTILINE)
 
 
 @dataclass(frozen=True)
@@ -53,6 +53,7 @@ def resolve_worktree(start: Path) -> Path:
         check=False,
         capture_output=True,
         text=True,
+        env=_git_env(),
     )
     if result.returncode != 0:
         raise ScopeError("git 워크트리가 아닙니다.")
@@ -133,24 +134,89 @@ def _git_executable() -> str:
     return str(found)
 
 
-def _run_git_diff(worktree: Path, args: list[str]) -> str:
-    """git diff를 셸 없이 실행한다."""
-    command = [_git_executable(), "diff", "--no-ext-diff", *args]
+def _git_env() -> dict[str, str]:
+    """글로벌 git 설정과 외부 diff 훅을 타지 않는 최소 환경."""
+    return {
+        "PATH": trusted_path_value(),
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_SYSTEM": os.devnull,
+        "LANG": "C",
+        "LC_ALL": "C",
+    }
+
+
+def _git_range_args(
+    range_spec: str | None,
+    unstaged: bool,
+    staged: bool,
+) -> list[str]:
+    """사용자 문자열을 옵션으로 쓰지 않고 diff 범위만 고른다."""
+    if range_spec is not None:
+        if range_spec.startswith("-"):
+            raise ScopeError("잘못된 diff 범위입니다.")
+        return [range_spec]
+    if staged:
+        return ["--cached"]
+    if unstaged:
+        return []
+    raise ScopeError("diff 범위를 지정하세요.")
+
+
+def _run_git(worktree: Path, extra: list[str]) -> str:
+    """git 을 셸 없이 실행한다."""
+    command = [_git_executable(), *extra]
     result = subprocess.run(
         command,
         cwd=worktree,
         check=False,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=_git_env(),
     )
     if result.returncode != 0:
-        raise ScopeError("git diff 를 실행하지 못했습니다.")
+        raise ScopeError("git 명령을 실행하지 못했습니다.")
     return result.stdout
 
 
-def _diff_paths(text: str) -> list[str]:
-    """diff --git 헤더에서 b/ 경로를 모은다."""
-    return [match.group(2) for match in _DIFF_GIT_RE.finditer(text)]
+def _diff_guard_args() -> list[str]:
+    """외부 diff 와 textconv 를 끈다."""
+    return [
+        "-c",
+        "diff.noprefix=false",
+        "-c",
+        "diff.mnemonicPrefix=false",
+        "-c",
+        "core.quotepath=false",
+        "diff",
+        "--no-ext-diff",
+        "--no-textconv",
+    ]
+
+
+def _name_status_paths(worktree: Path, range_args: list[str]) -> list[str]:
+    """NUL 구분 name-status 로 원본·대상 경로를 모두 모은다."""
+    raw = _run_git(worktree, [*_diff_guard_args(), "--name-status", "-z", *range_args])
+    return _parse_name_status(raw)
+
+
+def _parse_name_status(raw: str) -> list[str]:
+    """git diff --name-status -z 출력을 경로 목록으로 푼다."""
+    parts = [part for part in raw.split("\0") if part != ""]
+    paths: list[str] = []
+    index = 0
+    while index < len(parts):
+        status = parts[index]
+        if status[:1] in {"R", "C"}:
+            paths.extend(parts[index + 1 : index + 3])
+            index += 3
+            continue
+        if index + 1 >= len(parts):
+            raise ScopeError("git name-status 출력을 해석하지 못했습니다.")
+        paths.append(parts[index + 1])
+        index += 2
+    return paths
 
 
 def _reject_oversized_diff(text: str, max_bytes: int) -> None:
@@ -159,9 +225,9 @@ def _reject_oversized_diff(text: str, max_bytes: int) -> None:
         raise BudgetError(f"총 용량이 {max_bytes}바이트를 넘습니다.")
 
 
-def _reject_secret_diff_paths(text: str) -> None:
-    """diff 안의 시크릿·git 경로는 일부를 지우는 대신 전체를 거절한다."""
-    for relative in _diff_paths(text):
+def _reject_secret_diff_paths(paths: list[str]) -> None:
+    """시크릿·git 경로는 일부를 지우는 대신 전체를 거절한다."""
+    for relative in paths:
         path = Path(relative)
         if is_vcs_path(path) or is_secret_path(path):
             raise ScopeError(f"시크릿 또는 git 경로가 diff에 있습니다: {path.name}")
@@ -175,27 +241,14 @@ def collect_git_diff(
     max_bytes: int = DEFAULT_MAX_BYTES,
 ) -> str:
     """요청한 diff를 텍스트로 모은다. 사용자 문자열을 셸에 넣지 않는다."""
-    text = _git_diff_text(worktree, range_spec, unstaged, staged)
+    range_args = _git_range_args(range_spec, unstaged, staged)
+    paths = _name_status_paths(worktree, range_args)
+    text = _run_git(worktree, [*_diff_guard_args(), *range_args])
     if not text.strip():
         raise ScopeError("범위에 변경이 없습니다.")
+    if not paths:
+        raise ScopeError("diff 본문은 있는데 경로를 읽지 못했습니다.")
     _reject_oversized_diff(text, max_bytes)
-    _reject_secret_diff_paths(text)
+    _reject_secret_diff_paths(paths)
     return text
 
-
-def _git_diff_text(
-    worktree: Path,
-    range_spec: str | None,
-    unstaged: bool,
-    staged: bool,
-) -> str:
-    """범위 인자를 고른 뒤 git diff 를 실행한다."""
-    if range_spec is not None:
-        if range_spec.startswith("-"):
-            raise ScopeError("잘못된 diff 범위입니다.")
-        return _run_git_diff(worktree, [range_spec])
-    if staged:
-        return _run_git_diff(worktree, ["--cached"])
-    if unstaged:
-        return _run_git_diff(worktree, [])
-    raise ScopeError("diff 범위를 지정하세요.")

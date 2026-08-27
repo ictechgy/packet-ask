@@ -23,7 +23,8 @@ def test_packet_rewrites_home_and_has_boundary(tmp_path: Path, monkeypatch: pyte
         diff_text=None,
         parent=tmp_path / "packets",
     )
-    written = (packet.root / "src" / "app.py").read_text(encoding="utf-8")
+    written = (packet.root / "files" / "src" / "app.py").read_text(encoding="utf-8")
+    assert (packet.root / "CLAUDE.md").read_text(encoding="utf-8") == ""
     assert str(home) not in written
     assert "[REDACTED HOME]" in written
     assert (packet.root / "CLAUDE.md").is_file()
@@ -48,6 +49,21 @@ def test_packet_md_contains_task_and_files(tmp_path: Path) -> None:
     assert "외부 자료" in blob
     assert "a.py" in blob
     assert "x = 1" in blob
+    packet.destroy()
+
+
+def test_packet_stores_payload_away_from_control_files(tmp_path: Path) -> None:
+    """수집 파일은 files/ 아래에 두어 CLAUDE.md 와 겹치지 않게 한다."""
+    files = [ScopedFile(relative="CLAUDE.md", content="# user file\n")]
+    packet = build_packet(
+        mode="review",
+        question="이 파일을 리뷰해줘",
+        files=files,
+        diff_text=None,
+        parent=tmp_path,
+    )
+    assert (packet.root / "CLAUDE.md").read_text(encoding="utf-8") == ""
+    assert "# user file" in (packet.root / "files" / "CLAUDE.md").read_text(encoding="utf-8")
     packet.destroy()
 
 
