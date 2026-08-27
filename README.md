@@ -14,7 +14,14 @@ uv sync
 uv run packet-ask doctor
 ```
 
-원하면 `uv tool install .` 로 `packet-ask` 명령을 전역에 올릴 수 있습니다.
+원하면 전역 설치 후 세 하니스에 스킬을 심는다.
+
+```bash
+uv tool install .
+packet-ask install-skills
+```
+
+이 명령이 `~/.claude/skills/packet-ask`, `~/.grok/skills/packet-ask`, `~/.codex/skills/packet-ask` 에 SKILL.md 를 넣는다. 이후 `/packet-ask` 또는 「kimi로 리뷰」처럼 말하면 메인이 이 CLI를 호출한다.
 
 ## 사용
 

@@ -9,6 +9,7 @@ from pathlib import Path
 from packet_ask import codes
 from packet_ask.doctor import inspect_providers
 from packet_ask.errors import PacketAskError
+from packet_ask.install_skills import install_skills
 from packet_ask.launch import launch_glm, launch_kimi
 from packet_ask.output import wrap_untrusted
 from packet_ask.packet import Packet, build_packet
@@ -34,6 +35,7 @@ def _parser() -> argparse.ArgumentParser:
     _add_task_parser(sub, "brainstorm", "스크럽된 질문으로 브레인스토밍")
     _add_task_parser(sub, "paste", "벤더를 실행하지 않고 패킷만 출력")
     sub.add_parser("doctor", help="공식 CLI 격리 원샷 가능 여부")
+    sub.add_parser("install-skills", help="Claude/Codex/Grok 사용자 스킬로 설치")
     return parser
 
 
@@ -82,6 +84,13 @@ def _collect_scope(args: argparse.Namespace, worktree: Path) -> tuple[list, str 
     elif args.command == "review" and not scoped_files:
         diff_text = collect_git_diff(worktree, unstaged=True)
     return scoped_files, diff_text
+
+
+def _run_install_skills() -> int:
+    """Claude/Codex/Grok 홈에 스킬을 심는다."""
+    for path in install_skills():
+        print(path)
+    return codes.SUCCESS
 
 
 def _run_doctor() -> int:
@@ -148,6 +157,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "doctor":
             return _run_doctor()
+        if args.command == "install-skills":
+            return _run_install_skills()
         return _run_task(args)
     except PacketAskError as exc:
         print(str(exc), file=sys.stderr)
