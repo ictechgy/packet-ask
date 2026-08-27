@@ -6,12 +6,23 @@
 
 > 이 도구는 의도적으로 보내는 범위를 줄입니다. 유출이 없음도, 학습되지 않음도 보장하지 않습니다. 벤더 약관은 그대로입니다. 자세한 내용은 [SECURITY.md](SECURITY.md)를 보세요.
 
+MIT 라이선스입니다. 전문은 [LICENSE](LICENSE)를 보세요.
+
+## 필요 조건
+
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/)
+- GLM 실행: 신뢰 경로의 공식 `claude` CLI
+- Kimi 실행: 신뢰 경로의 공식 `kimi` CLI
+- `paste` 프로바이더는 벤더 CLI가 없어도 됩니다
+
+키는 환경변수로만 넘깁니다. `.env` 는 저장소에서 무시합니다. 변수 이름은 [.env.example](.env.example)을 참고하세요.
+
 ## 설치
 
-Python 3.11+ 와 [uv](https://docs.astral.sh/uv/) 가 필요합니다.
+저장소를 받은 뒤:
 
 ```bash
-git clone <this-repo> packet-ask
 cd packet-ask
 uv sync
 uv run packet-ask doctor
@@ -63,6 +74,8 @@ GLM은 공식 `claude` 바이너리를 쓰되, **부모 셸의 `ANTHROPIC_BASE_U
 | 코드 | 의미 |
 |---:|---|
 | 0 | 성공 |
+| 1 | 내부 오류 |
+| 2 | 인자 오류 |
 | 10 | 정책 거부 (구현·장애 등) |
 | 11 | 스코프 거부 |
 | 12 | 리댁션/재검증 실패 |
@@ -70,11 +83,17 @@ GLM은 공식 `claude` 바이너리를 쓰되, **부모 셸의 `ANTHROPIC_BASE_U
 | 14 | 용량 초과 |
 | 20 | 프로바이더/키 없음 |
 | 21 | 프로바이더 실행 실패 |
+| 22 | 출력 가드 실패 |
 
 ## 개발
 
 ```bash
+uv sync --group dev
 uv run pytest
 ```
 
 기여는 [CONTRIBUTING.md](CONTRIBUTING.md)를 따릅니다.
+
+## 라이선스
+
+[MIT](LICENSE) Copyright (c) 2026 Coden

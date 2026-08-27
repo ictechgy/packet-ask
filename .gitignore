@@ -1,14 +1,26 @@
 # Python-generated files
 __pycache__/
-*.py[oc]
+*.py[cod]
 build/
 dist/
 wheels/
-*.egg-info
+*.egg-info/
+htmlcov/
 .coverage
+.coverage.*
+coverage.xml
+.ruff_cache/
+.mypy_cache/
+.tox/
+.nox/
 .DS_Store
 
 # Virtual environments
 .venv
 .pytest_cache/
+
+# Secrets and leftover packet dirs. Keep the example file.
+.env
+.env.*
+!.env.example
 .packet-ask-tmp/
