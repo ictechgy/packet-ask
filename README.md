@@ -16,14 +16,13 @@ MIT 라이선스입니다. 전문은 [LICENSE](LICENSE)를 보세요.
 - Kimi 실행: 신뢰 경로의 공식 `kimi` CLI
 - `paste` 프로바이더는 벤더 CLI가 없어도 됩니다
 
-키는 환경변수로만 넘깁니다. 명령줄에 키 값을 적지 마세요. 셸 히스토리에 남습니다. `.env` 는 저장소에서 무시합니다. 변수 이름은 [.env.example](.env.example)을 참고하세요.
+키는 환경변수로만 넘깁니다. **이 도구는 `.env` 파일을 읽지 않습니다.** 명령줄에 키 값을 적지 마세요. 셸 히스토리에 남습니다. `.env` 는 저장소에서 무시합니다. 변수 이름은 [.env.example](.env.example)을 참고하세요. 신뢰 경로(공식 CLI를 찾는 디렉터리)는 [SECURITY.md](SECURITY.md)를 보세요.
 
 ## 설치
 
-이 저장소 디렉터리에서:
+저장소 루트에서:
 
 ```bash
-cd packet-ask
 uv sync
 uv run packet-ask doctor
 ```
@@ -61,7 +60,7 @@ Kimi는 공식 `kimi --quiet` 원샷입니다. 대화형 세션을 열지 않습
 
 GLM은 공식 `claude` 바이너리를 쓰되, **부모 셸의 `ANTHROPIC_BASE_URL` 은 바꾸지 않습니다.** 자식 환경에만 [Z.ai Claude Code 연동](https://docs.z.ai/scenario-example/develop-tools/claude) 엔드포인트와 `PACKET_ASK_GLM_KEY` 를 넣습니다.
 
-패킷 임시 디렉터리는 워크트리가 아니라 OS 캐시에 만듭니다. cwd는 샌드박스가 아닙니다.
+패킷 임시 디렉터리는 워크트리가 아니라 OS 캐시에 만듭니다. cwd는 샌드박스가 아닙니다. `.gitignore` 의 `.packet-ask-tmp/` 와 `packet.md` 는 예전 산출물이나 실수로 만든 파일을 커밋하지 않기 위한 방어입니다.
 
 ## 스킬
 

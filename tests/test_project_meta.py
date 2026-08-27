@@ -32,19 +32,28 @@ def test_gitignore_covers_dotenv_but_keeps_example() -> None:
     lines = [line.strip() for line in (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()]
     assert ".env" in lines
     assert ".env.*" in lines
+    assert ".envrc" in lines
     assert "!.env.example" in lines
     assert lines.index("!.env.example") > lines.index(".env.*")
     example = (ROOT / ".env.example").read_text(encoding="utf-8")
     assert "PACKET_ASK_GLM_KEY" in example
     assert "sk-" not in example
     for line in example.splitlines():
-        if "=" in line and not line.lstrip().startswith("#"):
-            raise AssertionError(f"예시에 값이 있습니다: {line}")
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if "=" not in stripped:
+            raise AssertionError(f"할당이 아닌 예시 줄입니다: {line}")
+        _name, _sep, value = stripped.partition("=")
+        assert value == "", f"예시에 값이 있습니다: {line}"
 
 
 def test_gitignore_rejects_env_and_keeps_example() -> None:
     """git check-ignore 로 .env 는 막고 .env.example 은 연다."""
-    for relative in (".env", ".env.local"):
+    git_dir = ROOT / ".git"
+    if not git_dir.exists():
+        return
+    for relative in (".env", ".env.local", ".envrc"):
         ignored = subprocess.run(
             ["git", "check-ignore", "-q", "--", relative],
             cwd=ROOT,

@@ -22,6 +22,8 @@ coverage.xml
 # Secrets and leftover packet dirs. Keep the example file.
 .env
 .env.*
+.envrc
+.direnv/
 !.env.example
 .packet-ask-tmp/
 packet.md
