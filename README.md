@@ -11,16 +11,16 @@ MIT 라이선스입니다. 전문은 [LICENSE](LICENSE)를 보세요.
 ## 필요 조건
 
 - Python 3.11+
-- [uv](https://docs.astral.sh/uv/)
+- [uv](https://docs.astral.sh/uv/) 0.10.9+ (`pyproject.toml` 의 `uv_build` 하한과 같습니다)
 - GLM 실행: 신뢰 경로의 공식 `claude` CLI
 - Kimi 실행: 신뢰 경로의 공식 `kimi` CLI
 - `paste` 프로바이더는 벤더 CLI가 없어도 됩니다
 
-키는 환경변수로만 넘깁니다. `.env` 는 저장소에서 무시합니다. 변수 이름은 [.env.example](.env.example)을 참고하세요.
+키는 환경변수로만 넘깁니다. 명령줄에 키 값을 적지 마세요. 셸 히스토리에 남습니다. `.env` 는 저장소에서 무시합니다. 변수 이름은 [.env.example](.env.example)을 참고하세요.
 
 ## 설치
 
-저장소를 받은 뒤:
+이 저장소 디렉터리에서:
 
 ```bash
 cd packet-ask
@@ -28,7 +28,9 @@ uv sync
 uv run packet-ask doctor
 ```
 
-원하면 도구로 설치한 뒤 Claude / Codex / Grok 스킬을 심습니다.
+원격 URL은 공개 저장소가 생기면 README에 넣습니다. 지금은 로컬 체크아웃이 설치 기준입니다.
+
+원하면 도구로 설치한 뒤 Claude / Codex / Grok 스킬을 심습니다. 아래 사용 예는 기본 경로인 `uv run` 을 씁니다.
 
 ```bash
 uv tool install .
@@ -41,20 +43,18 @@ packet-ask install-skills
 
 ```bash
 # 벤더를 실행하지 않고 패킷만 본다
-packet-ask review --provider paste --files src/app.py --question "이 코드의 경쟁 상태를 찾아줘"
+uv run packet-ask review --provider paste --files src/app.py --question "이 코드의 경쟁 상태를 찾아줘"
 
-# GLM 개인 코딩 플랜. 전역 Anthropic 키가 아니라 PACKET_ASK_GLM_KEY
-export PACKET_ASK_GLM_KEY="..."
-packet-ask review --provider glm --diff HEAD --question "이 변경을 리뷰해줘"
+# GLM. 키는 미리 환경에만 두고 명령줄에 값을 적지 마세요
+uv run packet-ask review --provider glm --diff HEAD --question "이 변경을 리뷰해줘"
 
-# Kimi Code. TUI를 열지 않고 원샷한다. 키는 디스크가 아니라 PACKET_ASK_KIMI_KEY
-export PACKET_ASK_KIMI_KEY="..."
-packet-ask review --provider kimi --files src/app.py --question "이 코드를 리뷰해줘"
+# Kimi. 키는 PACKET_ASK_KIMI_KEY 환경변수입니다
+uv run packet-ask review --provider kimi --files src/app.py --question "이 코드를 리뷰해줘"
 
 # 리서치. 로컬 파일은 기본 금지
-packet-ask research --provider paste --question "Tailwind v4 마이그레이션에서 자주 깨지는 점"
+uv run packet-ask research --provider paste --question "Tailwind v4 마이그레이션에서 자주 깨지는 점"
 
-packet-ask doctor
+uv run packet-ask doctor
 ```
 
 Kimi는 공식 `kimi --quiet` 원샷입니다. 대화형 세션을 열지 않습니다. 도구는 `tools: []` 에이전트 파일과 매칭되지 않는 `[tools] enabled` 로 끄고, `KIMI_CODE_HOME` 은 `~/.config/packet-ask/providers/kimi` 격리 프로필만 씁니다. 실제 레포에서 `kimi`를 직접 실행하지 마세요.
