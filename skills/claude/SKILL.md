@@ -16,8 +16,9 @@ description: "개인 Kimi/GLM 구독을 서브로만 쓸 때 packet-ask CLI를 �
 ```bash
 packet-ask review --provider paste --files <paths> --question "<질문>"
 packet-ask review --provider glm --diff HEAD --question "<질문>"
+packet-ask review --provider kimi --files <paths> --question "<질문>"
 packet-ask research --provider paste --question "<공개 질문>"
 packet-ask doctor
 ```
 
-Kimi는 v1에서 `--provider paste`만 사용한다. GLM 키는 `PACKET_ASK_GLM_KEY`이며 전역 Anthropic 키를 쓰지 않는다.
+GLM 키는 `PACKET_ASK_GLM_KEY`, Kimi 키는 `PACKET_ASK_KIMI_KEY`이다. 전역 Anthropic/Kimi 홈을 바꾸지 않는다.

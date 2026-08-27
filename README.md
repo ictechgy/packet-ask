@@ -19,12 +19,16 @@ uv run packet-ask doctor
 ## 사용
 
 ```bash
-# 벤더를 실행하지 않고 패킷만 본다 (가장 안전, Kimi v1 기본)
+# 벤더를 실행하지 않고 패킷만 본다
 packet-ask review --provider paste --files src/app.py --question "이 코드의 경쟁 상태를 찾아줘"
 
-# GLM 개인 코딩 플랜. 키는 전역 Anthropic 키가 아니라 PACKET_ASK_GLM_KEY
+# GLM 개인 코딩 플랜. 전역 Anthropic 키가 아니라 PACKET_ASK_GLM_KEY
 export PACKET_ASK_GLM_KEY="..."
 packet-ask review --provider glm --diff HEAD --question "이 변경을 리뷰해줘"
+
+# Kimi Code. TUI를 열지 않고 원샷한다. 전역 kimi 홈이 아니라 PACKET_ASK_KIMI_KEY
+export PACKET_ASK_KIMI_KEY="..."
+packet-ask review --provider kimi --files src/app.py --question "이 코드를 리뷰해줘"
 
 # 리서치. 로컬 파일은 기본 금지
 packet-ask research --provider paste --question "Tailwind v4 마이그레이션에서 자주 깨지는 점"
@@ -32,7 +36,7 @@ packet-ask research --provider paste --question "Tailwind v4 마이그레이션�
 packet-ask doctor
 ```
 
-Kimi CLI의 `-p`는 도구를 자동 승인합니다. v1은 `--provider kimi` 자동 실행을 거절하고 paste를 안내합니다.
+Kimi는 공식 `kimi --quiet` 원샷입니다. 대화형 세션을 열지 않습니다. 도구는 `tools: []` 에이전트 파일로 끄고, `KIMI_CODE_HOME` 은 `~/.config/packet-ask/providers/kimi` 격리 프로필만 씁니다. 실제 레포에서 `kimi`를 직접 실행하지 마세요.
 
 ## 스킬
 

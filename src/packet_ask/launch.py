@@ -113,9 +113,102 @@ def launch_glm(packet: Packet, timeout: int) -> str:
     return run_isolated_command(Path(executable), argv, stdin_text, packet.root, env, timeout)
 
 
+_KIMI_NO_TOOLS_AGENT = """---
+name: packet-ask-reader
+description: Packet-only reader with all tools disabled
+tools: []
+subagents: []
+---
+You have no tools. Answer using only the user prompt. Do not try to read
+the filesystem, run a shell, or call MCP. Do not implement code.
+"""
+
+
+def write_kimi_no_tools_agent(directory: Path) -> Path:
+    """tools: [] 에이전트 파일을 패킷 안에 만든다."""
+    path = directory / "packet-ask-reader.md"
+    path.write_text(_KIMI_NO_TOOLS_AGENT, encoding="utf-8")
+    path.chmod(0o600)
+    return path
+
+
+def kimi_launch_args(work_dir: Path, agent_file: Path, skills_dir: Path) -> list[str]:
+    """TUI를 열지 않는 격리 원샷 인자. --yolo/--add-dir 은 넣지 않는다."""
+    return [
+        "--quiet",
+        "--work-dir",
+        str(work_dir),
+        "--agent-file",
+        str(agent_file),
+        "--skills-dir",
+        str(skills_dir),
+    ]
+
+
+def _toml_string(value: str) -> str:
+    """TOML 기본 문자열로 이스케이프한다."""
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _ensure_kimi_config(kimi_home: Path, api_key: str) -> None:
+    """격리 홈에 최소 config와 빈 MCP를 둔다. 기존 로그인 파일은 키 없을 때 유지한다."""
+    kimi_home.mkdir(parents=True, exist_ok=True)
+    kimi_home.chmod(0o700)
+    config = kimi_home / "config.toml"
+    if api_key:
+        body = (
+            "telemetry = false\n"
+            "default_yolo = false\n"
+            "[tools]\n"
+            'enabled = ["*"]\n'
+            "[providers.kimi.env]\n"
+            f"KIMI_API_KEY = {_toml_string(api_key)}\n"
+        )
+        config.write_text(body, encoding="utf-8")
+        config.chmod(0o600)
+    elif not config.is_file() or config.stat().st_size == 0:
+        raise PacketAskError(
+            "PACKET_ASK_KIMI_KEY 가 없고 격리 프로필에도 로그인이 없습니다.",
+            codes.PROVIDER_MISSING,
+        )
+    mcp = kimi_home / "mcp.json"
+    mcp.write_text('{"mcpServers":{}}\n', encoding="utf-8")
+    mcp.chmod(0o600)
+
+
+def _cleanup_kimi_sessions(kimi_home: Path) -> None:
+    """실행 후 세션 로그를 지워 패킷 사본이 홈에 남지 않게 한다."""
+    sessions = kimi_home / "sessions"
+    if sessions.is_dir():
+        shutil.rmtree(sessions, ignore_errors=True)
+
+
 def launch_kimi(packet: Packet, timeout: int) -> str:
-    """v1에서 Kimi 자동 실행은 하지 않는다."""
-    raise PacketAskError(
-        "kimi -p 는 도구를 자동 승인합니다. --provider paste 를 사용하세요.",
-        codes.CONFINEMENT,
+    """공식 kimi CLI를 TUI 없이 한 번 호출한다. 도구는 에이전트 파일로 끈다."""
+    executable = shutil.which("kimi")
+    if not executable:
+        raise PacketAskError("kimi CLI가 없습니다.", codes.PROVIDER_MISSING)
+    require_launchable("kimi")
+    api_key = os.environ.get("PACKET_ASK_KIMI_KEY", "").strip()
+    home = provider_home("kimi")
+    kimi_home = home / "kimi-code"
+    _ensure_kimi_config(kimi_home, api_key)
+    agent_file = write_kimi_no_tools_agent(packet.root)
+    skills_dir = packet.root / ".pa-skills"
+    skills_dir.mkdir(exist_ok=True)
+    skills_dir.chmod(0o700)
+    env = isolated_env(
+        home,
+        {
+            "KIMI_CODE_HOME": str(kimi_home),
+            "KIMI_DISABLE_TELEMETRY": "1",
+        },
     )
+    stdin_text = (packet.root / "packet.md").read_text(encoding="utf-8")
+    argv = kimi_launch_args(packet.root, agent_file, skills_dir)
+    try:
+        return run_isolated_command(Path(executable), argv, stdin_text, packet.root, env, timeout)
+    finally:
+        _cleanup_kimi_sessions(kimi_home)
+

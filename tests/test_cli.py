@@ -82,12 +82,13 @@ def test_glm_without_dedicated_key(
     assert code in {codes.PROVIDER_MISSING, codes.CONFINEMENT}
 
 
-def test_kimi_provider_does_not_launch(
+def test_kimi_without_cli_is_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """kimi 프로바이더는 v1에서 실행하지 않는다."""
+    """kimi 바이너리가 없으면 벤더를 실행하지 않는다."""
     repo = _init_repo(tmp_path)
     monkeypatch.chdir(repo)
+    monkeypatch.setattr("packet_ask.launch.shutil.which", lambda name: None if name == "kimi" else __import__("shutil").which(name))
     code = main(
         [
             "review",
@@ -99,4 +100,4 @@ def test_kimi_provider_does_not_launch(
             "이 코드를 리뷰해줘",
         ]
     )
-    assert code == codes.CONFINEMENT
+    assert code == codes.PROVIDER_MISSING

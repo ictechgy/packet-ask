@@ -28,6 +28,14 @@ def kimi_supports_print(help_text: str) -> bool:
     return "-p" in help_text or "--prompt" in help_text or "--print" in help_text
 
 
+def kimi_supports_isolated_print(help_text: str) -> bool:
+    """무도구 원샷에 필요한 agent-file 과 work-dir 이 있는지 본다."""
+    has_prompt = kimi_supports_print(help_text) or "--quiet" in help_text
+    has_agent = "--agent-file" in help_text
+    has_workdir = "--work-dir" in help_text or " -w " in f" {help_text} "
+    return has_prompt and has_agent and has_workdir
+
+
 def _help_text(executable: str) -> str | None:
     """--help 출력을 가져온다. 실패하면 None."""
     path = shutil.which(executable)
@@ -61,13 +69,21 @@ def inspect_providers() -> list[ProviderStatus]:
         statuses.append(ProviderStatus("glm", True, False, "필요한 claude 플래그가 없어 paste만 가능합니다."))
     kimi_help = _help_text("kimi")
     if kimi_help is None:
-        statuses.append(ProviderStatus("kimi", False, False, "kimi CLI가 없습니다. paste를 사용하세요."))
-    elif kimi_supports_print(kimi_help):
-        # -p 는 도구 자동 승인이므로 v1에서는 실행하지 않는다.
+        statuses.append(ProviderStatus("kimi", False, False, "kimi CLI가 없습니다."))
+    elif kimi_supports_isolated_print(kimi_help):
         statuses.append(
-            ProviderStatus("kimi", True, False, "kimi -p 는 도구를 자동 승인합니다. v1은 paste만 허용합니다.")
+            ProviderStatus(
+                "kimi",
+                True,
+                True,
+                "kimi quiet/print + --agent-file(tools: []) + --work-dir 로 원샷합니다. 키는 PACKET_ASK_KIMI_KEY 입니다.",
+            )
+        )
+    elif kimi_supports_print(kimi_help):
+        statuses.append(
+            ProviderStatus("kimi", True, False, "--agent-file/--work-dir 가 없어 격리 원샷을 못 합니다.")
         )
     else:
-        statuses.append(ProviderStatus("kimi", True, False, "원샷 플래그를 확인하지 못했습니다. paste만 가능합니다."))
+        statuses.append(ProviderStatus("kimi", True, False, "원샷 플래그를 확인하지 못했습니다."))
     statuses.append(ProviderStatus("paste", True, True, "벤더 프로세스 없이 패킷만 출력합니다."))
     return statuses
