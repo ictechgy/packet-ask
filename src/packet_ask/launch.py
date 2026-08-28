@@ -82,24 +82,50 @@ def _spawn_isolated(
 
 
 def _kill_process_group(proc: subprocess.Popen[str]) -> None:
-    """세션 리더와 손자 프로세스까지 종료한다."""
+    """세션 리더가 SIGTERM 에 죽어도 그룹에는 SIGKILL 을 보낸다."""
+    pgid = _process_group_id(proc)
+    if pgid is None:
+        _kill_leader(proc)
+        return
+    _signal_group(pgid, signal.SIGTERM)
+    _wait_briefly(proc)
+    _signal_group(pgid, signal.SIGKILL)
+    _wait_briefly(proc)
+
+
+def _process_group_id(proc: subprocess.Popen[str]) -> int | None:
+    """자식의 프로세스 그룹 id. 이미 죽었으면 None."""
     if proc.pid is None:
-        return
+        return None
     try:
-        pgid = os.getpgid(proc.pid)
+        return os.getpgid(proc.pid)
     except OSError:
+        return None
+
+
+def _kill_leader(proc: subprocess.Popen[str]) -> None:
+    """그룹 id 를 못 얻으면 세션 리더만 죽인다."""
+    try:
         proc.kill()
+    except OSError:
         return
-    for sig in (signal.SIGTERM, signal.SIGKILL):
-        try:
-            os.killpg(pgid, sig)
-        except OSError:
-            break
-        try:
-            proc.wait(timeout=1)
-            return
-        except subprocess.TimeoutExpired:
-            continue
+    _wait_briefly(proc)
+
+
+def _signal_group(pgid: int, sig: int) -> None:
+    """프로세스 그룹에 시그널을 보낸다. 이미 없으면 무시한다."""
+    try:
+        os.killpg(pgid, sig)
+    except OSError:
+        return
+
+
+def _wait_briefly(proc: subprocess.Popen[str]) -> None:
+    """리더가 끝날 때까지 짧게 기다린다."""
+    try:
+        proc.wait(timeout=1)
+    except (subprocess.TimeoutExpired, OSError):
+        return
 
 
 def require_launchable(provider: str) -> None:
@@ -140,6 +166,14 @@ def _require_claude_key() -> str:
     return _require_dedicated_key(
         "PACKET_ASK_CLAUDE_KEY",
         "PACKET_ASK_CLAUDE_KEY 환경변수가 없습니다. 전역 ANTHROPIC 키를 쓰지 않습니다.",
+    )
+
+
+def _require_kimi_key() -> str:
+    """Kimi 서브는 PACKET_ASK_KIMI_KEY 만 받는다."""
+    return _require_dedicated_key(
+        "PACKET_ASK_KIMI_KEY",
+        "PACKET_ASK_KIMI_KEY 환경변수가 없습니다.",
     )
 
 
@@ -279,9 +313,9 @@ def _kimi_child_env(home: Path, kimi_home: Path, api_key: str) -> dict[str, str]
 
 def launch_kimi(packet: Packet, timeout: int) -> str:
     """공식 kimi CLI를 TUI 없이 한 번 호출한다. 도구는 에이전트 파일로 끈다."""
-    executable = _require_executable("kimi")
     require_launchable("kimi")
-    api_key = os.environ.get("PACKET_ASK_KIMI_KEY", "").strip()
+    api_key = _require_kimi_key()
+    executable = _require_executable("kimi")
     home = provider_home("kimi")
     kimi_home = home / "kimi-code"
     ensure_kimi_config(kimi_home)

@@ -33,8 +33,8 @@ uv run pytest
 3. pending publisher는 **첫 업로드 전까지 이름을 예약하지 않습니다.** 등록 직후 `https://pypi.org/project/packet-ask/` 가 404인지 확인하고 태그를 밉니다.
 
 ```bash
-git tag -a v0.1.0 -m v0.1.0
-git push origin v0.1.0
+git tag -a v0.1.1 -m v0.1.1
+git push origin v0.1.1
 ```
 
 태그 `vX.Y.Z` 의 `X.Y.Z` 는 `pyproject.toml` 버전과 같아야 합니다. 워크플로가 `uv build` 후 `uv publish` 합니다.

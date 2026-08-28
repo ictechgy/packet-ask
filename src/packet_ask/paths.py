@@ -11,22 +11,37 @@ from packet_ask import codes
 from packet_ask.errors import PacketAskError
 
 
-def packet_cache_dir() -> Path:
+def packet_cache_dir(worktree: Path | None = None) -> Path:
     """패킷 임시 디렉터리의 부모. 워크트리 밖 전용 캐시다."""
-    raw = os.environ.get("PACKET_ASK_CACHE_DIR", "").strip()
-    if raw:
-        specified = Path(raw)
-        if not specified.is_absolute():
-            raise PacketAskError("PACKET_ASK_CACHE_DIR 은 절대경로여야 합니다.", codes.CONFINEMENT)
-        dedicated = specified if specified.name == "packet-ask" else specified / "packet-ask"
-    else:
-        dedicated = _default_cache_dir()
+    dedicated = _requested_cache_dir()
+    _reject_cache_inside_tree(dedicated, worktree)
     _ensure_private_dir(dedicated)
     resolved = dedicated.resolve()
-    cwd = Path.cwd().resolve()
-    if _is_under(resolved, cwd):
-        raise PacketAskError("패킷 캐시는 현재 디렉터리 안에 둘 수 없습니다.", codes.CONFINEMENT)
+    _reject_cache_inside_tree(resolved, worktree)
     return resolved
+
+
+def _requested_cache_dir() -> Path:
+    """환경변수 또는 플랫폼 기본 캐시 경로를 고른다. 아직 만들지 않는다."""
+    raw = os.environ.get("PACKET_ASK_CACHE_DIR", "").strip()
+    if not raw:
+        return _default_cache_dir()
+    specified = Path(raw)
+    if not specified.is_absolute():
+        raise PacketAskError("PACKET_ASK_CACHE_DIR 은 절대경로여야 합니다.", codes.CONFINEMENT)
+    if specified.name == "packet-ask":
+        return specified
+    return specified / "packet-ask"
+
+
+def _reject_cache_inside_tree(path: Path, worktree: Path | None) -> None:
+    """cwd 또는 git 워크트리 안의 캐시를 거절한다."""
+    if _is_under(path, Path.cwd().resolve()):
+        raise PacketAskError("패킷 캐시는 현재 디렉터리 안에 둘 수 없습니다.", codes.CONFINEMENT)
+    if worktree is None:
+        return
+    if _is_under(path, worktree.resolve()):
+        raise PacketAskError("패킷 캐시는 git 워크트리 안에 둘 수 없습니다.", codes.CONFINEMENT)
 
 
 def _is_under(path: Path, parent: Path) -> bool:

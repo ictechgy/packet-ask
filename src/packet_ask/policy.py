@@ -21,6 +21,7 @@ def assert_allowed_task(
     mode: str,
     question: str,
     files_flag: str | None = None,
+    has_diff: bool = False,
 ) -> None:
     """모드와 질문 조합이 서브 정책에 맞는지 검사한다."""
     if mode not in {"review", "research", "brainstorm", "paste", "doctor"}:
@@ -29,5 +30,9 @@ def assert_allowed_task(
         raise PolicyError("구현·패치 적용 요청은 서브로 보내지 않습니다.")
     if _INCIDENT_RE.search(question or ""):
         raise PolicyError("운영 장애 대응은 서브로 보내지 않습니다.")
+    if mode == "review" and files_flag == "include-files":
+        raise PolicyError("review는 --include-files 대신 --files 를 쓰세요.")
     if mode == "research" and files_flag == "files":
         raise PolicyError("research는 --files 대신 --include-files 를 쓰세요.")
+    if mode == "research" and has_diff:
+        raise PolicyError("research는 로컬 diff를 보내지 않습니다. --include-files 만 허용합니다.")
