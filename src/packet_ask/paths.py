@@ -7,14 +7,48 @@ import stat
 import sys
 from pathlib import Path
 
+from packet_ask import codes
+from packet_ask.errors import PacketAskError
+
 
 def packet_cache_dir() -> Path:
-    """패킷 임시 디렉터리의 부모. 워크트리 밖 OS 캐시다."""
+    """패킷 임시 디렉터리의 부모. 워크트리 밖 전용 캐시다."""
     raw = os.environ.get("PACKET_ASK_CACHE_DIR", "").strip()
-    path = Path(raw) if raw else _default_cache_dir()
+    if raw:
+        specified = Path(raw)
+        if not specified.is_absolute():
+            raise PacketAskError("PACKET_ASK_CACHE_DIR 은 절대경로여야 합니다.", codes.CONFINEMENT)
+        dedicated = specified if specified.name == "packet-ask" else specified / "packet-ask"
+    else:
+        dedicated = _default_cache_dir()
+    _ensure_private_dir(dedicated)
+    resolved = dedicated.resolve()
+    cwd = Path.cwd().resolve()
+    if _is_under(resolved, cwd):
+        raise PacketAskError("패킷 캐시는 현재 디렉터리 안에 둘 수 없습니다.", codes.CONFINEMENT)
+    return resolved
+
+
+def _is_under(path: Path, parent: Path) -> bool:
+    """path 가 parent 아래인지 본다."""
+    try:
+        path.relative_to(parent)
+    except ValueError:
+        return False
+    return True
+
+
+def _ensure_private_dir(path: Path) -> None:
+    """전용 디렉터리만 만들고 0700 으로 잠근다. 심링크는 거절한다."""
+    if path.exists() and path.is_symlink():
+        raise PacketAskError("캐시 경로에 심링크는 허용하지 않습니다.", codes.CONFINEMENT)
     path.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink():
+        raise PacketAskError("캐시 경로에 심링크는 허용하지 않습니다.", codes.CONFINEMENT)
+    info = path.stat()
+    if info.st_uid not in {0, os.getuid()}:
+        raise PacketAskError("캐시 디렉터리 소유자가 현재 사용자가 아닙니다.", codes.CONFINEMENT)
     path.chmod(stat.S_IRWXU)
-    return path.resolve()
 
 
 def _default_cache_dir() -> Path:
@@ -28,7 +62,7 @@ def _default_cache_dir() -> Path:
 
 
 def trusted_bin_dirs() -> list[Path]:
-    """공식 CLI를 찾을 디렉터리. 사용자 PATH 전체를 쓰지 않는다."""
+    """사용자가 신뢰한다고 지정한 실행 파일 디렉터리. PATH 전체를 쓰지 않는다."""
     extras = []
     for item in os.environ.get("PACKET_ASK_BIN_DIRS", "").split(os.pathsep):
         raw = item.strip()
@@ -91,9 +125,17 @@ def resolve_trusted_executable(name: str) -> Path | None:
 
 
 def _executable_if_valid(path: Path) -> Path | None:
-    """절대경로이고 실행 가능한 파일만 반환한다. 상대경로는 거절한다."""
+    """절대경로이고 현재 사용자 소유이며 그룹·기타에 쓸 수 없는 실행 파일만 받는다."""
     if not path.is_absolute() or not path.exists() or path.is_dir():
         return None
     if not os.access(path, os.X_OK):
+        return None
+    try:
+        info = path.stat()
+    except OSError:
+        return None
+    if info.st_uid not in {0, os.getuid()}:
+        return None
+    if stat.S_IMODE(info.st_mode) & 0o022:
         return None
     return path

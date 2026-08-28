@@ -60,7 +60,7 @@ def builtin_providers() -> list[ProviderSpec]:
             "launch",
             "claude",
             "PACKET_ASK_GLM_KEY",
-            "공식 claude 바이너리 + Z.ai 자식 환경.",
+            "신뢰 경로의 claude 바이너리 + Z.ai 자식 환경. doctor는 help 플래그만 확인합니다.",
         ),
         ProviderSpec(
             "kimi",
@@ -78,7 +78,7 @@ def builtin_providers() -> list[ProviderSpec]:
             "launch",
             "claude",
             "PACKET_ASK_CLAUDE_KEY",
-            "glm 과 같은 무도구 argv. Z.ai 엔드포인트는 넣지 않습니다.",
+            "glm 과 같은 argv. Z.ai 엔드포인트는 넣지 않습니다. doctor는 help 플래그만 확인합니다.",
         ),
         ProviderSpec(
             "grok",

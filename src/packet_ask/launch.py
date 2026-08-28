@@ -11,6 +11,7 @@ from pathlib import Path
 from packet_ask import codes
 from packet_ask.doctor import inspect_providers
 from packet_ask.errors import PacketAskError
+from packet_ask.output import MAX_OUTPUT_BYTES
 from packet_ask.packet import Packet
 from packet_ask.paths import minimal_child_env, resolve_trusted_executable
 
@@ -55,7 +56,10 @@ def run_isolated_command(
         raise PacketAskError("프로바이더가 시간 제한을 넘겼습니다.", codes.PROVIDER_FAILED) from exc
     if proc.returncode != 0:
         raise PacketAskError("프로바이더가 실패했습니다.", codes.PROVIDER_FAILED)
-    return stdout or ""
+    body = stdout or ""
+    if len(body.encode("utf-8")) > MAX_OUTPUT_BYTES:
+        raise PacketAskError("프로바이더 출력이 너무 커서 폐기했습니다.", codes.OUTPUT_GUARD)
+    return body
 
 
 def _spawn_isolated(

@@ -6,19 +6,33 @@ from pathlib import Path
 
 import pytest
 
+from packet_ask.errors import PacketAskError
 from packet_ask.paths import packet_cache_dir, resolve_trusted_executable, trusted_bin_dirs
 
 
 def test_packet_cache_dir_uses_override_and_is_private(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """PACKET_ASK_CACHE_DIR 이 있으면 그곳을 쓰고 0700 이다."""
+    """PACKET_ASK_CACHE_DIR 아래 전용 자식만 0700 이고 부모는 건드리지 않는다."""
     cache = tmp_path / "cache"
+    cache.mkdir()
+    cache.chmod(0o755)
     monkeypatch.setenv("PACKET_ASK_CACHE_DIR", str(cache))
     path = packet_cache_dir()
-    assert path == cache.resolve()
+    assert path == (cache / "packet-ask").resolve()
     assert path.is_dir()
     assert path.stat().st_mode & 0o777 == 0o700
+    assert cache.stat().st_mode & 0o777 == 0o755
+
+
+def test_packet_cache_dir_rejects_relative(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """상대 캐시 경로는 거절한다."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PACKET_ASK_CACHE_DIR", "relative-cache")
+    with pytest.raises(PacketAskError):
+        packet_cache_dir()
 
 
 def test_packet_cache_dir_is_not_under_cwd(
@@ -99,6 +113,20 @@ def test_packet_ask_bin_dirs_accepts_absolute(
     monkeypatch.setenv("PACKET_ASK_BIN_DIRS", str(extra))
     dirs = trusted_bin_dirs()
     assert extra in dirs
+
+
+def test_world_writable_binary_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """그룹·기타 쓰기 가능 실행 파일은 고르지 않는다."""
+    trusted = tmp_path / "trusted"
+    trusted.mkdir()
+    binary = trusted / "kimi"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(0o777)
+    monkeypatch.setattr("packet_ask.paths.trusted_bin_dirs", lambda: [trusted])
+    monkeypatch.delenv("PACKET_ASK_KIMI_BIN", raising=False)
+    assert resolve_trusted_executable("kimi") is None
 
 
 def test_trusted_bin_dirs_include_local_and_system() -> None:

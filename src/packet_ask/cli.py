@@ -13,7 +13,7 @@ from packet_ask.errors import PacketAskError
 from packet_ask.install_skills import install_skills
 from packet_ask.launch import launch_claude, launch_glm, launch_kimi
 from packet_ask.providers import lookup_provider, load_catalog
-from packet_ask.output import wrap_untrusted
+from packet_ask.output import guard_provider_output, wrap_untrusted
 from packet_ask.packet import Packet, build_packet
 from packet_ask.policy import assert_allowed_task
 from packet_ask.paths import packet_cache_dir
@@ -174,6 +174,7 @@ def _run_task(args: argparse.Namespace) -> int:
     )
     try:
         raw = _execute_provider(provider, packet, args.timeout)
+        guard_provider_output(raw)
         sys.stdout.write(wrap_untrusted(raw))
         return codes.SUCCESS
     finally:
