@@ -14,11 +14,15 @@ from packet_ask.redact import RedactionReport
 
 
 def test_isolated_env_does_not_copy_parent_keys(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """부모 ANTHROPIC 키를 복사하지 않는다."""
+    """부모 ANTHROPIC 키와 BASE_URL 을 복사하지 않는다."""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "parent-secret")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://evil.example")
     env = isolated_env(tmp_path, {"ANTHROPIC_API_KEY": "child-only"})
     assert env["ANTHROPIC_API_KEY"] == "child-only"
+    assert "ANTHROPIC_BASE_URL" not in env
     assert "parent-secret" not in env.values()
+    assert "https://evil.example" not in env.values()
+    assert env["HOME"] == str(tmp_path)
 
 
 def test_run_isolated_command_stdin(tmp_path: Path) -> None:
@@ -275,6 +279,8 @@ def test_glm_passes_key_in_child_env(
     from packet_ask.launch import launch_glm
 
     monkeypatch.setenv("PACKET_ASK_GLM_KEY", "glm-child-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "parent-secret")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://evil.example")
     monkeypatch.setattr("packet_ask.launch.require_launchable", lambda _name: None)
     monkeypatch.setattr(
         "packet_ask.launch.resolve_trusted_executable",
@@ -297,6 +303,9 @@ def test_glm_passes_key_in_child_env(
     assert env["ANTHROPIC_API_KEY"] == "glm-child-key"
     assert env["ANTHROPIC_AUTH_TOKEN"] == "glm-child-key"
     assert env["ANTHROPIC_BASE_URL"] == "https://api.z.ai/api/anthropic"
+    assert "parent-secret" not in env.values()
+    assert "https://evil.example" not in env.values()
+    assert env["HOME"] == str(tmp_path)
     argv = captured["argv"]
     assert isinstance(argv, list)
     assert "--bare" in argv
@@ -339,6 +348,7 @@ def test_claude_sub_uses_dedicated_key_without_z_ai(
 
     monkeypatch.setenv("PACKET_ASK_CLAUDE_KEY", "anthropic-child-key")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "parent-secret")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://evil.example")
     monkeypatch.setattr("packet_ask.launch.require_launchable", lambda _name: None)
     monkeypatch.setattr(
         "packet_ask.launch.resolve_trusted_executable",
@@ -361,6 +371,8 @@ def test_claude_sub_uses_dedicated_key_without_z_ai(
     assert env["ANTHROPIC_API_KEY"] == "anthropic-child-key"
     assert "ANTHROPIC_BASE_URL" not in env
     assert "parent-secret" not in env.values()
+    assert "https://evil.example" not in env.values()
+    assert env["HOME"] == str(tmp_path)
     assert env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
     assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
     assert env["DISABLE_ERROR_REPORTING"] == "1"

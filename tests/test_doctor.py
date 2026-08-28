@@ -109,14 +109,16 @@ def test_help_text_is_cached_by_path_and_mtime(
     assert len(calls) == 1
 
 
-def test_help_text_cache_invalidates_when_file_changes(
+def test_help_text_cache_invalidates_when_mtime_changes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """mtime 또는 크기가 바뀌면 --help 를 다시 돌린다."""
+    """크기가 같아도 mtime 이 바뀌면 --help 를 다시 돌린다."""
+    import os
     import subprocess
 
     binary = tmp_path / "claude"
-    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    body = "#!/bin/sh\n"
+    binary.write_text(body, encoding="utf-8")
     binary.chmod(0o700)
     calls: list[int] = []
 
@@ -127,8 +129,9 @@ def test_help_text_cache_invalidates_when_file_changes(
     monkeypatch.setattr("packet_ask.doctor.subprocess.run", fake_run)
     monkeypatch.setattr("packet_ask.doctor.resolve_trusted_executable", lambda name: binary)
     doctor._help_text("claude")
-    binary.write_text("#!/bin/sh\n# changed\n", encoding="utf-8")
+    os.utime(binary, ns=(binary.stat().st_atime_ns, binary.stat().st_mtime_ns + 1_000_000))
     doctor._help_text("claude")
+    assert binary.read_text(encoding="utf-8") == body
     assert len(calls) == 2
 
 
@@ -155,6 +158,9 @@ def test_inspect_providers_probes_shared_claude_once(
         "packet_ask.doctor.resolve_trusted_executable",
         lambda name: binary if name == "claude" else None,
     )
-    doctor.inspect_providers()
+    statuses = doctor.inspect_providers()
     claude_probes = [item for item in probed if item and item[0].endswith("claude")]
     assert len(claude_probes) == 1
+    names = {item.name for item in statuses}
+    assert {"paste", "glm", "kimi", "claude", "grok", "agy"} <= names
+    assert "glm" in names and "claude" in names

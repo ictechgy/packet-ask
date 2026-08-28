@@ -346,11 +346,14 @@ def test_review_prints_timing_on_stderr(
     )
     captured = capsys.readouterr()
     assert code == codes.SUCCESS
-    assert "packet-ask timing" in captured.err
-    assert "preflight_ms=" in captured.err
-    assert "packet_ms=" in captured.err
-    assert "launch_ms=" in captured.err
-    assert "total_ms=" in captured.err
+    import re
+
+    timing_lines = [line for line in captured.err.splitlines() if line.startswith("packet-ask timing")]
+    assert len(timing_lines) == 1
+    assert re.fullmatch(
+        r"packet-ask timing preflight_ms=\d+ packet_ms=\d+ launch_ms=\d+ total_ms=\d+",
+        timing_lines[0],
+    )
     assert "glm-secret-must-not-leak" not in captured.err
     assert "glm-secret-must-not-leak" not in captured.out
 
@@ -380,7 +383,8 @@ def test_review_json_includes_timing(
     assert code == codes.SUCCESS
     data = json.loads(captured.out)
     timing = data["timing"]
-    for key in ("preflight_ms", "packet_ms", "launch_ms", "total_ms"):
+    assert set(timing) == {"preflight_ms", "packet_ms", "launch_ms", "total_ms"}
+    for key in timing:
         assert isinstance(timing[key], int)
         assert timing[key] >= 0
     assert timing["total_ms"] >= timing["launch_ms"]
