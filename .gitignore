@@ -27,3 +27,6 @@ coverage.xml
 !.env.example
 .packet-ask-tmp/
 packet.md
+
+# Local agent notes. Do not commit.
+HANDOFF.md
