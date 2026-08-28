@@ -17,3 +17,23 @@ uv run pytest
 ## 범위
 
 구현은 스크럽된 패킷과 공식 CLI 원샷에 머뭅니다. 커스텀 HTTP 클라이언트, 전역 `ANTHROPIC_BASE_URL` 변경, 워커 팜은 받지 않습니다.
+
+## PyPI 배포
+
+업로드는 GitHub Actions Trusted Publishing 만 사용합니다. 장기 PyPI 토큰을 저장소에 두지 않습니다.
+
+1. GitHub 저장소 Settings → Environments 에 `pypi` 환경을 만듭니다.
+2. [PyPI pending publisher](https://pypi.org/manage/account/publishing/) 에 다음을 등록합니다.
+   - PyPI project name: `packet-ask`
+   - Owner: `ictechgy`
+   - Repository: `packet-ask`
+   - Workflow filename: `release.yml`
+   - Environment: `pypi`
+3. 기본 브랜치에 머지한 뒤 버전 태그를 푸시합니다.
+
+```bash
+git tag -a v0.1.0 -m v0.1.0
+git push origin v0.1.0
+```
+
+태그 패턴은 `.github/workflows/release.yml` 과 같아야 합니다. 워크플로가 `uv build` 후 `uv publish` 합니다.

@@ -15,3 +15,5 @@ jobs:
           python-version: "3.11"
       - run: uv sync --frozen --group dev
       - run: uv run pytest
+      - run: uv build
+      - run: uv run --isolated --no-project --with dist/*.whl tests/smoke_test.py

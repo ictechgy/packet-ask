@@ -19,6 +19,12 @@ classifiers = [
     "Intended Audience :: Developers",
     "Topic :: Security",
 ]
+keywords = ["cli", "redaction", "kimi", "glm", "claude"]
+
+[project.urls]
+Homepage = "https://github.com/ictechgy/packet-ask"
+Repository = "https://github.com/ictechgy/packet-ask"
+Issues = "https://github.com/ictechgy/packet-ask/issues"
 
 [project.scripts]
 packet-ask = "packet_ask:main"

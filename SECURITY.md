@@ -40,4 +40,6 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 
 ## 취약점 보고
 
-공개 이슈에 시크릿을 붙이지 마세요. 비공개로 `ictechgy@gmail.com` 에 보내세요. 저장소가 GitHub에 공개되면 Security Advisories를 쓰는 편이 좋습니다.
+공개 이슈에 시크릿을 붙이지 마세요. GitHub Security Advisories로 비공개 보고하세요: https://github.com/ictechgy/packet-ask/security/advisories
+
+이메일은 `ictechgy@gmail.com` 입니다.

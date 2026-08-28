@@ -8,6 +8,8 @@
 
 MIT 라이선스입니다. 전문은 [LICENSE](LICENSE)를 보세요.
 
+저장소: [github.com/ictechgy/packet-ask](https://github.com/ictechgy/packet-ask)
+
 ## 필요 조건
 
 - Python 3.11+
@@ -20,48 +22,53 @@ MIT 라이선스입니다. 전문은 [LICENSE](LICENSE)를 보세요.
 
 ## 설치
 
-저장소 루트에서:
+```bash
+uv tool install packet-ask
+packet-ask install-skills
+packet-ask doctor
+```
+
+`pipx install packet-ask` 도 됩니다. 가상환경이면 `pip install packet-ask` 입니다.
+
+PyPI 배포 전이거나 기본 브랜치 최신이 필요하면 GitHub에서 직접 설치합니다.
+
+```bash
+uv tool install git+https://github.com/ictechgy/packet-ask
+```
+
+로컬 체크아웃:
 
 ```bash
 uv sync
 uv run packet-ask doctor
 ```
 
-원격 URL은 공개 저장소가 생기면 README에 넣습니다. 지금은 로컬 체크아웃이 설치 기준입니다.
-
-원하면 도구로 설치한 뒤 Claude / Codex / Grok 스킬을 심습니다. 아래 사용 예는 기본 경로인 `uv run` 을 씁니다.
-
-```bash
-uv tool install .
-packet-ask install-skills
-```
-
-이 명령이 `~/.claude/skills/packet-ask`, `~/.grok/skills/packet-ask`, `~/.codex/skills/packet-ask`, `~/.agents/skills/packet-ask` 에 `SKILL.md` 를 넣습니다. 이후 `/packet-ask` 또는 「kimi로 리뷰」처럼 말하면 메인이 이 CLI를 호출합니다.
+`install-skills` 가 `~/.claude/skills/packet-ask`, `~/.grok/skills/packet-ask`, `~/.codex/skills/packet-ask`, `~/.agents/skills/packet-ask` 에 `SKILL.md` 를 넣습니다. 이후 `/packet-ask` 또는 「kimi로 리뷰」처럼 말하면 메인이 이 CLI를 호출합니다.
 
 ## 사용
 
 ```bash
-uv run packet-ask providers
+packet-ask providers
 
 # 벤더를 실행하지 않고 패킷만 본다
-uv run packet-ask review --provider paste --files src/app.py --question "이 코드의 경쟁 상태를 찾아줘"
+packet-ask review --provider paste --files src/app.py --question "이 코드의 경쟁 상태를 찾아줘"
 
 # GLM. 키는 PACKET_ASK_GLM_KEY
-uv run packet-ask review --provider glm --diff HEAD --question "이 변경을 리뷰해줘"
+packet-ask review --provider glm --diff HEAD --question "이 변경을 리뷰해줘"
 
 # Anthropic Claude 서브. 키는 PACKET_ASK_CLAUDE_KEY. 부모 BASE_URL 은 바꾸지 않습니다
-uv run packet-ask review --provider claude --files src/app.py --question "이 코드를 리뷰해줘"
+packet-ask review --provider claude --files src/app.py --question "이 코드를 리뷰해줘"
 
 # Kimi. 키는 PACKET_ASK_KIMI_KEY
-uv run packet-ask review --provider kimi --files src/app.py --question "이 코드를 리뷰해줘"
+packet-ask review --provider kimi --files src/app.py --question "이 코드를 리뷰해줘"
 
 # grok/agy 는 아직 무도구 원샷을 실행하지 않고 paste 합니다
-uv run packet-ask review --provider grok --files src/app.py --question "이 코드를 리뷰해줘"
+packet-ask review --provider grok --files src/app.py --question "이 코드를 리뷰해줘"
 
 # 리서치. 로컬 파일은 기본 금지
-uv run packet-ask research --provider paste --question "Tailwind v4 마이그레이션에서 자주 깨지는 점"
+packet-ask research --provider paste --question "Tailwind v4 마이그레이션에서 자주 깨지는 점"
 
-uv run packet-ask doctor
+packet-ask doctor
 ```
 
 Kimi는 공식 `kimi --quiet` 원샷입니다. 대화형 세션을 열지 않습니다. 도구는 `tools: []` 에이전트 파일과 매칭되지 않는 `[tools] enabled` 로 끄고, `KIMI_CODE_HOME` 은 `~/.config/packet-ask/providers/kimi` 격리 프로필만 씁니다. 실제 레포에서 `kimi`를 직접 실행하지 마세요.
