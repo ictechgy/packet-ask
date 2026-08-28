@@ -50,12 +50,37 @@ def format_receipt_line(receipt: dict[str, Any]) -> str:
     )
 
 
-def json_envelope(receipt: dict[str, Any], untrusted_output: str) -> str:
+def format_timing_line(timing: dict[str, int]) -> str:
+    """사람이 읽는 구간 시간. 비밀 값은 넣지 않는다."""
+    return (
+        f"packet-ask timing preflight_ms={timing['preflight_ms']} "
+        f"packet_ms={timing['packet_ms']} launch_ms={timing['launch_ms']} "
+        f"total_ms={timing['total_ms']}"
+    )
+
+
+def _public_timing(timing: dict[str, int]) -> dict[str, int]:
+    """허용된 밀리초 키만 복사한다."""
+    return {
+        "preflight_ms": int(timing["preflight_ms"]),
+        "packet_ms": int(timing["packet_ms"]),
+        "launch_ms": int(timing["launch_ms"]),
+        "total_ms": int(timing["total_ms"]),
+    }
+
+
+def json_envelope(
+    receipt: dict[str, Any],
+    untrusted_output: str,
+    timing: dict[str, int] | None = None,
+) -> str:
     """stdout 전용 JSON. 키 값은 넣지 않는다."""
-    body = {
+    body: dict[str, Any] = {
         "schema": SCHEMA,
         "ok": True,
         "receipt": receipt,
         "untrusted_output": untrusted_output,
     }
+    if timing is not None:
+        body["timing"] = _public_timing(timing)
     return json.dumps(body, ensure_ascii=False, indent=2) + "\n"

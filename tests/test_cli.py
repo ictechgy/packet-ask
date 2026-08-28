@@ -326,6 +326,73 @@ def test_review_prints_receipt_on_stderr(
     assert "paste" in captured.err
 
 
+def test_review_prints_timing_on_stderr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """성공 시 stderr 에 비밀 없는 구간 시간을 쓴다."""
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("PACKET_ASK_GLM_KEY", "glm-secret-must-not-leak")
+    code = main(
+        [
+            "review",
+            "--provider",
+            "paste",
+            "--files",
+            "src/app.py",
+            "--question",
+            "리뷰해줘",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == codes.SUCCESS
+    import re
+
+    timing_lines = [line for line in captured.err.splitlines() if line.startswith("packet-ask timing")]
+    assert len(timing_lines) == 1
+    assert re.fullmatch(
+        r"packet-ask timing preflight_ms=\d+ packet_ms=\d+ launch_ms=\d+ total_ms=\d+",
+        timing_lines[0],
+    )
+    assert "glm-secret-must-not-leak" not in captured.err
+    assert "glm-secret-must-not-leak" not in captured.out
+
+
+def test_review_json_includes_timing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--json 봉투에 밀리초 구간만 넣고 키 값은 넣지 않는다."""
+    import json
+
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("PACKET_ASK_KIMI_KEY", "kimi-secret-must-not-leak")
+    code = main(
+        [
+            "review",
+            "--provider",
+            "paste",
+            "--files",
+            "src/app.py",
+            "--json",
+            "--question",
+            "리뷰해줘",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == codes.SUCCESS
+    data = json.loads(captured.out)
+    timing = data["timing"]
+    assert set(timing) == {"preflight_ms", "packet_ms", "launch_ms", "total_ms"}
+    for key in timing:
+        assert isinstance(timing[key], int)
+        assert timing[key] >= 0
+    assert timing["total_ms"] >= timing["launch_ms"]
+    dumped = json.dumps(data)
+    assert "kimi-secret-must-not-leak" not in dumped
+    assert "kimi-secret-must-not-leak" not in captured.err
+
+
 def test_review_json_envelope(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

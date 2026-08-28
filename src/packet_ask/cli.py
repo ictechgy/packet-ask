@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
+from typing import Any
 
 from packet_ask import codes
 from packet_ask.doctor import inspect_providers
@@ -18,7 +20,7 @@ from packet_ask.packet import Packet, build_packet
 from packet_ask.policy import assert_allowed_task
 from packet_ask.errors import BudgetError
 from packet_ask.paths import packet_cache_dir
-from packet_ask.receipt import build_receipt, format_receipt_line, json_envelope
+from packet_ask.receipt import build_receipt, format_receipt_line, format_timing_line, json_envelope
 from packet_ask.scope import (
     DEFAULT_MAX_BYTES,
     DEFAULT_MAX_FILES,
@@ -202,17 +204,27 @@ def _execute_provider(provider: str, packet: Packet, timeout: int) -> str:
     raise PacketAskError(message("no_adapter"), codes.CONFINEMENT)
 
 
+def _ms_since(started: float) -> int:
+    """단조 시계 경과 밀리초. 비밀 값은 담지 않는다."""
+    return max(0, int((time.monotonic() - started) * 1000))
+
+
+def _phase_timing(
+    started: float, preflight_ms: int, packet_ms: int, launch_started: float
+) -> dict[str, int]:
+    """성공 경로의 구간 시간."""
+    return {
+        "preflight_ms": preflight_ms,
+        "packet_ms": packet_ms,
+        "launch_ms": _ms_since(launch_started),
+        "total_ms": _ms_since(started),
+    }
+
+
 def _run_task(args: argparse.Namespace) -> int:
     """패킷을 만들고 프로바이더 또는 paste로 보낸다."""
-    provider = "paste" if args.command == "paste" else (args.provider or "paste")
-    if args.dry_run:
-        provider = "paste"
-    question = _read_question(args)
-    if args.command == "research" and not question.strip():
-        raise PacketAskError(message("research_question"), codes.USAGE)
-    if not question.strip():
-        question = message("default_question")
-    files_flag, has_diff = _selector_flags(args)
+    started = time.monotonic()
+    provider, question, files_flag, has_diff = _task_inputs(args)
     mode = args.command if args.command != "paste" else "review"
     assert_allowed_task(mode, question, files_flag, has_diff=has_diff)
     _require_explicit_review_scope(args)
@@ -221,6 +233,8 @@ def _run_task(args: argparse.Namespace) -> int:
     if args.command == "review" and not scoped_files and not diff_text:
         raise PacketAskError(message("review_scope"), codes.SCOPE)
     _assert_packet_budget(question, scoped_files, diff_text, args.max_bytes)
+    preflight_ms = _ms_since(started)
+    packet_started = time.monotonic()
     parent = packet_cache_dir(worktree)
     packet = build_packet(
         mode=args.command,
@@ -231,20 +245,51 @@ def _run_task(args: argparse.Namespace) -> int:
     )
     selector = _review_selectors(args)[0] if _review_selectors(args) else files_flag or "none"
     receipt = build_receipt(provider, selector, scoped_files, diff_text, packet)
+    packet_ms = _ms_since(packet_started)
     print(format_receipt_line(receipt), file=sys.stderr)
     try:
-        raw = _execute_provider(provider, packet, args.timeout)
-        guard_provider_output(raw)
-        wrapped = wrap_untrusted(raw)
-        if getattr(args, "json", False):
-            sys.stdout.write(json_envelope(receipt, wrapped))
-        else:
-            sys.stdout.write(wrapped)
-        return codes.SUCCESS
+        return _finish_task(args, provider, packet, receipt, started, preflight_ms, packet_ms)
     finally:
         packet.destroy()
         if parent.exists() and not any(parent.iterdir()):
             parent.rmdir()
+
+
+def _task_inputs(args: argparse.Namespace) -> tuple[str, str, str | None, bool]:
+    """프로바이더·질문·스코프 플래그를 모은다."""
+    provider = "paste" if args.command == "paste" else (args.provider or "paste")
+    if args.dry_run:
+        provider = "paste"
+    question = _read_question(args)
+    if args.command == "research" and not question.strip():
+        raise PacketAskError(message("research_question"), codes.USAGE)
+    if not question.strip():
+        question = message("default_question")
+    files_flag, has_diff = _selector_flags(args)
+    return provider, question, files_flag, has_diff
+
+
+def _finish_task(
+    args: argparse.Namespace,
+    provider: str,
+    packet: Packet,
+    receipt: dict[str, Any],
+    started: float,
+    preflight_ms: int,
+    packet_ms: int,
+) -> int:
+    """벤더 실행 후 타이밍과 출력을 쓴다. 패킷 삭제는 호출측 finally."""
+    launch_started = time.monotonic()
+    raw = _execute_provider(provider, packet, args.timeout)
+    guard_provider_output(raw)
+    wrapped = wrap_untrusted(raw)
+    timing = _phase_timing(started, preflight_ms, packet_ms, launch_started)
+    print(format_timing_line(timing), file=sys.stderr)
+    if getattr(args, "json", False):
+        sys.stdout.write(json_envelope(receipt, wrapped, timing))
+    else:
+        sys.stdout.write(wrapped)
+    return codes.SUCCESS
 
 
 def main(argv: list[str] | None = None) -> int:

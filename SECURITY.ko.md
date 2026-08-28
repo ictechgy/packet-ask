@@ -15,7 +15,8 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 - 부모 셸의 `ANTHROPIC_BASE_URL` / `ANTHROPIC_API_KEY` 는 복사하지 않습니다.
 - GLM은 [Z.ai Claude Code 연동](https://docs.z.ai/scenario-example/develop-tools/claude)처럼 자식 환경에만 엔드포인트와 `PACKET_ASK_GLM_KEY` 를 넣습니다.
 - Kimi API 키는 `PACKET_ASK_KIMI_KEY` 환경변수로만 넘기고 `config.toml` 에 쓰지 않습니다.
-- `doctor`는 `--help`에 필요 플래그 이름이 있는지 확인합니다. 실제 무도구·OS 샌드박스를 증명하지 않습니다.
+- `doctor`는 `--help`에 필요 플래그 이름이 있는지 확인합니다. 실제 무도구·OS 샌드박스를 증명하지 않습니다. 런치는 고른 바이너리만 프로브합니다. `doctor`는 카탈로그 전체를 돌되 `--help` 를 경로·mtime·크기로 프로세스 동안 캐시합니다.
+- GLM과 Claude 자식 환경에는 `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `DISABLE_ERROR_REPORTING=1` 을 넣습니다. 벤더가 플래그를 무시할 수 있습니다. 이 CLI는 `~/.claude/projects/` 를 지우지 않습니다.
 - 벤더 stdout에 전용 키 값이 있거나 출력이 너무 크면 폐기하고 종료 코드 22를 반환합니다.
 
 ## 이 도구가 하지 않는 일
@@ -24,6 +25,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 - cwd를 샌드박스로 취급하지 않습니다. 서브 CLI의 cwd는 패킷 디렉터리입니다.
 - 구현·패치 적용·운영 장애 대응을 서브로 보내지 않습니다.
 - 사용자 zsh 함수/`PATH` 앞쪽 래퍼를 실행하지 않습니다. 기본 allowlist는 `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`, `/bin`, `~/.local/bin` 과 `PACKET_ASK_*_BIN` 입니다.
+- Claude 오토메모리가 꺼졌음을 증명하지 않습니다. 자식 env 플래그는 벤더가 존중할 수도 있는 스위치일 뿐입니다.
 
 ## 키와 프로필
 

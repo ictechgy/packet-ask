@@ -21,7 +21,7 @@ MIT 라이선스입니다. 전문은 [LICENSE](LICENSE)를 보세요.
 - Kimi 실행: allowlist 경로의 `kimi` CLI
 - `paste` / `grok` / `agy` 는 벤더를 띄우지 않고 패킷만 출력합니다
 
-키는 환경변수로만 넘깁니다. **이 도구는 `.env` 파일을 읽지 않습니다.** 명령줄에 키 값을 적지 마세요. 셸 히스토리에 남습니다. `.env` 는 저장소에서 무시합니다. 변수 이름은 [.env.example](.env.example)을 참고하세요. 실행 파일을 찾는 allowlist 는 [SECURITY.md](SECURITY.md)를 보세요. `doctor`는 help에 플래그가 보이는지만 확인하며, 무도구를 증명하지 않습니다.
+키는 환경변수로만 넘깁니다. **이 도구는 `.env` 파일을 읽지 않습니다.** 명령줄에 키 값을 적지 마세요. 셸 히스토리에 남습니다. `.env` 는 저장소에서 무시합니다. 변수 이름은 [.env.example](.env.example)을 참고하세요. 실행 파일을 찾는 allowlist 는 [SECURITY.md](SECURITY.md)를 보세요. `doctor`는 help에 플래그가 보이는지만 확인하며, 무도구를 증명하지 않습니다. 런치는 고른 바이너리만 프로브합니다. `doctor`는 카탈로그 전체를 나열하고, `--help` 결과는 실행 파일 경로·mtime·크기로 프로세스 동안 캐시합니다.
 
 ## 설치
 
@@ -93,7 +93,9 @@ packet-ask doctor
 
 Kimi는 공식 `kimi --quiet` 원샷입니다. 대화형 세션을 열지 않습니다. `PACKET_ASK_KIMI_KEY` 가 없으면 실행하지 않습니다. 도구는 `tools: []` 에이전트 파일과 매칭되지 않는 `[tools] enabled` 로 끄고, `KIMI_CODE_HOME` 은 `~/.config/packet-ask/providers/kimi/kimi-code` 격리 프로필만 씁니다. 실제 레포에서 `kimi`를 직접 실행하지 마세요.
 
-GLM은 공식 `claude` 바이너리를 쓰되, **부모 셸의 `ANTHROPIC_BASE_URL` 은 바꾸지 않습니다.** 자식 환경에만 [Z.ai Claude Code 연동](https://docs.z.ai/scenario-example/develop-tools/claude) 엔드포인트와 `PACKET_ASK_GLM_KEY` 를 넣습니다.
+GLM은 공식 `claude` 바이너리를 쓰되, **부모 셸의 `ANTHROPIC_BASE_URL` 은 바꾸지 않습니다.** 자식 환경에만 [Z.ai Claude Code 연동](https://docs.z.ai/scenario-example/develop-tools/claude) 엔드포인트와 `PACKET_ASK_GLM_KEY` 를 넣습니다. GLM과 Claude 자식 환경에는 `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_ERROR_REPORTING` 도 넣습니다. 로컬 세션 잔여를 줄이기 위한 것이며, 벤더가 아무것도 저장하지 않음을 증명하지 않습니다.
+
+성공하면 stderr에 런치 전 영수증(`packet-ask receipt …`)과 완료 후 밀리초 구간(`packet-ask timing …`)을 씁니다. `--json` 에는 `timing` 객체가 들어갑니다. 두 줄 모두 키 값을 넣지 않습니다.
 
 패킷 임시 디렉터리는 git 워크트리가 아니라 OS 캐시에 만듭니다. cwd는 샌드박스가 아닙니다. `PACKET_ASK_CACHE_DIR` 을 워크트리 안으로 두면 거절합니다. `.gitignore` 의 `.packet-ask-tmp/` 와 `packet.md` 는 예전 산출물이나 실수로 만든 파일을 커밋하지 않기 위한 방어입니다.
 

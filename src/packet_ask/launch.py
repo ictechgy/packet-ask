@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 from packet_ask import codes
-from packet_ask.doctor import inspect_providers
+from packet_ask.doctor import inspect_provider
 from packet_ask.errors import PacketAskError
 from packet_ask.output import MAX_OUTPUT_BYTES
 from packet_ask.packet import Packet
@@ -200,12 +200,10 @@ def _wait_briefly(proc: subprocess.Popen[str]) -> None:
 
 
 def require_launchable(provider: str) -> None:
-    """doctor가 실행을 허용하지 않으면 막는다."""
-    statuses = {item.name: item for item in inspect_providers()}
-    status = statuses.get(provider)
-    if status is None or not status.can_launch:
-        note = status.note if status else "알 수 없는 프로바이더"
-        raise PacketAskError(note, codes.CONFINEMENT)
+    """고른 프로바이더만 프로브한다. 카탈로그 전체를 --help 하지 않는다."""
+    status = inspect_provider(provider)
+    if not status.can_launch:
+        raise PacketAskError(status.note, codes.CONFINEMENT)
 
 
 def _require_executable(name: str) -> Path:
@@ -248,16 +246,25 @@ def _require_kimi_key() -> str:
     )
 
 
-def _glm_child_env(home: Path, key: str) -> dict[str, str]:
-    """Z.ai 공식 Claude Code 연동만 자식 환경에 넣는다. 부모 셸은 바꾸지 않는다."""
+def _claude_isolation_env(home: Path) -> dict[str, str]:
+    """Claude Code 자식에서 오토메모리·부가 트래픽·에러 리포팅을 끈다."""
     return {
-        "ANTHROPIC_BASE_URL": GLM_ENDPOINT,
-        "ANTHROPIC_API_KEY": key,
-        "ANTHROPIC_AUTH_TOKEN": key,
         "DISABLE_AUTOUPDATER": "1",
         "DISABLE_TELEMETRY": "1",
+        "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        "DISABLE_ERROR_REPORTING": "1",
         "CLAUDE_CONFIG_DIR": str(home / "claude-config"),
     }
+
+
+def _glm_child_env(home: Path, key: str) -> dict[str, str]:
+    """Z.ai 공식 Claude Code 연동만 자식 환경에 넣는다. 부모 셸은 바꾸지 않는다."""
+    extra = _claude_isolation_env(home)
+    extra["ANTHROPIC_BASE_URL"] = GLM_ENDPOINT
+    extra["ANTHROPIC_API_KEY"] = key
+    extra["ANTHROPIC_AUTH_TOKEN"] = key
+    return extra
 
 
 def glm_argv() -> list[str]:
@@ -294,13 +301,10 @@ def launch_glm(packet: Packet, timeout: int) -> str:
 
 def _claude_child_env(home: Path, key: str) -> dict[str, str]:
     """Anthropic 키만 자식에 넣는다. BASE_URL 은 설정하지 않는다."""
-    return {
-        "ANTHROPIC_API_KEY": key,
-        "ANTHROPIC_AUTH_TOKEN": key,
-        "DISABLE_AUTOUPDATER": "1",
-        "DISABLE_TELEMETRY": "1",
-        "CLAUDE_CONFIG_DIR": str(home / "claude-config"),
-    }
+    extra = _claude_isolation_env(home)
+    extra["ANTHROPIC_API_KEY"] = key
+    extra["ANTHROPIC_AUTH_TOKEN"] = key
+    return extra
 
 
 def launch_claude(packet: Packet, timeout: int) -> str:
