@@ -9,6 +9,7 @@ from pathlib import Path
 
 from packet_ask import codes
 from packet_ask.errors import PacketAskError
+from packet_ask.text import message
 
 BUILTIN_IDS = frozenset({"paste", "glm", "kimi", "claude", "grok", "agy"})
 _FORBIDDEN_TOML_KEYS = frozenset(
@@ -130,7 +131,7 @@ def lookup_provider(provider_id: str, catalog: list[ProviderSpec] | None = None)
     for item in items:
         if item.provider_id == provider_id:
             return item
-    raise PacketAskError(f"알 수 없는 프로바이더입니다: {provider_id}", codes.USAGE)
+    raise PacketAskError(message("unknown_provider", provider_id=provider_id), codes.USAGE)
 
 
 def _load_user_aliases(path: Path) -> list[ProviderSpec]:

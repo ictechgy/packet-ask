@@ -99,7 +99,7 @@ def test_collect_git_diff_rejects_secret_path(tmp_path: Path) -> None:
     subprocess.run(["git", "add", "src/id_rsa"], cwd=repo, check=True, capture_output=True)
     subprocess.run(["git", "commit", "-m", "key"], cwd=repo, check=True, capture_output=True)
     key_file.write_text("placeholder-2\n", encoding="utf-8")
-    with pytest.raises(ScopeError, match="시크릿"):
+    with pytest.raises(ScopeError, match="Secret"):
         collect_git_diff(repo, unstaged=True)
 
 
@@ -113,7 +113,7 @@ def test_collect_git_diff_rejects_secret_rename(tmp_path: Path) -> None:
     subprocess.run(["git", "add", "src/id_rsa"], cwd=repo, check=True, capture_output=True)
     subprocess.run(["git", "commit", "-m", "key"], cwd=repo, check=True, capture_output=True)
     subprocess.run(["git", "mv", "src/id_rsa", "src/harmless.txt"], cwd=repo, check=True, capture_output=True)
-    with pytest.raises(ScopeError, match="시크릿"):
+    with pytest.raises(ScopeError, match="Secret"):
         collect_git_diff(repo, staged=True)
 
 

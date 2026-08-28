@@ -9,6 +9,7 @@ from pathlib import Path
 
 from packet_ask import codes
 from packet_ask.errors import PacketAskError
+from packet_ask.text import message
 
 
 def packet_cache_dir(worktree: Path | None = None) -> Path:
@@ -37,11 +38,11 @@ def _requested_cache_dir() -> Path:
 def _reject_cache_inside_tree(path: Path, worktree: Path | None) -> None:
     """cwd 또는 git 워크트리 안의 캐시를 거절한다."""
     if _is_under(path, Path.cwd().resolve()):
-        raise PacketAskError("패킷 캐시는 현재 디렉터리 안에 둘 수 없습니다.", codes.CONFINEMENT)
+        raise PacketAskError(message("cache_cwd"), codes.CONFINEMENT)
     if worktree is None:
         return
     if _is_under(path, worktree.resolve()):
-        raise PacketAskError("패킷 캐시는 git 워크트리 안에 둘 수 없습니다.", codes.CONFINEMENT)
+        raise PacketAskError(message("cache_worktree"), codes.CONFINEMENT)
 
 
 def _is_under(path: Path, parent: Path) -> bool:

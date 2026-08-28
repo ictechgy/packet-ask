@@ -16,31 +16,36 @@ from packet_ask.providers import lookup_provider, load_catalog
 from packet_ask.output import guard_provider_output, wrap_untrusted
 from packet_ask.packet import Packet, build_packet
 from packet_ask.policy import assert_allowed_task
+from packet_ask.errors import BudgetError
 from packet_ask.paths import packet_cache_dir
+from packet_ask.receipt import build_receipt, format_receipt_line, json_envelope
 from packet_ask.scope import (
     DEFAULT_MAX_BYTES,
     DEFAULT_MAX_FILES,
+    ScopedFile,
     collect_files,
     collect_git_diff,
     resolve_worktree,
 )
+from packet_ask.text import message
 
 
 def _parser() -> argparse.ArgumentParser:
     """서브커맨드 파서를 만든다."""
     parser = argparse.ArgumentParser(
         prog="packet-ask",
-        description="개인 코딩 구독에 패킷만 보냅니다. 유출 없음·학습 금지를 보장하지 않습니다.",
+        description="Send only a scrubbed packet to a personal coding subscription. No leak or no-training guarantee.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
-    _add_task_parser(sub, "review", "스크럽된 diff/파일만 리뷰 요청")
-    _add_task_parser(sub, "research", "질문은 필수, 파일은 --include-files")
-    _add_task_parser(sub, "brainstorm", "스크럽된 질문으로 브레인스토밍")
-    _add_task_parser(sub, "paste", "벤더를 실행하지 않고 패킷만 출력")
-    sub.add_parser("doctor", help="공식 CLI 격리 원샷 가능 여부")
-    providers_cmd = sub.add_parser("providers", help="서브 프로바이더 목록")
+    _add_task_parser(sub, "review", "Review only the scrubbed files or diff")
+    _add_task_parser(sub, "research", "Question required; files only via --include-files")
+    _add_task_parser(sub, "brainstorm", "Brainstorm from a scrubbed question")
+    _add_task_parser(sub, "paste", "Print a packet without launching a vendor")
+    sub.add_parser("doctor", help="Check official CLI one-shot flags")
+    providers_cmd = sub.add_parser("providers", help="List sub providers")
     providers_cmd.add_argument("--json", action="store_true")
-    sub.add_parser("install-skills", help="현재 하니스 홈에 스킬 설치")
+    skills_cmd = sub.add_parser("install-skills", help="Install harness skills")
+    skills_cmd.add_argument("--force", action="store_true")
     return parser
 
 
@@ -60,6 +65,7 @@ def _add_task_parser(sub: argparse._SubParsersAction, name: str, help_text: str)
     item.add_argument("--max-files", type=int, default=DEFAULT_MAX_FILES)
     item.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
     item.add_argument("--dry-run", action="store_true")
+    item.add_argument("--json", action="store_true")
 
 
 def _read_question(args: argparse.Namespace) -> str:
@@ -105,21 +111,48 @@ def _selector_flags(args: argparse.Namespace) -> tuple[str | None, bool]:
     return files_flag, has_diff
 
 
+def _review_selectors(args: argparse.Namespace) -> list[str]:
+    """review 가 고른 스코프 플래그 이름."""
+    names: list[str] = []
+    if args.files:
+        names.append("files")
+    if args.diff:
+        names.append("diff")
+    if args.staged:
+        names.append("staged")
+    if getattr(args, "unstaged", False):
+        names.append("unstaged")
+    return names
+
+
 def _require_explicit_review_scope(args: argparse.Namespace) -> None:
-    """review 는 워킹 트리 전체를 기본값으로 보내지 않는다."""
+    """review 는 스코프 플래그를 정확히 하나만 받는다."""
     if args.command != "review":
         return
-    if args.files or args.diff or args.staged or getattr(args, "unstaged", False):
+    if len(_review_selectors(args)) == 1:
         return
-    raise PacketAskError(
-        "review는 --files, --diff, --staged, --unstaged 중 하나가 필요합니다.",
-        codes.SCOPE,
-    )
+    raise PacketAskError(message("review_scope"), codes.SCOPE)
 
 
-def _run_install_skills() -> int:
+def _payload_bytes(question: str, files: list[ScopedFile], diff_text: str | None) -> int:
+    """질문·파일·diff 를 합친 UTF-8 바이트."""
+    total = len(question.encode("utf-8"))
+    for item in files:
+        total += len(item.content.encode("utf-8"))
+    if diff_text:
+        total += len(diff_text.encode("utf-8"))
+    return total
+
+
+def _assert_packet_budget(question: str, files: list[ScopedFile], diff_text: str | None, max_bytes: int) -> None:
+    """패킷 전체가 max_bytes 를 넘으면 거절한다."""
+    if _payload_bytes(question, files, diff_text) > max_bytes:
+        raise BudgetError(f"total packet exceeds {max_bytes} bytes")
+
+
+def _run_install_skills(force: bool) -> int:
     """Claude/Codex/Grok 홈에 스킬을 심는다."""
-    for path in install_skills():
+    for path in install_skills(force=force):
         print(path)
     return codes.SUCCESS
 
@@ -166,7 +199,7 @@ def _execute_provider(provider: str, packet: Packet, timeout: int) -> str:
         return launch_kimi(packet, timeout)
     if spec.provider_id == "claude":
         return launch_claude(packet, timeout)
-    raise PacketAskError("실행형 어댑터가 없는 프로바이더입니다.", codes.CONFINEMENT)
+    raise PacketAskError(message("no_adapter"), codes.CONFINEMENT)
 
 
 def _run_task(args: argparse.Namespace) -> int:
@@ -176,9 +209,9 @@ def _run_task(args: argparse.Namespace) -> int:
         provider = "paste"
     question = _read_question(args)
     if args.command == "research" and not question.strip():
-        raise PacketAskError("research는 --question 이 필요합니다.", codes.USAGE)
+        raise PacketAskError(message("research_question"), codes.USAGE)
     if not question.strip():
-        question = "이 패킷을 검토하세요. 구현하지 마세요."
+        question = message("default_question")
     files_flag, has_diff = _selector_flags(args)
     mode = args.command if args.command != "paste" else "review"
     assert_allowed_task(mode, question, files_flag, has_diff=has_diff)
@@ -186,10 +219,8 @@ def _run_task(args: argparse.Namespace) -> int:
     worktree = resolve_worktree(Path.cwd())
     scoped_files, diff_text = _collect_scope(args, worktree)
     if args.command == "review" and not scoped_files and not diff_text:
-        raise PacketAskError(
-            "review는 --files, --diff, --staged, --unstaged 중 하나가 필요합니다.",
-            codes.SCOPE,
-        )
+        raise PacketAskError(message("review_scope"), codes.SCOPE)
+    _assert_packet_budget(question, scoped_files, diff_text, args.max_bytes)
     parent = packet_cache_dir(worktree)
     packet = build_packet(
         mode=args.command,
@@ -198,10 +229,17 @@ def _run_task(args: argparse.Namespace) -> int:
         diff_text=diff_text,
         parent=parent,
     )
+    selector = _review_selectors(args)[0] if _review_selectors(args) else files_flag or "none"
+    receipt = build_receipt(provider, selector, scoped_files, diff_text, packet)
+    print(format_receipt_line(receipt), file=sys.stderr)
     try:
         raw = _execute_provider(provider, packet, args.timeout)
         guard_provider_output(raw)
-        sys.stdout.write(wrap_untrusted(raw))
+        wrapped = wrap_untrusted(raw)
+        if getattr(args, "json", False):
+            sys.stdout.write(json_envelope(receipt, wrapped))
+        else:
+            sys.stdout.write(wrapped)
         return codes.SUCCESS
     finally:
         packet.destroy()
@@ -217,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "doctor":
             return _run_doctor()
         if args.command == "install-skills":
-            return _run_install_skills()
+            return _run_install_skills(force=getattr(args, "force", False))
         if args.command == "providers":
             return _run_providers(args.json)
         return _run_task(args)

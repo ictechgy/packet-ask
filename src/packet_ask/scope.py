@@ -9,6 +9,7 @@ from pathlib import Path
 
 from packet_ask.errors import BudgetError, ScopeError
 from packet_ask.paths import git_subprocess_env, resolve_trusted_executable
+from packet_ask.text import message
 
 DEFAULT_MAX_FILES = 25
 DEFAULT_MAX_BYTES = 256 * 1024
@@ -122,7 +123,7 @@ def _reject_blocked_relative(relative: Path) -> None:
     if is_vcs_path(relative):
         raise ScopeError(f"git 메타데이터는 보낼 수 없습니다: {relative.as_posix()}")
     if is_secret_path(relative):
-        raise ScopeError(f"시크릿 파일명은 보낼 수 없습니다: {relative.name}")
+        raise ScopeError(message("secret_path", name=relative.name))
 
 
 def _git_executable() -> str:
@@ -225,7 +226,7 @@ def _reject_secret_diff_paths(paths: list[str]) -> None:
     for relative in paths:
         path = Path(relative)
         if is_vcs_path(path) or is_secret_path(path):
-            raise ScopeError(f"시크릿 또는 git 경로가 diff에 있습니다: {path.name}")
+            raise ScopeError(message("secret_path", name=path.name))
 
 
 def collect_git_diff(

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import fcntl
 import os
+import select
 import shutil
 import signal
 import subprocess
+import time
 from pathlib import Path
 
 from packet_ask import codes
@@ -14,6 +17,7 @@ from packet_ask.errors import PacketAskError
 from packet_ask.output import MAX_OUTPUT_BYTES
 from packet_ask.packet import Packet
 from packet_ask.paths import minimal_child_env, resolve_trusted_executable
+from packet_ask.text import message
 
 GLM_ENDPOINT = "https://api.z.ai/api/anthropic"
 KIMI_DISABLED_TOOL_SENTINEL = "packet-ask-no-such-tool"
@@ -45,21 +49,21 @@ def run_isolated_command(
 ) -> str:
     """stdin으로 패킷을 넣고 stdout만 돌려받는다. timeout 시 프로세스 그룹을 죽인다."""
     proc = _spawn_isolated(executable, argv, cwd, env)
+    pgid = proc.pid
     try:
-        stdout, _stderr = proc.communicate(input=stdin_text, timeout=timeout)
+        stdout, stderr = _communicate_bounded(proc, stdin_text, timeout, pgid)
+        proc.wait(timeout=1)
     except subprocess.TimeoutExpired as exc:
-        _kill_process_group(proc)
-        try:
-            proc.communicate(timeout=1)
-        except (subprocess.TimeoutExpired, OSError):
-            pass
-        raise PacketAskError("프로바이더가 시간 제한을 넘겼습니다.", codes.PROVIDER_FAILED) from exc
+        _kill_process_group(proc, pgid)
+        raise PacketAskError(message("provider_timeout"), codes.PROVIDER_FAILED) from exc
+    except PacketAskError:
+        _kill_process_group(proc, pgid)
+        raise
     if proc.returncode != 0:
-        raise PacketAskError("프로바이더가 실패했습니다.", codes.PROVIDER_FAILED)
-    body = stdout or ""
-    if len(body.encode("utf-8")) > MAX_OUTPUT_BYTES:
-        raise PacketAskError("프로바이더 출력이 너무 커서 폐기했습니다.", codes.OUTPUT_GUARD)
-    return body
+        raise PacketAskError(message("provider_failed"), codes.PROVIDER_FAILED)
+    if _utf8_size(stdout) > MAX_OUTPUT_BYTES or _utf8_size(stderr) > MAX_OUTPUT_BYTES:
+        raise PacketAskError(message("output_guard_size"), codes.OUTPUT_GUARD)
+    return stdout
 
 
 def _spawn_isolated(
@@ -81,9 +85,86 @@ def _spawn_isolated(
     )
 
 
-def _kill_process_group(proc: subprocess.Popen[str]) -> None:
-    """세션 리더가 SIGTERM 에 죽어도 그룹에는 SIGKILL 을 보낸다."""
-    pgid = _process_group_id(proc)
+def _utf8_size(text: str) -> int:
+    """UTF-8 바이트 수."""
+    return len(text.encode("utf-8"))
+
+
+def _set_nonblocking(stream: object) -> None:
+    """파이프를 논블로킹으로 둔다."""
+    fileno = getattr(stream, "fileno", None)
+    if fileno is None:
+        return
+    fd = fileno()
+    flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+    fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
+
+def _read_pipe(stream: object) -> str | None:
+    """None 은 아직 데이터 없음, 빈 문자열은 EOF."""
+    fileno = getattr(stream, "fileno", None)
+    if fileno is None:
+        return ""
+    try:
+        raw = os.read(fileno(), 8192)
+    except BlockingIOError:
+        return None
+    except OSError:
+        return ""
+    if raw == b"":
+        return ""
+    return raw.decode("utf-8", errors="replace")
+
+
+def _communicate_bounded(
+    proc: subprocess.Popen[str],
+    stdin_text: str,
+    timeout: int,
+    pgid: int | None,
+) -> tuple[str, str]:
+    """stdout/stderr 를 한도 안에서 읽고, 넘치면 그룹을 죽인다."""
+    if proc.stdin is not None:
+        proc.stdin.write(stdin_text)
+        proc.stdin.close()
+    if proc.stdout is not None:
+        _set_nonblocking(proc.stdout)
+    if proc.stderr is not None:
+        _set_nonblocking(proc.stderr)
+    deadline = time.monotonic() + max(timeout, 1)
+    stdout_parts: list[str] = []
+    stderr_parts: list[str] = []
+    stdout_n = 0
+    stderr_n = 0
+    stdout_stream = proc.stdout
+    stderr_stream = proc.stderr
+    waiters = [item for item in (stdout_stream, stderr_stream) if item is not None]
+    eof = {stream: False for stream in waiters}
+    while not all(eof.values()):
+        if stdout_n > MAX_OUTPUT_BYTES or stderr_n > MAX_OUTPUT_BYTES:
+            _kill_process_group(proc, pgid)
+            raise PacketAskError(message("output_guard_size"), codes.OUTPUT_GUARD)
+        if time.monotonic() > deadline:
+            raise subprocess.TimeoutExpired(proc.args, timeout)
+        pending = [stream for stream, done in eof.items() if not done]
+        ready, _, _ = select.select(pending, [], [], 0.1)
+        for stream in ready:
+            chunk = _read_pipe(stream)
+            if chunk is None:
+                continue
+            if chunk == "":
+                eof[stream] = True
+                continue
+            if stream is stdout_stream:
+                stdout_parts.append(chunk)
+                stdout_n += _utf8_size(chunk)
+            else:
+                stderr_parts.append(chunk)
+                stderr_n += _utf8_size(chunk)
+    return "".join(stdout_parts), "".join(stderr_parts)
+
+
+def _kill_process_group(proc: subprocess.Popen[str], pgid: int | None) -> None:
+    """spawn 때 저장한 그룹에 SIGTERM 후 항상 SIGKILL 을 보낸다."""
     if pgid is None:
         _kill_leader(proc)
         return
@@ -91,16 +172,6 @@ def _kill_process_group(proc: subprocess.Popen[str]) -> None:
     _wait_briefly(proc)
     _signal_group(pgid, signal.SIGKILL)
     _wait_briefly(proc)
-
-
-def _process_group_id(proc: subprocess.Popen[str]) -> int | None:
-    """자식의 프로세스 그룹 id. 이미 죽었으면 None."""
-    if proc.pid is None:
-        return None
-    try:
-        return os.getpgid(proc.pid)
-    except OSError:
-        return None
 
 
 def _kill_leader(proc: subprocess.Popen[str]) -> None:
@@ -141,7 +212,7 @@ def _require_executable(name: str) -> Path:
     """신뢰 경로의 공식 CLI만 고른다. 셸 래퍼 PATH는 쓰지 않는다."""
     found = resolve_trusted_executable(name)
     if found is None:
-        raise PacketAskError(f"{name} CLI가 신뢰 경로에 없습니다.", codes.PROVIDER_MISSING)
+        raise PacketAskError(message("missing_cli", name=name), codes.PROVIDER_MISSING)
     return found
 
 
@@ -157,7 +228,7 @@ def _require_glm_key() -> str:
     """전역 Anthropic 키가 아니라 PACKET_ASK_GLM_KEY 만 받는다."""
     return _require_dedicated_key(
         "PACKET_ASK_GLM_KEY",
-        "PACKET_ASK_GLM_KEY 환경변수가 없습니다. 전역 ANTHROPIC 키를 쓰지 않습니다.",
+        message("missing_key", name="PACKET_ASK_GLM_KEY"),
     )
 
 
@@ -165,7 +236,7 @@ def _require_claude_key() -> str:
     """Anthropic 서브는 PACKET_ASK_CLAUDE_KEY 만 받는다."""
     return _require_dedicated_key(
         "PACKET_ASK_CLAUDE_KEY",
-        "PACKET_ASK_CLAUDE_KEY 환경변수가 없습니다. 전역 ANTHROPIC 키를 쓰지 않습니다.",
+        message("missing_key", name="PACKET_ASK_CLAUDE_KEY"),
     )
 
 
@@ -173,7 +244,7 @@ def _require_kimi_key() -> str:
     """Kimi 서브는 PACKET_ASK_KIMI_KEY 만 받는다."""
     return _require_dedicated_key(
         "PACKET_ASK_KIMI_KEY",
-        "PACKET_ASK_KIMI_KEY 환경변수가 없습니다.",
+        message("missing_key", name="PACKET_ASK_KIMI_KEY"),
     )
 
 

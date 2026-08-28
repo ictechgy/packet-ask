@@ -258,6 +258,105 @@ def test_research_rejects_local_diff(
     assert code == codes.POLICY
 
 
+def test_review_rejects_files_and_diff_together(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """review 는 스코프 플래그를 하나만 받는다."""
+    repo = _init_repo(tmp_path)
+    (repo / "src" / "app.py").write_text("print(2)\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+    code = main(
+        [
+            "review",
+            "--provider",
+            "paste",
+            "--files",
+            "src/app.py",
+            "--diff",
+            "HEAD",
+            "--question",
+            "리뷰해줘",
+        ]
+    )
+    assert code == codes.SCOPE
+
+
+def test_review_budget_counts_question_and_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """질문과 파일을 합친 패킷 예산을 넘기면 거절한다."""
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    code = main(
+        [
+            "review",
+            "--provider",
+            "paste",
+            "--files",
+            "src/app.py",
+            "--max-bytes",
+            "40",
+            "--question",
+            "x" * 80,
+        ]
+    )
+    assert code == codes.BUDGET
+
+
+def test_review_prints_receipt_on_stderr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """벤더 전에 보내는 경로를 stderr 로 알려 준다."""
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    code = main(
+        [
+            "review",
+            "--provider",
+            "paste",
+            "--files",
+            "src/app.py",
+            "--question",
+            "리뷰해줘",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == codes.SUCCESS
+    assert "src/app.py" in captured.err
+    assert "paste" in captured.err
+
+
+def test_review_json_envelope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--json 은 versioned 봉투만 stdout 에 쓴다."""
+    import json
+
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    code = main(
+        [
+            "review",
+            "--provider",
+            "paste",
+            "--files",
+            "src/app.py",
+            "--json",
+            "--question",
+            "리뷰해줘",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == codes.SUCCESS
+    data = json.loads(captured.out)
+    assert data["schema"] == "packet-ask.v1"
+    assert data["ok"] is True
+    assert data["receipt"]["provider"] == "paste"
+    assert "src/app.py" in data["receipt"]["paths"]
+    assert "untrusted_output" in data
+    assert "print(1)" in data["untrusted_output"]
+
+
 def test_review_paste_uses_cache_dir_not_repo(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

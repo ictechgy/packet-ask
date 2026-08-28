@@ -13,7 +13,7 @@ def test_review_question_is_allowed() -> None:
 
 def test_rejects_implementation_request() -> None:
     """구현 요청은 정책 거부한다."""
-    with pytest.raises(PolicyError, match="구현"):
+    with pytest.raises(PolicyError, match="Implementation"):
         assert_allowed_task("review", "이 버그를 고치도록 구현해줘")
 
 
