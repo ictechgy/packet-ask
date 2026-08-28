@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import tomllib
 from pathlib import Path
@@ -77,9 +78,8 @@ def test_gitignore_rejects_env_and_keeps_example() -> None:
     assert kept.returncode == 1
 
 
-def test_readme_shows_pypi_and_github_install() -> None:
-    """PyPI 도구 설치가 기본이고 GitHub 직접 설치도 있다."""
-    text = (ROOT / "README.md").read_text(encoding="utf-8")
+def _assert_install_paths(text: str) -> None:
+    """설치 안내는 PyPI가 먼저이고 GitHub 직접 설치도 있다."""
     github = "uv tool install git+https://github.com/ictechgy/packet-ask"
     pypi = "uv tool install packet-ask"
     assert github in text
@@ -90,9 +90,25 @@ def test_readme_shows_pypi_and_github_install() -> None:
     assert "https://pypi.org/project/packet-ask/" in text
     assert "--unstaged" in text
     assert "kimi-code" in text
-    assert "첫 업로드" not in text
+
+
+def test_readme_is_english_and_shows_install() -> None:
+    """기본 README 는 영어이고 PyPI 설치가 기본이다."""
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    _assert_install_paths(text)
+    assert "README.ko.md" in text
+    assert not re.search(r"[가-힣]", text)
+    assert "does not guarantee" in text.lower() or "does not promise" in text.lower()
+
+
+def test_korean_readme_exists_and_links_english() -> None:
+    """한글 README 는 따로 두고 영어 README 로 연결한다."""
+    text = (ROOT / "README.ko.md").read_text(encoding="utf-8")
+    _assert_install_paths(text)
+    assert "[README.md]" in text or "(README.md)" in text
+    assert re.search(r"[가-힣]", text)
+    assert "유출이 없음" in text
     assert "지금은 GitHub에서 설치합니다" not in text
-    assert "원격 URL은 공개 저장소가 생기면" not in text
 
 
 def test_security_points_to_github_advisories() -> None:

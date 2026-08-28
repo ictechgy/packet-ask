@@ -1,7 +1,7 @@
 [project]
 name = "packet-ask"
-version = "0.1.2"
-description = "Send only a scrubbed packet to personal Kimi/GLM coding subscriptions."
+version = "0.1.3"
+description = "Send only a scrubbed packet to personal coding-subscription subagents."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
