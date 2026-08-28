@@ -78,11 +78,15 @@ def test_gitignore_rejects_env_and_keeps_example() -> None:
 
 
 def test_readme_shows_pypi_and_github_install() -> None:
-    """사용자는 PyPI 도구 설치로 시작하고, GitHub 직접 설치도 있다."""
+    """지금은 GitHub 설치가 기본이고, PyPI 명령은 첫 업로드 이후로 적는다."""
     text = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "uv tool install packet-ask" in text
+    github = "uv tool install git+https://github.com/ictechgy/packet-ask"
+    pypi = "uv tool install packet-ask"
+    assert github in text
+    assert pypi in text
+    assert text.index(github) < text.index(pypi)
     assert "pipx install packet-ask" in text
-    assert "uv tool install git+https://github.com/ictechgy/packet-ask" in text
+    assert "첫 업로드" in text
     assert "원격 URL은 공개 저장소가 생기면" not in text
 
 
@@ -105,11 +109,15 @@ def test_release_workflow_uses_trusted_publishing() -> None:
     # 빌드와 업로드를 나눠 업로드 권한이 빌드 잡에 가지 않게 한다.
     assert "needs:" in workflow
     assert "astral-sh/attest-action" in workflow
+    assert "workflow_dispatch" not in workflow
+    assert "uv version --short" in workflow
+    assert workflow.count("id-token: write") == 1
 
 
 def test_smoke_test_script_exists() -> None:
     """배포 산출물 스모크 테스트가 휠만으로 실행 가능하다."""
-    script = ROOT / "tests/smoke_test.py"
+    script = ROOT / "tests/smoke.py"
     text = script.read_text(encoding="utf-8")
     assert "packet-ask" in text
+    assert "SKILL.md" in text
     assert "pytest" not in text

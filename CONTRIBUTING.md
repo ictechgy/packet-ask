@@ -23,17 +23,18 @@ uv run pytest
 업로드는 GitHub Actions Trusted Publishing 만 사용합니다. 장기 PyPI 토큰을 저장소에 두지 않습니다.
 
 1. GitHub 저장소 Settings → Environments 에 `pypi` 환경을 만듭니다.
+   - Deployment branches/tags 는 **All** 이거나 `v*` 태그여야 합니다. `main` 만 허용하면 태그 릴리스가 거절됩니다.
 2. [PyPI pending publisher](https://pypi.org/manage/account/publishing/) 에 다음을 등록합니다.
-   - PyPI project name: `packet-ask`
+   - PyPI project name: `packet-ask` (`pyproject.toml` 의 `name` 과 바이트 단위로 같아야 합니다)
    - Owner: `ictechgy`
    - Repository: `packet-ask`
-   - Workflow filename: `release.yml`
+   - Workflow filename: `release.yml` (경로 없이 파일명만)
    - Environment: `pypi`
-3. 기본 브랜치에 머지한 뒤 버전 태그를 푸시합니다.
+3. pending publisher는 **첫 업로드 전까지 이름을 예약하지 않습니다.** 등록 직후 `https://pypi.org/project/packet-ask/` 가 404인지 확인하고 태그를 밉니다.
 
 ```bash
 git tag -a v0.1.0 -m v0.1.0
 git push origin v0.1.0
 ```
 
-태그 패턴은 `.github/workflows/release.yml` 과 같아야 합니다. 워크플로가 `uv build` 후 `uv publish` 합니다.
+태그 `vX.Y.Z` 의 `X.Y.Z` 는 `pyproject.toml` 버전과 같아야 합니다. 워크플로가 `uv build` 후 `uv publish` 합니다.

@@ -22,19 +22,21 @@ MIT 라이선스입니다. 전문은 [LICENSE](LICENSE)를 보세요.
 
 ## 설치
 
+지금은 GitHub에서 설치합니다.
+
 ```bash
-uv tool install packet-ask
+uv tool install git+https://github.com/ictechgy/packet-ask
 packet-ask install-skills
 packet-ask doctor
 ```
 
-`pipx install packet-ask` 도 됩니다. 가상환경이면 `pip install packet-ask` 입니다.
-
-PyPI 배포 전이거나 기본 브랜치 최신이 필요하면 GitHub에서 직접 설치합니다.
+첫 업로드 이후에는 PyPI에서도 됩니다.
 
 ```bash
-uv tool install git+https://github.com/ictechgy/packet-ask
+uv tool install packet-ask
 ```
+
+`pipx install packet-ask` 와 `pip install packet-ask` 도 첫 업로드 이후입니다.
 
 로컬 체크아웃:
 
