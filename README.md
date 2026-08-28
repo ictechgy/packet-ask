@@ -12,11 +12,11 @@ MIT 라이선스입니다. 전문은 [LICENSE](LICENSE)를 보세요.
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) 0.10.9+ (`pyproject.toml` 의 `uv_build` 하한과 같습니다)
-- GLM / Claude 서브 실행: 신뢰 경로의 공식 `claude` CLI
-- Kimi 실행: 신뢰 경로의 공식 `kimi` CLI
+- GLM / Claude 서브 실행: allowlist 경로의 `claude` CLI (출처 서명은 검증하지 않습니다)
+- Kimi 실행: allowlist 경로의 `kimi` CLI
 - `paste` / `grok` / `agy` 는 벤더를 띄우지 않고 패킷만 출력합니다
 
-키는 환경변수로만 넘깁니다. **이 도구는 `.env` 파일을 읽지 않습니다.** 명령줄에 키 값을 적지 마세요. 셸 히스토리에 남습니다. `.env` 는 저장소에서 무시합니다. 변수 이름은 [.env.example](.env.example)을 참고하세요. 신뢰 경로(공식 CLI를 찾는 디렉터리)는 [SECURITY.md](SECURITY.md)를 보세요.
+키는 환경변수로만 넘깁니다. **이 도구는 `.env` 파일을 읽지 않습니다.** 명령줄에 키 값을 적지 마세요. 셸 히스토리에 남습니다. `.env` 는 저장소에서 무시합니다. 변수 이름은 [.env.example](.env.example)을 참고하세요. 실행 파일을 찾는 allowlist 는 [SECURITY.md](SECURITY.md)를 보세요. `doctor`는 help에 플래그가 보이는지만 확인하며, 무도구를 증명하지 않습니다.
 
 ## 설치
 
@@ -94,11 +94,11 @@ label = "Gemini CLI"
 | 10 | 정책 거부 (구현·장애 등) |
 | 11 | 스코프 거부 |
 | 12 | 리댁션/재검증 실패 |
-| 13 | 실행 조건을 못 증명 (paste 사용) |
+| 13 | 실행 조건을 확인하지 못함 |
 | 14 | 용량 초과 |
 | 20 | 프로바이더/키 없음 |
 | 21 | 프로바이더 실행 실패 |
-| 22 | 출력 가드 실패 |
+| 22 | 출력 가드 실패 (전용 키 유출 또는 과대 출력) |
 
 ## 개발
 
