@@ -1,27 +1,29 @@
 # packet-ask
 
-스크럽된 패킷만 **서브** 에이전트에 보내는 로컬 CLI입니다. 메인은 지금 세션을 돌리는 에이전트입니다.
+[Korean](README.ko.md)
 
-이 도구는 고른 파일·diff만 스크럽해서, 공식 도구가 그것만 보게 하거나, 붙여넣을 `packet.md`를 만듭니다.
+A local CLI that sends only a **scrubbed packet** to a **SUB** agent. The MAIN agent is whichever session you are in now.
 
-> 이 도구는 의도적으로 보내는 범위를 줄입니다. 유출이 없음도, 학습되지 않음도 보장하지 않습니다. 벤더 약관은 그대로입니다. 자세한 내용은 [SECURITY.md](SECURITY.md)를 보세요.
+It copies the files or diff you choose, scrubs them, then either runs an official CLI against that packet or prints `packet.md` to paste elsewhere.
 
-MIT 라이선스입니다. 전문은 [LICENSE](LICENSE)를 보세요.
+> This tool shrinks what you send on purpose. It does not guarantee no leakage and does not stop vendor training. Vendor terms still apply. See [SECURITY.md](SECURITY.md).
+
+MIT licensed. See [LICENSE](LICENSE).
 
 - PyPI: [pypi.org/project/packet-ask](https://pypi.org/project/packet-ask/)
-- 저장소: [github.com/ictechgy/packet-ask](https://github.com/ictechgy/packet-ask)
+- Repository: [github.com/ictechgy/packet-ask](https://github.com/ictechgy/packet-ask)
 
-## 필요 조건
+## Requirements
 
 - Python 3.11+
-- [uv](https://docs.astral.sh/uv/) 0.10.9+ (`pyproject.toml` 의 `uv_build` 하한과 같습니다)
-- GLM / Claude 서브 실행: allowlist 경로의 `claude` CLI (출처 서명은 검증하지 않습니다)
-- Kimi 실행: allowlist 경로의 `kimi` CLI
-- `paste` / `grok` / `agy` 는 벤더를 띄우지 않고 패킷만 출력합니다
+- [uv](https://docs.astral.sh/uv/) 0.10.9+ (same lower bound as `uv_build` in `pyproject.toml`)
+- GLM / Claude SUB runs: a `claude` CLI on the allowlist path (origin signatures are not verified)
+- Kimi runs: a `kimi` CLI on the allowlist path
+- `paste` / `grok` / `agy` print a packet and do not launch a vendor
 
-키는 환경변수로만 넘깁니다. **이 도구는 `.env` 파일을 읽지 않습니다.** 명령줄에 키 값을 적지 마세요. 셸 히스토리에 남습니다. `.env` 는 저장소에서 무시합니다. 변수 이름은 [.env.example](.env.example)을 참고하세요. 실행 파일을 찾는 allowlist 는 [SECURITY.md](SECURITY.md)를 보세요. `doctor`는 help에 플래그가 보이는지만 확인하며, 무도구를 증명하지 않습니다.
+Keys are environment variables only. **This tool does not read `.env` files.** Do not put key values on the command line; they land in shell history. `.env` is gitignored. Variable names are in [.env.example](.env.example). The executable allowlist is in [SECURITY.md](SECURITY.md). `doctor` only checks that help text mentions required flags. It does not prove a no-tools sandbox.
 
-## 설치
+## Install
 
 ```bash
 uv tool install packet-ask
@@ -29,72 +31,72 @@ packet-ask install-skills
 packet-ask doctor
 ```
 
-이미 설치했다면 `uv tool upgrade packet-ask` 입니다. `pipx install packet-ask` 나 가상환경의 `pip install packet-ask` 도 됩니다.
+If it is already installed, run `uv tool upgrade packet-ask`. `pipx install packet-ask` and `pip install packet-ask` in a venv also work.
 
-GitHub 기본 브랜치에서 직접:
+From the GitHub default branch:
 
 ```bash
 uv tool install git+https://github.com/ictechgy/packet-ask
 ```
 
-로컬 체크아웃:
+Local checkout:
 
 ```bash
 uv sync
 uv run packet-ask doctor
 ```
 
-`install-skills` 가 `~/.claude/skills/packet-ask`, `~/.grok/skills/packet-ask`, `~/.codex/skills/packet-ask`, `~/.agents/skills/packet-ask` 에 `SKILL.md` 를 넣습니다. 이후 `/packet-ask` 또는 「kimi로 리뷰」처럼 말하면 메인이 이 CLI를 호출합니다.
+`install-skills` writes `SKILL.md` to `~/.claude/skills/packet-ask`, `~/.grok/skills/packet-ask`, `~/.codex/skills/packet-ask`, and `~/.agents/skills/packet-ask`. After that, `/packet-ask` or a phrase like "review with kimi" should make MAIN call this CLI.
 
-## 범위
+## Scope
 
-`review` 는 아래 중 **하나를 명시**해야 합니다. 플래그 없이 워킹 트리 전체를 보내지 않습니다.
+`review` requires **one** of the flags below. It does not send the whole working tree by default.
 
-| 플래그 | 보내는 것 |
+| Flag | What is sent |
 | --- | --- |
-| `--files` | 지정한 파일 |
-| `--diff` | 지정한 git 범위 |
-| `--staged` | 스테이징된 diff |
-| `--unstaged` | 워킹 트리 미커밋 diff |
+| `--files` | the listed files |
+| `--diff` | the given git range |
+| `--staged` | staged diff |
+| `--unstaged` | uncommitted working-tree diff |
 
-`research` 는 로컬 파일·diff를 기본으로 넣지 않습니다. 예외는 `--include-files` 뿐입니다. `--diff` / `--staged` 는 거절합니다.
+`research` does not attach local files or diffs by default. The only exception is `--include-files`. `--diff` and `--staged` are rejected.
 
-## 사용
+## Usage
 
 ```bash
 packet-ask providers
 
-# 벤더를 실행하지 않고 패킷만 본다
-packet-ask review --provider paste --files src/app.py --question "이 코드의 경쟁 상태를 찾아줘"
+# Packet only; do not launch a vendor
+packet-ask review --provider paste --files src/app.py --question "Find race conditions in this code"
 
-# GLM. 키는 PACKET_ASK_GLM_KEY
-packet-ask review --provider glm --diff HEAD --question "이 변경을 리뷰해줘"
+# GLM. Key: PACKET_ASK_GLM_KEY
+packet-ask review --provider glm --diff HEAD --question "Review this change"
 
-# 워킹 트리 미커밋 diff. 플래그 없이 review 하면 보내지 않습니다
-packet-ask review --provider paste --unstaged --question "이 변경을 리뷰해줘"
+# Uncommitted working-tree diff. review without a scope flag is rejected
+packet-ask review --provider paste --unstaged --question "Review this change"
 
-# Anthropic Claude 서브. 키는 PACKET_ASK_CLAUDE_KEY. 부모 BASE_URL 은 바꾸지 않습니다
-packet-ask review --provider claude --files src/app.py --question "이 코드를 리뷰해줘"
+# Anthropic Claude SUB. Key: PACKET_ASK_CLAUDE_KEY. Parent BASE_URL is unchanged
+packet-ask review --provider claude --files src/app.py --question "Review this code"
 
-# Kimi. 키는 PACKET_ASK_KIMI_KEY
-packet-ask review --provider kimi --files src/app.py --question "이 코드를 리뷰해줘"
+# Kimi. Key: PACKET_ASK_KIMI_KEY
+packet-ask review --provider kimi --files src/app.py --question "Review this code"
 
-# grok/agy 는 아직 무도구 원샷을 실행하지 않고 paste 합니다
-packet-ask review --provider grok --files src/app.py --question "이 코드를 리뷰해줘"
+# grok/agy still paste; they do not run a no-tools one-shot yet
+packet-ask review --provider grok --files src/app.py --question "Review this code"
 
-# 리서치. 로컬 파일·diff 는 기본 금지. 첨부는 --include-files 만
-packet-ask research --provider paste --question "Tailwind v4 마이그레이션에서 자주 깨지는 점"
+# Research. Local files are off by default
+packet-ask research --provider paste --question "What usually breaks in a Tailwind v4 migration?"
 
 packet-ask doctor
 ```
 
-Kimi는 공식 `kimi --quiet` 원샷입니다. 대화형 세션을 열지 않습니다. `PACKET_ASK_KIMI_KEY` 가 없으면 실행하지 않습니다. 도구는 `tools: []` 에이전트 파일과 매칭되지 않는 `[tools] enabled` 로 끄고, `KIMI_CODE_HOME` 은 `~/.config/packet-ask/providers/kimi/kimi-code` 격리 프로필만 씁니다. 실제 레포에서 `kimi`를 직접 실행하지 마세요.
+Kimi is official `kimi --quiet` one-shot. It does not open an interactive session. It refuses to run without `PACKET_ASK_KIMI_KEY`. Tools are disabled with a `tools: []` agent file and a non-matching `[tools] enabled` list. `KIMI_CODE_HOME` is only the isolated profile `~/.config/packet-ask/providers/kimi/kimi-code`. Do not run `kimi` in the real repo.
 
-GLM은 공식 `claude` 바이너리를 쓰되, **부모 셸의 `ANTHROPIC_BASE_URL` 은 바꾸지 않습니다.** 자식 환경에만 [Z.ai Claude Code 연동](https://docs.z.ai/scenario-example/develop-tools/claude) 엔드포인트와 `PACKET_ASK_GLM_KEY` 를 넣습니다.
+GLM uses the official `claude` binary. **It does not change the parent shell `ANTHROPIC_BASE_URL`.** Only the child environment gets the [Z.ai Claude Code endpoint](https://docs.z.ai/scenario-example/develop-tools/claude) and `PACKET_ASK_GLM_KEY`.
 
-패킷 임시 디렉터리는 git 워크트리가 아니라 OS 캐시에 만듭니다. cwd는 샌드박스가 아닙니다. `PACKET_ASK_CACHE_DIR` 을 워크트리 안으로 두면 거절합니다. `.gitignore` 의 `.packet-ask-tmp/` 와 `packet.md` 는 예전 산출물이나 실수로 만든 파일을 커밋하지 않기 위한 방어입니다.
+Packet temp dirs live in the OS cache, not the git worktree. cwd is not a sandbox. A `PACKET_ASK_CACHE_DIR` inside the worktree is rejected. `.gitignore` entries for `.packet-ask-tmp/` and `packet.md` only stop leftover files from being committed.
 
-사용자 설정 `~/.config/packet-ask/providers.toml` 은 **paste 별명만** 추가합니다. 실행 파일·argv·env 는 받지 않습니다.
+User config `~/.config/packet-ask/providers.toml` adds **paste aliases only**. It does not accept executables, argv, or env.
 
 ```toml
 version = 1
@@ -102,37 +104,37 @@ version = 1
 label = "Gemini CLI"
 ```
 
-## 스킬
+## Skills
 
-`packet-ask install-skills` 가 하니스 홈에 설치합니다. 스킬은 `packet-ask`를 부르라고만 적습니다. 격리는 CLI가 강제합니다.
+`packet-ask install-skills` installs into harness homes. The skill only tells MAIN to call `packet-ask`. Isolation is enforced by the CLI.
 
-## 종료 코드
+## Exit codes
 
-`10`–`14`는 벤더 프로세스를 시작하지 않았다는 뜻입니다.
+`10`–`14` mean the vendor process was never started.
 
-| 코드 | 의미 |
+| Code | Meaning |
 |---:|---|
-| 0 | 성공 |
-| 1 | 내부 오류 |
-| 2 | 인자 오류 |
-| 10 | 정책 거부 (구현·장애 등) |
-| 11 | 스코프 거부 |
-| 12 | 리댁션/재검증 실패 |
-| 13 | 실행 조건을 확인하지 못함 |
-| 14 | 용량 초과 |
-| 20 | 프로바이더/키 없음 |
-| 21 | 프로바이더 실행 실패 |
-| 22 | 출력 가드 실패 (전용 키 유출 또는 과대 출력) |
+| 0 | success |
+| 1 | internal error |
+| 2 | usage error |
+| 10 | policy reject (implementation, incidents, ...) |
+| 11 | scope reject |
+| 12 | redaction / re-check failed |
+| 13 | could not confirm launch conditions |
+| 14 | over budget |
+| 20 | provider or key missing |
+| 21 | provider failed |
+| 22 | output guard failed (dedicated key leak or oversized output) |
 
-## 개발
+## Development
 
 ```bash
 uv sync --group dev
 uv run pytest
 ```
 
-기여는 [CONTRIBUTING.md](CONTRIBUTING.md)를 따릅니다.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## 라이선스
+## License
 
 [MIT](LICENSE) Copyright (c) 2026 Coden
