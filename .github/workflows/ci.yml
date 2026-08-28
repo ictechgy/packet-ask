@@ -5,6 +5,9 @@ on:
     branches: ["**"]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -16,4 +19,4 @@ jobs:
       - run: uv sync --frozen --group dev
       - run: uv run pytest
       - run: uv build
-      - run: uv run --isolated --no-project --with dist/*.whl tests/smoke_test.py
+      - run: uv run --isolated --no-project --with dist/*.whl tests/smoke.py
