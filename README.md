@@ -6,7 +6,7 @@ A local CLI that sends only a **scrubbed packet** to a **SUB** agent. The MAIN a
 
 It copies the files or diff you choose, scrubs them, then either runs an official CLI against that packet or prints `packet.md` to paste elsewhere.
 
-> This tool shrinks what you send on purpose. It does not guarantee no leakage and does not stop vendor training. Vendor terms still apply. See [SECURITY.md](SECURITY.md).
+> This tool shrinks what you send on purpose. It does not guarantee no leakage and does not stop vendor training. Vendor terms still apply. See [SECURITY.md](SECURITY.md) ([Korean](SECURITY.ko.md)).
 
 MIT licensed. See [LICENSE](LICENSE).
 
@@ -68,6 +68,7 @@ packet-ask providers
 
 # Packet only; do not launch a vendor
 packet-ask review --provider paste --files src/app.py --question "Find race conditions in this code"
+packet-ask review --provider paste --files src/app.py --json --question "Find race conditions in this code"
 
 # GLM. Key: PACKET_ASK_GLM_KEY
 packet-ask review --provider glm --diff HEAD --question "Review this change"

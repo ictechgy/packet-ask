@@ -174,6 +174,67 @@ def test_timeout_kills_sigterm_ignoring_descendant(tmp_path: Path) -> None:
     assert _pid_is_alive(child_pid) is False
 
 
+def test_timeout_kills_descendant_after_leader_exits(tmp_path: Path) -> None:
+    """리더가 먼저 끝나도 spawn 때 저장한 그룹에 SIGKILL 을 보낸다."""
+    import sys
+
+    pid_file = tmp_path / "orphan.pid"
+    script = tmp_path / "leader-exit.sh"
+    script.write_text(
+        "#!/bin/sh\n"
+        f"{sys.executable} -c "
+        f"\"import os, pathlib, signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        f"pathlib.Path(r'{pid_file}').write_text(str(os.getpid())); time.sleep(60)\" &\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o700)
+    with pytest.raises(PacketAskError) as exc:
+        run_isolated_command(
+            script,
+            [],
+            "",
+            tmp_path,
+            isolated_env(tmp_path, {}),
+            timeout=1,
+        )
+    assert exc.value.code in {codes.PROVIDER_FAILED, codes.OUTPUT_GUARD}
+    deadline = time.time() + 2
+    while time.time() < deadline and not pid_file.is_file():
+        time.sleep(0.05)
+    assert pid_file.is_file()
+    child_pid = int(pid_file.read_text(encoding="utf-8").strip())
+    deadline = time.time() + 2
+    while time.time() < deadline and _pid_is_alive(child_pid):
+        time.sleep(0.05)
+    assert _pid_is_alive(child_pid) is False
+
+
+def test_run_isolated_command_caps_stderr(tmp_path: Path) -> None:
+    """stderr 가 한도를 넘으면 출력을 버린다."""
+    import sys
+
+    from packet_ask.output import MAX_OUTPUT_BYTES
+
+    script = tmp_path / "flood.sh"
+    script.write_text(
+        "#!/bin/sh\n"
+        f"{sys.executable} -c \"import sys; sys.stderr.write('a' * {MAX_OUTPUT_BYTES + 4096})\"\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o700)
+    with pytest.raises(PacketAskError) as exc:
+        run_isolated_command(
+            script,
+            [],
+            "",
+            tmp_path,
+            isolated_env(tmp_path, {}),
+            timeout=5,
+        )
+    assert exc.value.code == codes.OUTPUT_GUARD
+
+
 def test_kimi_config_does_not_write_api_key(tmp_path: Path) -> None:
     """격리 config.toml 에 API 키를 쓰지 않는다."""
     from packet_ask.launch import ensure_kimi_config

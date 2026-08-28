@@ -6,7 +6,7 @@
 
 이 도구는 고른 파일·diff만 스크럽해서, 공식 도구가 그것만 보게 하거나, 붙여넣을 `packet.md`를 만듭니다.
 
-> 이 도구는 의도적으로 보내는 범위를 줄입니다. 유출이 없음도, 학습되지 않음도 보장하지 않습니다. 벤더 약관은 그대로입니다. 자세한 내용은 [SECURITY.md](SECURITY.md)를 보세요.
+> 이 도구는 의도적으로 보내는 범위를 줄입니다. 유출이 없음도, 학습되지 않음도 보장하지 않습니다. 벤더 약관은 그대로입니다. 자세한 내용은 [SECURITY.ko.md](SECURITY.ko.md)를 보세요.
 
 MIT 라이선스입니다. 전문은 [LICENSE](LICENSE)를 보세요.
 
@@ -68,6 +68,7 @@ packet-ask providers
 
 # 벤더를 실행하지 않고 패킷만 본다
 packet-ask review --provider paste --files src/app.py --question "이 코드의 경쟁 상태를 찾아줘"
+packet-ask review --provider paste --files src/app.py --json --question "이 코드의 경쟁 상태를 찾아줘"
 
 # GLM. 키는 PACKET_ASK_GLM_KEY
 packet-ask review --provider glm --diff HEAD --question "이 변경을 리뷰해줘"

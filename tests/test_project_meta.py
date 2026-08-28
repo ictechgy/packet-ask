@@ -115,6 +115,10 @@ def test_security_points_to_github_advisories() -> None:
     """취약점은 GitHub Security Advisories 로 받는다."""
     text = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
     assert "https://github.com/ictechgy/packet-ask/security/advisories" in text
+    assert not re.search(r"[가-힣]", text)
+    korean = (ROOT / "SECURITY.ko.md").read_text(encoding="utf-8")
+    assert re.search(r"[가-힣]", korean)
+    assert "https://github.com/ictechgy/packet-ask/security/advisories" in korean
 
 
 def test_release_workflow_uses_trusted_publishing() -> None:
