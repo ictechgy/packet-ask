@@ -15,7 +15,8 @@ How personal Kimi Code or GLM Coding Plan subscriptions handle data is defined b
 - Parent `ANTHROPIC_BASE_URL` / `ANTHROPIC_API_KEY` are not copied.
 - GLM puts the endpoint and `PACKET_ASK_GLM_KEY` only in the child environment, following [Z.ai Claude Code integration](https://docs.z.ai/scenario-example/develop-tools/claude).
 - The Kimi API key is passed only as `PACKET_ASK_KIMI_KEY` and is not written to `config.toml`.
-- `doctor` checks that required flag names appear in `--help`. It does not prove a no-tools OS sandbox.
+- `doctor` checks that required flag names appear in `--help`. It does not prove a no-tools OS sandbox. Launch probes only the selected binary. `doctor` still walks the catalog and caches `--help` by path, mtime, and size for the process lifetime.
+- GLM and Claude child environments set `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, and `DISABLE_ERROR_REPORTING=1`. The vendor can ignore those flags. This CLI does not delete `~/.claude/projects/`.
 - If vendor stdout contains a dedicated key value or is too large, it is discarded and the process exits 22.
 
 ## What this tool does not do
@@ -24,6 +25,7 @@ How personal Kimi Code or GLM Coding Plan subscriptions handle data is defined b
 - It does not treat cwd as a sandbox. The SUB CLI cwd is the packet directory.
 - It does not send implementation, patch application, or production incident response to a sub.
 - It does not run user zsh functions or wrappers at the front of `PATH`. The default allowlist is `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`, `/bin`, `~/.local/bin`, and `PACKET_ASK_*_BIN`.
+- It does not prove Claude auto-memory is off. The child env flags are best-effort vendor switches.
 
 ## Keys and profiles
 

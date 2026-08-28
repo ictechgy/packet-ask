@@ -21,7 +21,7 @@ MIT licensed. See [LICENSE](LICENSE).
 - Kimi runs: a `kimi` CLI on the allowlist path
 - `paste` / `grok` / `agy` print a packet and do not launch a vendor
 
-Keys are environment variables only. **This tool does not read `.env` files.** Do not put key values on the command line; they land in shell history. `.env` is gitignored. Variable names are in [.env.example](.env.example). The executable allowlist is in [SECURITY.md](SECURITY.md). `doctor` only checks that help text mentions required flags. It does not prove a no-tools sandbox.
+Keys are environment variables only. **This tool does not read `.env` files.** Do not put key values on the command line; they land in shell history. `.env` is gitignored. Variable names are in [.env.example](.env.example). The executable allowlist is in [SECURITY.md](SECURITY.md). `doctor` only checks that help text mentions required flags. It does not prove a no-tools sandbox. Launch probes only the selected binary. `doctor` still lists the catalog and caches `--help` by executable path, mtime, and size for the process lifetime.
 
 ## Install
 
@@ -93,7 +93,9 @@ packet-ask doctor
 
 Kimi is official `kimi --quiet` one-shot. It does not open an interactive session. It refuses to run without `PACKET_ASK_KIMI_KEY`. Tools are disabled with a `tools: []` agent file and a non-matching `[tools] enabled` list. `KIMI_CODE_HOME` is only the isolated profile `~/.config/packet-ask/providers/kimi/kimi-code`. Do not run `kimi` in the real repo.
 
-GLM uses the official `claude` binary. **It does not change the parent shell `ANTHROPIC_BASE_URL`.** Only the child environment gets the [Z.ai Claude Code endpoint](https://docs.z.ai/scenario-example/develop-tools/claude) and `PACKET_ASK_GLM_KEY`.
+GLM uses the official `claude` binary. **It does not change the parent shell `ANTHROPIC_BASE_URL`.** Only the child environment gets the [Z.ai Claude Code endpoint](https://docs.z.ai/scenario-example/develop-tools/claude) and `PACKET_ASK_GLM_KEY`. GLM and Claude child environments also set `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, and `DISABLE_ERROR_REPORTING`. That reduces local session residue. It does not prove the vendor stores nothing.
+
+On success, stderr prints a receipt before launch (`packet-ask receipt …`) and millisecond phase times after (`packet-ask timing …`). `--json` adds a `timing` object. Neither line contains keys.
 
 Packet temp dirs live in the OS cache, not the git worktree. cwd is not a sandbox. A `PACKET_ASK_CACHE_DIR` inside the worktree is rejected. `.gitignore` entries for `.packet-ask-tmp/` and `packet.md` only stop leftover files from being committed.
 
