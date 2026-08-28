@@ -8,7 +8,8 @@
 
 MIT 라이선스입니다. 전문은 [LICENSE](LICENSE)를 보세요.
 
-저장소: [github.com/ictechgy/packet-ask](https://github.com/ictechgy/packet-ask)
+- PyPI: [pypi.org/project/packet-ask](https://pypi.org/project/packet-ask/)
+- 저장소: [github.com/ictechgy/packet-ask](https://github.com/ictechgy/packet-ask)
 
 ## 필요 조건
 
@@ -22,21 +23,19 @@ MIT 라이선스입니다. 전문은 [LICENSE](LICENSE)를 보세요.
 
 ## 설치
 
-지금은 GitHub에서 설치합니다.
-
 ```bash
-uv tool install git+https://github.com/ictechgy/packet-ask
+uv tool install packet-ask
 packet-ask install-skills
 packet-ask doctor
 ```
 
-첫 업로드 이후에는 PyPI에서도 됩니다.
+이미 설치했다면 `uv tool upgrade packet-ask` 입니다. `pipx install packet-ask` 나 가상환경의 `pip install packet-ask` 도 됩니다.
+
+GitHub 기본 브랜치에서 직접:
 
 ```bash
-uv tool install packet-ask
+uv tool install git+https://github.com/ictechgy/packet-ask
 ```
-
-`pipx install packet-ask` 와 `pip install packet-ask` 도 첫 업로드 이후입니다.
 
 로컬 체크아웃:
 
@@ -46,6 +45,19 @@ uv run packet-ask doctor
 ```
 
 `install-skills` 가 `~/.claude/skills/packet-ask`, `~/.grok/skills/packet-ask`, `~/.codex/skills/packet-ask`, `~/.agents/skills/packet-ask` 에 `SKILL.md` 를 넣습니다. 이후 `/packet-ask` 또는 「kimi로 리뷰」처럼 말하면 메인이 이 CLI를 호출합니다.
+
+## 범위
+
+`review` 는 아래 중 **하나를 명시**해야 합니다. 플래그 없이 워킹 트리 전체를 보내지 않습니다.
+
+| 플래그 | 보내는 것 |
+| --- | --- |
+| `--files` | 지정한 파일 |
+| `--diff` | 지정한 git 범위 |
+| `--staged` | 스테이징된 diff |
+| `--unstaged` | 워킹 트리 미커밋 diff |
+
+`research` 는 로컬 파일·diff를 기본으로 넣지 않습니다. 예외는 `--include-files` 뿐입니다. `--diff` / `--staged` 는 거절합니다.
 
 ## 사용
 
@@ -76,11 +88,11 @@ packet-ask research --provider paste --question "Tailwind v4 마이그레이션�
 packet-ask doctor
 ```
 
-Kimi는 공식 `kimi --quiet` 원샷입니다. 대화형 세션을 열지 않습니다. 도구는 `tools: []` 에이전트 파일과 매칭되지 않는 `[tools] enabled` 로 끄고, `KIMI_CODE_HOME` 은 `~/.config/packet-ask/providers/kimi` 격리 프로필만 씁니다. 실제 레포에서 `kimi`를 직접 실행하지 마세요.
+Kimi는 공식 `kimi --quiet` 원샷입니다. 대화형 세션을 열지 않습니다. `PACKET_ASK_KIMI_KEY` 가 없으면 실행하지 않습니다. 도구는 `tools: []` 에이전트 파일과 매칭되지 않는 `[tools] enabled` 로 끄고, `KIMI_CODE_HOME` 은 `~/.config/packet-ask/providers/kimi/kimi-code` 격리 프로필만 씁니다. 실제 레포에서 `kimi`를 직접 실행하지 마세요.
 
 GLM은 공식 `claude` 바이너리를 쓰되, **부모 셸의 `ANTHROPIC_BASE_URL` 은 바꾸지 않습니다.** 자식 환경에만 [Z.ai Claude Code 연동](https://docs.z.ai/scenario-example/develop-tools/claude) 엔드포인트와 `PACKET_ASK_GLM_KEY` 를 넣습니다.
 
-패킷 임시 디렉터리는 워크트리가 아니라 OS 캐시에 만듭니다. cwd는 샌드박스가 아닙니다. `.gitignore` 의 `.packet-ask-tmp/` 와 `packet.md` 는 예전 산출물이나 실수로 만든 파일을 커밋하지 않기 위한 방어입니다.
+패킷 임시 디렉터리는 git 워크트리가 아니라 OS 캐시에 만듭니다. cwd는 샌드박스가 아닙니다. `PACKET_ASK_CACHE_DIR` 을 워크트리 안으로 두면 거절합니다. `.gitignore` 의 `.packet-ask-tmp/` 와 `packet.md` 는 예전 산출물이나 실수로 만든 파일을 커밋하지 않기 위한 방어입니다.
 
 사용자 설정 `~/.config/packet-ask/providers.toml` 은 **paste 별명만** 추가합니다. 실행 파일·argv·env 는 받지 않습니다.
 

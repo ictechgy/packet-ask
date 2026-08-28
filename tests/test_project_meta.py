@@ -78,15 +78,20 @@ def test_gitignore_rejects_env_and_keeps_example() -> None:
 
 
 def test_readme_shows_pypi_and_github_install() -> None:
-    """지금은 GitHub 설치가 기본이고, PyPI 명령은 첫 업로드 이후로 적는다."""
+    """PyPI 도구 설치가 기본이고 GitHub 직접 설치도 있다."""
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     github = "uv tool install git+https://github.com/ictechgy/packet-ask"
     pypi = "uv tool install packet-ask"
     assert github in text
     assert pypi in text
-    assert text.index(github) < text.index(pypi)
+    assert text.index(pypi) < text.index(github)
     assert "pipx install packet-ask" in text
-    assert "첫 업로드" in text
+    assert "uv tool upgrade packet-ask" in text
+    assert "https://pypi.org/project/packet-ask/" in text
+    assert "--unstaged" in text
+    assert "kimi-code" in text
+    assert "첫 업로드" not in text
+    assert "지금은 GitHub에서 설치합니다" not in text
     assert "원격 URL은 공개 저장소가 생기면" not in text
 
 
