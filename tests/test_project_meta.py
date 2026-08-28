@@ -43,6 +43,7 @@ def test_gitignore_covers_dotenv_but_keeps_example() -> None:
     assert ".env" in lines
     assert ".env.*" in lines
     assert ".envrc" in lines
+    assert "HANDOFF.md" in lines
     assert "!.env.example" in lines
     assert lines.index("!.env.example") > lines.index(".env.*")
     example = (ROOT / ".env.example").read_text(encoding="utf-8")
@@ -63,7 +64,7 @@ def test_gitignore_rejects_env_and_keeps_example() -> None:
     git_dir = ROOT / ".git"
     if not git_dir.exists():
         return
-    for relative in (".env", ".env.local", ".envrc"):
+    for relative in (".env", ".env.local", ".envrc", "HANDOFF.md"):
         ignored = subprocess.run(
             ["git", "check-ignore", "-q", "--", relative],
             cwd=ROOT,
