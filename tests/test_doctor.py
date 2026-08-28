@@ -1,10 +1,20 @@
 """doctor 플래그 판정."""
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
+from packet_ask import doctor
 from packet_ask.doctor import claude_supports_isolated_print, kimi_supports_print
+
+
+@pytest.fixture(autouse=True)
+def clear_help_cache() -> Iterator[None]:
+    """프로세스 안 --help 캐시가 테스트 사이에 남지 않게 한다."""
+    doctor._HELP_CACHE.clear()
+    yield
+    doctor._HELP_CACHE.clear()
 
 
 def test_claude_help_with_required_flags() -> None:
@@ -72,3 +82,79 @@ def test_help_probe_does_not_inherit_parent_secrets(
     assert "ANTHROPIC_API_KEY" not in env
     assert captured["timeout"] == 10
     assert captured["cwd"] is not None
+
+
+def test_help_text_is_cached_by_path_and_mtime(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """같은 실행 파일은 --help 를 한 번만 돌린다."""
+    import subprocess
+
+    from packet_ask import doctor
+
+    binary = tmp_path / "claude"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(0o700)
+    calls: list[int] = []
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(1)
+        flags = "--bare\n-p\n--tools\n--permission-mode\n--no-session-persistence\n--setting-sources\n"
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout=flags, stderr="")
+
+    monkeypatch.setattr("packet_ask.doctor.subprocess.run", fake_run)
+    monkeypatch.setattr("packet_ask.doctor.resolve_trusted_executable", lambda name: binary)
+    doctor._help_text("claude")
+    doctor._help_text("claude")
+    assert len(calls) == 1
+
+
+def test_help_text_cache_invalidates_when_file_changes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """mtime 또는 크기가 바뀌면 --help 를 다시 돌린다."""
+    import subprocess
+
+    binary = tmp_path / "claude"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(0o700)
+    calls: list[int] = []
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(1)
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="--bare\n", stderr="")
+
+    monkeypatch.setattr("packet_ask.doctor.subprocess.run", fake_run)
+    monkeypatch.setattr("packet_ask.doctor.resolve_trusted_executable", lambda name: binary)
+    doctor._help_text("claude")
+    binary.write_text("#!/bin/sh\n# changed\n", encoding="utf-8")
+    doctor._help_text("claude")
+    assert len(calls) == 2
+
+
+def test_inspect_providers_probes_shared_claude_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """glm 과 claude 는 같은 claude 바이너리를 한 번만 프로브한다."""
+    import subprocess
+
+    from packet_ask import doctor
+
+    binary = tmp_path / "claude"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(0o700)
+    probed: list[list[str]] = []
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        probed.append(list(args[0]) if args else [])
+        flags = "--bare\n-p\n--tools\n--permission-mode\n--no-session-persistence\n--setting-sources\n"
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout=flags, stderr="")
+
+    monkeypatch.setattr("packet_ask.doctor.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "packet_ask.doctor.resolve_trusted_executable",
+        lambda name: binary if name == "claude" else None,
+    )
+    doctor.inspect_providers()
+    claude_probes = [item for item in probed if item and item[0].endswith("claude")]
+    assert len(claude_probes) == 1

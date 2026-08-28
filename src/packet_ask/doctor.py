@@ -13,6 +13,7 @@ from packet_ask.paths import minimal_child_env, resolve_trusted_executable
 from packet_ask.providers import ProviderSpec, load_catalog
 
 _HELP_TIMEOUT_SECONDS = 10
+_HELP_CACHE: dict[tuple[str, int, int], str | None] = {}
 
 
 @dataclass(frozen=True)
@@ -49,11 +50,31 @@ def kimi_supports_isolated_print(help_text: str) -> bool:
     return all(has_cli_flag(help_text, flag) for flag in needed)
 
 
+def _help_stat_key(path: Path) -> tuple[str, int, int] | None:
+    """같은 바이너리 재프로브를 피하기 위한 경로·mtime·크기 키."""
+    try:
+        info = path.stat()
+    except OSError:
+        return None
+    return (str(path), int(info.st_mtime_ns), int(info.st_size))
+
+
 def _help_text(executable: str) -> str | None:
-    """--help 를 최소 환경에서 가져온다. 실패하면 None."""
+    """--help 를 최소 환경에서 가져온다. 같은 파일은 프로세스 안에서 재사용한다."""
     path = resolve_trusted_executable(executable)
     if path is None:
         return None
+    key = _help_stat_key(path)
+    if key is not None and key in _HELP_CACHE:
+        return _HELP_CACHE[key]
+    text = _run_help(path)
+    if key is not None:
+        _HELP_CACHE[key] = text
+    return text
+
+
+def _run_help(path: Path) -> str | None:
+    """신뢰 경로 바이너리의 --help 를 타임아웃과 최소 env 로 실행한다."""
     probe = Path(tempfile.mkdtemp(prefix="packet-ask-probe-"))
     probe.chmod(0o700)
     try:
@@ -72,6 +93,14 @@ def _help_text(executable: str) -> str | None:
         return None
     finally:
         shutil.rmtree(probe, ignore_errors=True)
+
+
+def inspect_provider(provider_id: str) -> ProviderStatus:
+    """카탈로그에서 한 프로바이더만 검사한다. 런치 핫패스용."""
+    for spec in load_catalog():
+        if spec.provider_id == provider_id:
+            return _status_for(spec)
+    return ProviderStatus(provider_id, False, False, "알 수 없는 프로바이더", "unknown", "paste")
 
 
 def inspect_providers() -> list[ProviderStatus]:
