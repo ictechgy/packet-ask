@@ -115,15 +115,28 @@ def _require_executable(name: str) -> Path:
     return found
 
 
+def _require_dedicated_key(env_name: str, hint: str) -> str:
+    """전용 키만 받는다. 부모 셸의 일반 키는 쓰지 않는다."""
+    key = os.environ.get(env_name, "").strip()
+    if not key:
+        raise PacketAskError(hint, codes.PROVIDER_MISSING)
+    return key
+
+
 def _require_glm_key() -> str:
     """전역 Anthropic 키가 아니라 PACKET_ASK_GLM_KEY 만 받는다."""
-    key = os.environ.get("PACKET_ASK_GLM_KEY", "").strip()
-    if not key:
-        raise PacketAskError(
-            "PACKET_ASK_GLM_KEY 환경변수가 없습니다. 전역 ANTHROPIC 키를 쓰지 않습니다.",
-            codes.PROVIDER_MISSING,
-        )
-    return key
+    return _require_dedicated_key(
+        "PACKET_ASK_GLM_KEY",
+        "PACKET_ASK_GLM_KEY 환경변수가 없습니다. 전역 ANTHROPIC 키를 쓰지 않습니다.",
+    )
+
+
+def _require_claude_key() -> str:
+    """Anthropic 서브는 PACKET_ASK_CLAUDE_KEY 만 받는다."""
+    return _require_dedicated_key(
+        "PACKET_ASK_CLAUDE_KEY",
+        "PACKET_ASK_CLAUDE_KEY 환경변수가 없습니다. 전역 ANTHROPIC 키를 쓰지 않습니다.",
+    )
 
 
 def _glm_child_env(home: Path, key: str) -> dict[str, str]:
@@ -167,7 +180,29 @@ def launch_glm(packet: Packet, timeout: int) -> str:
     home = provider_home("glm")
     stdin_text = (packet.root / "packet.md").read_text(encoding="utf-8")
     env = isolated_env(home, _glm_child_env(home, key))
-    return run_isolated_command(executable, _glm_argv(), stdin_text, packet.root, env, timeout)
+    return run_isolated_command(executable, glm_argv(), stdin_text, packet.root, env, timeout)
+
+
+def _claude_child_env(home: Path, key: str) -> dict[str, str]:
+    """Anthropic 키만 자식에 넣는다. BASE_URL 은 설정하지 않는다."""
+    return {
+        "ANTHROPIC_API_KEY": key,
+        "ANTHROPIC_AUTH_TOKEN": key,
+        "DISABLE_AUTOUPDATER": "1",
+        "DISABLE_TELEMETRY": "1",
+        "CLAUDE_CONFIG_DIR": str(home / "claude-config"),
+    }
+
+
+def launch_claude(packet: Packet, timeout: int) -> str:
+    """공식 claude 를 Anthropic 엔드포인트로 한 번 호출한다."""
+    require_launchable("claude")
+    key = _require_claude_key()
+    executable = _require_executable("claude")
+    home = provider_home("claude")
+    stdin_text = (packet.root / "packet.md").read_text(encoding="utf-8")
+    env = isolated_env(home, _claude_child_env(home, key))
+    return run_isolated_command(executable, glm_argv(), stdin_text, packet.root, env, timeout)
 
 
 _KIMI_NO_TOOLS_AGENT = """---

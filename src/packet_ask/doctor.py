@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from packet_ask.paths import minimal_child_env, resolve_trusted_executable
+from packet_ask.providers import ProviderSpec, load_catalog
 
 _HELP_TIMEOUT_SECONDS = 10
 
@@ -22,6 +23,8 @@ class ProviderStatus:
     installed: bool
     can_launch: bool
     note: str
+    source: str = "builtin"
+    mode: str = "launch"
 
 
 def has_cli_flag(help_text: str, flag: str) -> bool:
@@ -72,39 +75,35 @@ def _help_text(executable: str) -> str | None:
 
 
 def inspect_providers() -> list[ProviderStatus]:
-    """로컬 claude/kimi 상태를 수집한다. 모델 호출은 하지 않는다."""
-    statuses: list[ProviderStatus] = []
-    claude_help = _help_text("claude")
-    if claude_help is None:
-        statuses.append(ProviderStatus("glm", False, False, "claude CLI가 없습니다."))
-    elif claude_supports_isolated_print(claude_help):
-        statuses.append(
-            ProviderStatus(
-                "glm",
-                True,
-                True,
-                "claude --bare/--tools/--no-session-persistence 가 보입니다. 키는 자식 환경에만 넣습니다.",
-            )
+    """카탈로그의 로컬 상태를 수집한다. 모델 호출은 하지 않는다."""
+    return [_status_for(spec) for spec in load_catalog()]
+
+
+def _status_for(spec: ProviderSpec) -> ProviderStatus:
+    """스펙 한 줄의 설치·실행 가능 여부를 본다."""
+    if spec.mode == "paste":
+        installed = spec.binary is None or resolve_trusted_executable(spec.binary) is not None
+        return ProviderStatus(spec.provider_id, installed, True, spec.note, spec.source, spec.mode)
+    return _launch_status(spec)
+
+
+def _launch_status(spec: ProviderSpec) -> ProviderStatus:
+    """실행형 내장의 help 플래그를 검사한다."""
+    binary = spec.binary or spec.provider_id
+    help_text = _help_text(binary)
+    if help_text is None:
+        return ProviderStatus(spec.provider_id, False, False, f"{binary} CLI가 없습니다.", spec.source, spec.mode)
+    if binary == "claude" and claude_supports_isolated_print(help_text):
+        return ProviderStatus(spec.provider_id, True, True, spec.note, spec.source, spec.mode)
+    if binary == "kimi" and kimi_supports_isolated_print(help_text):
+        return ProviderStatus(spec.provider_id, True, True, spec.note, spec.source, spec.mode)
+    if binary == "kimi" and kimi_supports_print(help_text):
+        return ProviderStatus(
+            spec.provider_id,
+            True,
+            False,
+            "--agent-file/--work-dir 가 없어 격리 원샷을 못 합니다.",
+            spec.source,
+            spec.mode,
         )
-    else:
-        statuses.append(ProviderStatus("glm", True, False, "필요한 claude 플래그가 없어 paste만 가능합니다."))
-    kimi_help = _help_text("kimi")
-    if kimi_help is None:
-        statuses.append(ProviderStatus("kimi", False, False, "kimi CLI가 없습니다."))
-    elif kimi_supports_isolated_print(kimi_help):
-        statuses.append(
-            ProviderStatus(
-                "kimi",
-                True,
-                True,
-                "kimi quiet/print + --agent-file(tools: []) + --work-dir 로 원샷합니다. 키는 PACKET_ASK_KIMI_KEY 이며 디스크에 쓰지 않습니다.",
-            )
-        )
-    elif kimi_supports_print(kimi_help):
-        statuses.append(
-            ProviderStatus("kimi", True, False, "--agent-file/--work-dir 가 없어 격리 원샷을 못 합니다.")
-        )
-    else:
-        statuses.append(ProviderStatus("kimi", True, False, "원샷 플래그를 확인하지 못했습니다."))
-    statuses.append(ProviderStatus("paste", True, True, "벤더 프로세스 없이 패킷만 출력합니다."))
-    return statuses
+    return ProviderStatus(spec.provider_id, True, False, "필요한 원샷 플래그가 없어 paste만 가능합니다.", spec.source, spec.mode)

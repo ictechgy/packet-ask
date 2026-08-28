@@ -61,6 +61,28 @@ def test_research_requires_question() -> None:
     assert code == codes.USAGE
 
 
+def test_claude_without_dedicated_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """claude 서브는 전역 Anthropic 키를 쓰지 않는다."""
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    monkeypatch.delenv("PACKET_ASK_CLAUDE_KEY", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "must-not-be-used")
+    code = main(
+        [
+            "review",
+            "--provider",
+            "claude",
+            "--files",
+            "src/app.py",
+            "--question",
+            "이 코드를 리뷰해줘",
+        ]
+    )
+    assert code in {codes.PROVIDER_MISSING, codes.CONFINEMENT}
+
+
 def test_glm_without_dedicated_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -105,6 +127,60 @@ def test_kimi_without_cli_is_missing(
         ]
     )
     assert code == codes.PROVIDER_MISSING
+
+
+def test_grok_provider_is_paste_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """grok 는 실행하지 않고 패킷만 출력한다."""
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    code = main(
+        [
+            "review",
+            "--provider",
+            "grok",
+            "--files",
+            "src/app.py",
+            "--question",
+            "이 코드의 문제를 찾아줘",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == codes.SUCCESS
+    assert "UNTRUSTED PROVIDER OUTPUT" in captured.out
+    assert "print(1)" in captured.out
+
+
+def test_providers_json_lists_builtins(capsys: pytest.CaptureFixture[str]) -> None:
+    """providers --json 에 내장 id 가 있다."""
+    import json
+
+    code = main(["providers", "--json"])
+    assert code == codes.SUCCESS
+    rows = json.loads(capsys.readouterr().out)
+    ids = {row["id"] for row in rows}
+    assert {"paste", "glm", "kimi", "claude", "grok", "agy"} <= ids
+
+
+def test_unknown_provider_is_usage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """카탈로그에 없는 id 는 usage."""
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    code = main(
+        [
+            "review",
+            "--provider",
+            "nope",
+            "--files",
+            "src/app.py",
+            "--question",
+            "이 코드를 리뷰해줘",
+        ]
+    )
+    assert code == codes.USAGE
 
 
 def test_review_paste_uses_cache_dir_not_repo(

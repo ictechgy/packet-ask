@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -10,7 +11,8 @@ from packet_ask import codes
 from packet_ask.doctor import inspect_providers
 from packet_ask.errors import PacketAskError
 from packet_ask.install_skills import install_skills
-from packet_ask.launch import launch_glm, launch_kimi
+from packet_ask.launch import launch_claude, launch_glm, launch_kimi
+from packet_ask.providers import lookup_provider, load_catalog
 from packet_ask.output import wrap_untrusted
 from packet_ask.packet import Packet, build_packet
 from packet_ask.policy import assert_allowed_task
@@ -36,14 +38,16 @@ def _parser() -> argparse.ArgumentParser:
     _add_task_parser(sub, "brainstorm", "스크럽된 질문으로 브레인스토밍")
     _add_task_parser(sub, "paste", "벤더를 실행하지 않고 패킷만 출력")
     sub.add_parser("doctor", help="공식 CLI 격리 원샷 가능 여부")
-    sub.add_parser("install-skills", help="Claude/Codex/Grok 사용자 스킬로 설치")
+    providers_cmd = sub.add_parser("providers", help="서브 프로바이더 목록")
+    providers_cmd.add_argument("--json", action="store_true")
+    sub.add_parser("install-skills", help="현재 하니스 홈에 스킬 설치")
     return parser
 
 
 def _add_task_parser(sub: argparse._SubParsersAction, name: str, help_text: str) -> None:
     """review/research/brainstorm/paste 공통 인자를 붙인다."""
     item = sub.add_parser(name, help=help_text)
-    item.add_argument("--provider", required=name != "paste", choices=("glm", "kimi", "paste"))
+    item.add_argument("--provider", required=name != "paste")
     item.add_argument("--question", default="")
     item.add_argument("--question-stdin", action="store_true")
     item.add_argument("--files", nargs="*", default=[], type=Path)
@@ -98,25 +102,51 @@ def _run_install_skills() -> int:
 def _run_doctor() -> int:
     """프로바이더 상태를 출력한다."""
     for item in inspect_providers():
-        launch = "launch" if item.can_launch else "paste-only"
-        print(f"{item.name} | installed={item.installed} | {launch} | {item.note}")
+        launch = "launch" if item.mode == "launch" and item.can_launch else "paste-only"
+        print(
+            f"{item.name} | source={item.source} | mode={item.mode} | "
+            f"installed={item.installed} | {launch} | {item.note}"
+        )
     return codes.SUCCESS
 
 
+def _run_providers(as_json: bool) -> int:
+    """카탈로그를 출력한다. 비밀 값은 넣지 않는다."""
+    if as_json:
+        rows = [
+            {
+                "id": spec.provider_id,
+                "label": spec.label,
+                "source": spec.source,
+                "mode": spec.mode,
+                "binary": spec.binary,
+                "key_env": spec.key_env,
+                "note": spec.note,
+            }
+            for spec in load_catalog()
+        ]
+        print(json.dumps(rows, ensure_ascii=False, indent=2))
+        return codes.SUCCESS
+    return _run_doctor()
+
+
 def _execute_provider(provider: str, packet: Packet, timeout: int) -> str:
-    """허용된 프로바이더만 실행한다."""
-    if provider == "paste":
+    """카탈로그에 있는 프로바이더만 실행한다. paste 모드는 벤더를 띄우지 않는다."""
+    spec = lookup_provider(provider)
+    if spec.mode == "paste":
         return (packet.root / "packet.md").read_text(encoding="utf-8")
-    if provider == "glm":
+    if spec.provider_id == "glm":
         return launch_glm(packet, timeout)
-    if provider == "kimi":
+    if spec.provider_id == "kimi":
         return launch_kimi(packet, timeout)
-    raise PacketAskError("알 수 없는 프로바이더입니다.", codes.USAGE)
+    if spec.provider_id == "claude":
+        return launch_claude(packet, timeout)
+    raise PacketAskError("실행형 어댑터가 없는 프로바이더입니다.", codes.CONFINEMENT)
 
 
 def _run_task(args: argparse.Namespace) -> int:
     """패킷을 만들고 프로바이더 또는 paste로 보낸다."""
-    provider = "paste" if args.command == "paste" else args.provider
+    provider = "paste" if args.command == "paste" else (args.provider or "paste")
     if args.dry_run:
         provider = "paste"
     question = _read_question(args)
@@ -161,6 +191,8 @@ def main(argv: list[str] | None = None) -> int:
             return _run_doctor()
         if args.command == "install-skills":
             return _run_install_skills()
+        if args.command == "providers":
+            return _run_providers(args.json)
         return _run_task(args)
     except PacketAskError as exc:
         print(str(exc), file=sys.stderr)

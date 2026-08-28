@@ -180,6 +180,41 @@ def test_glm_passes_key_in_child_env(
     assert "--tools" in argv
 
 
+def test_claude_sub_uses_dedicated_key_without_z_ai(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """claude 서브는 PACKET_ASK_CLAUDE_KEY 만 쓰고 Z.ai URL 을 넣지 않는다."""
+    from packet_ask.launch import launch_claude
+
+    monkeypatch.setenv("PACKET_ASK_CLAUDE_KEY", "anthropic-child-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "parent-secret")
+    monkeypatch.setattr("packet_ask.launch.require_launchable", lambda _name: None)
+    monkeypatch.setattr(
+        "packet_ask.launch.resolve_trusted_executable",
+        lambda name: Path("/usr/bin/true") if name == "claude" else None,
+    )
+    monkeypatch.setattr("packet_ask.launch.provider_home", lambda _name: tmp_path)
+    captured: dict[str, object] = {}
+
+    def fake_run(executable, argv, stdin_text, cwd, env, timeout):  # noqa: ANN001
+        captured["env"] = env
+        captured["argv"] = argv
+        return "ok"
+
+    monkeypatch.setattr("packet_ask.launch.run_isolated_command", fake_run)
+    dummy = Packet(root=tmp_path, report=RedactionReport())
+    (tmp_path / "packet.md").write_text("hello\n", encoding="utf-8")
+    assert launch_claude(dummy, 1) == "ok"
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert env["ANTHROPIC_API_KEY"] == "anthropic-child-key"
+    assert "ANTHROPIC_BASE_URL" not in env
+    assert "parent-secret" not in env.values()
+    argv = captured["argv"]
+    assert isinstance(argv, list)
+    assert "--tools" in argv
+
+
 def test_kimi_passes_key_in_env_not_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

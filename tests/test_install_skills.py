@@ -16,3 +16,4 @@ def test_install_skills_writes_claude_codex_grok(tmp_path: Path) -> None:
     assert "packet-ask" in text
     assert "UNTRUSTED PROVIDER OUTPUT" in text
     assert "user-invocable: true" in text
+    assert "지금 이 세션을 돌리는 에이전트" in text
