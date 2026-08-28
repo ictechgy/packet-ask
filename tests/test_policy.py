@@ -26,3 +26,9 @@ def test_research_rejects_implicit_files_flag_name() -> None:
 def test_research_allows_include_files() -> None:
     """명시적 include-files 는 리서치에서 허용한다."""
     assert_allowed_task("research", "이 제안에 대한 외부 자료", files_flag="include-files")
+
+
+def test_research_rejects_diff() -> None:
+    """리서치는 로컬 diff 를 보내지 않는다."""
+    with pytest.raises(PolicyError, match="diff"):
+        assert_allowed_task("research", "조사해줘", has_diff=True)

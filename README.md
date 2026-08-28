@@ -58,6 +58,9 @@ packet-ask review --provider paste --files src/app.py --question "이 코드의 
 # GLM. 키는 PACKET_ASK_GLM_KEY
 packet-ask review --provider glm --diff HEAD --question "이 변경을 리뷰해줘"
 
+# 워킹 트리 미커밋 diff. 플래그 없이 review 하면 보내지 않습니다
+packet-ask review --provider paste --unstaged --question "이 변경을 리뷰해줘"
+
 # Anthropic Claude 서브. 키는 PACKET_ASK_CLAUDE_KEY. 부모 BASE_URL 은 바꾸지 않습니다
 packet-ask review --provider claude --files src/app.py --question "이 코드를 리뷰해줘"
 
@@ -67,7 +70,7 @@ packet-ask review --provider kimi --files src/app.py --question "이 코드를 �
 # grok/agy 는 아직 무도구 원샷을 실행하지 않고 paste 합니다
 packet-ask review --provider grok --files src/app.py --question "이 코드를 리뷰해줘"
 
-# 리서치. 로컬 파일은 기본 금지
+# 리서치. 로컬 파일·diff 는 기본 금지. 첨부는 --include-files 만
 packet-ask research --provider paste --question "Tailwind v4 마이그레이션에서 자주 깨지는 점"
 
 packet-ask doctor

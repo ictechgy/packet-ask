@@ -54,6 +54,8 @@ def _add_task_parser(sub: argparse._SubParsersAction, name: str, help_text: str)
     item.add_argument("--include-files", nargs="*", default=[], type=Path)
     item.add_argument("--diff")
     item.add_argument("--staged", action="store_true")
+    if name == "review":
+        item.add_argument("--unstaged", action="store_true")
     item.add_argument("--timeout", type=int, default=300)
     item.add_argument("--max-files", type=int, default=DEFAULT_MAX_FILES)
     item.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
@@ -87,9 +89,32 @@ def _collect_scope(args: argparse.Namespace, worktree: Path) -> tuple[list, str 
         diff_text = collect_git_diff(worktree, staged=True, max_bytes=budget)
     elif args.diff:
         diff_text = collect_git_diff(worktree, range_spec=args.diff, max_bytes=budget)
-    elif args.command == "review" and not scoped_files:
+    elif getattr(args, "unstaged", False):
         diff_text = collect_git_diff(worktree, unstaged=True, max_bytes=budget)
     return scoped_files, diff_text
+
+
+def _selector_flags(args: argparse.Namespace) -> tuple[str | None, bool]:
+    """파일 플래그 이름과 로컬 diff 여부를 본다."""
+    files_flag = None
+    if args.files:
+        files_flag = "files"
+    elif args.include_files:
+        files_flag = "include-files"
+    has_diff = bool(args.diff or args.staged or getattr(args, "unstaged", False))
+    return files_flag, has_diff
+
+
+def _require_explicit_review_scope(args: argparse.Namespace) -> None:
+    """review 는 워킹 트리 전체를 기본값으로 보내지 않는다."""
+    if args.command != "review":
+        return
+    if args.files or args.diff or args.staged or getattr(args, "unstaged", False):
+        return
+    raise PacketAskError(
+        "review는 --files, --diff, --staged, --unstaged 중 하나가 필요합니다.",
+        codes.SCOPE,
+    )
 
 
 def _run_install_skills() -> int:
@@ -154,17 +179,18 @@ def _run_task(args: argparse.Namespace) -> int:
         raise PacketAskError("research는 --question 이 필요합니다.", codes.USAGE)
     if not question.strip():
         question = "이 패킷을 검토하세요. 구현하지 마세요."
-    files_flag = None
-    if args.files:
-        files_flag = "files"
-    elif args.include_files:
-        files_flag = "include-files"
-    assert_allowed_task(args.command if args.command != "paste" else "review", question, files_flag)
+    files_flag, has_diff = _selector_flags(args)
+    mode = args.command if args.command != "paste" else "review"
+    assert_allowed_task(mode, question, files_flag, has_diff=has_diff)
+    _require_explicit_review_scope(args)
     worktree = resolve_worktree(Path.cwd())
     scoped_files, diff_text = _collect_scope(args, worktree)
     if args.command == "review" and not scoped_files and not diff_text:
-        raise PacketAskError("review는 --files, --diff, --staged 중 하나가 필요합니다.", codes.SCOPE)
-    parent = packet_cache_dir()
+        raise PacketAskError(
+            "review는 --files, --diff, --staged, --unstaged 중 하나가 필요합니다.",
+            codes.SCOPE,
+        )
+    parent = packet_cache_dir(worktree)
     packet = build_packet(
         mode=args.command,
         question=question,

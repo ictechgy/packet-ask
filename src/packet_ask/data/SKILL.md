@@ -27,6 +27,7 @@ allowed-tools:
 packet-ask providers
 packet-ask doctor
 packet-ask review --provider <id> --files <paths> --question "<질문>"
+packet-ask review --provider <id> --unstaged --question "<질문>"
 packet-ask research --provider <id> --question "<공개 질문>"
 packet-ask review --provider paste --files <paths> --question "<질문>"
 ```

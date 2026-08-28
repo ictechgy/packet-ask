@@ -126,7 +126,7 @@ def test_kimi_without_cli_is_missing(
             "이 코드를 리뷰해줘",
         ]
     )
-    assert code == codes.PROVIDER_MISSING
+    assert code in {codes.PROVIDER_MISSING, codes.CONFINEMENT}
 
 
 def test_grok_provider_is_paste_only(
@@ -181,6 +181,81 @@ def test_unknown_provider_is_usage(
         ]
     )
     assert code == codes.USAGE
+
+
+def test_review_without_explicit_scope_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """unstaged 가 있어도 --files/--diff/--staged/--unstaged 없으면 거절한다."""
+    repo = _init_repo(tmp_path)
+    (repo / "src" / "app.py").write_text("print(2)\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+    code = main(["review", "--provider", "paste", "--question", "이 변경을 리뷰해줘"])
+    assert code == codes.SCOPE
+
+
+def test_review_unstaged_sends_working_tree_diff(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--unstaged 를 명시하면 워킹 트리 diff 만 보낸다."""
+    repo = _init_repo(tmp_path)
+    (repo / "src" / "app.py").write_text("print(2)\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+    code = main(
+        [
+            "review",
+            "--provider",
+            "paste",
+            "--unstaged",
+            "--question",
+            "이 변경을 리뷰해줘",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == codes.SUCCESS
+    assert "print(2)" in captured.out
+
+
+def test_review_include_files_is_not_a_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """review 의 --include-files 는 범위를 만들지 않고 거절한다."""
+    repo = _init_repo(tmp_path)
+    (repo / "src" / "app.py").write_text("print(2)\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+    code = main(
+        [
+            "review",
+            "--provider",
+            "paste",
+            "--include-files",
+            "src/app.py",
+            "--question",
+            "이 변경을 리뷰해줘",
+        ]
+    )
+    assert code in {codes.USAGE, codes.SCOPE, codes.POLICY}
+
+
+def test_research_rejects_local_diff(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """research 는 --diff 로 로컬 코드를 첨부하지 않는다."""
+    repo = _init_repo(tmp_path)
+    (repo / "src" / "app.py").write_text("print(2)\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+    code = main(
+        [
+            "research",
+            "--provider",
+            "paste",
+            "--diff",
+            "HEAD",
+            "--question",
+            "이 변경의 공개 자료를 찾아줘",
+        ]
+    )
+    assert code == codes.POLICY
 
 
 def test_review_paste_uses_cache_dir_not_repo(

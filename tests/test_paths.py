@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from packet_ask import codes
 from packet_ask.errors import PacketAskError
 from packet_ask.paths import packet_cache_dir, resolve_trusted_executable, trusted_bin_dirs
 
@@ -45,6 +46,21 @@ def test_packet_cache_dir_is_not_under_cwd(
     assert path.name != ".packet-ask-tmp"
     with pytest.raises(ValueError):
         path.resolve().relative_to(tmp_path.resolve())
+
+
+def test_packet_cache_dir_rejects_path_under_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """중첩 cwd 에서도 워크트리 안 캐시는 거절한다."""
+    repo = tmp_path / "repo"
+    src = repo / "src"
+    src.mkdir(parents=True)
+    monkeypatch.chdir(src)
+    monkeypatch.setenv("PACKET_ASK_CACHE_DIR", str(repo / "cache"))
+    with pytest.raises(PacketAskError) as exc:
+        packet_cache_dir(worktree=repo.resolve())
+    assert exc.value.code == codes.CONFINEMENT
+    assert not (repo / "cache" / "packet-ask").exists()
 
 
 def test_trusted_executable_ignores_untrusted_path(

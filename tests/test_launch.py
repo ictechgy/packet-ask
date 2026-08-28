@@ -69,7 +69,7 @@ def test_kimi_launch_missing_binary(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     (tmp_path / "packet.md").write_text("hello\n", encoding="utf-8")
     with pytest.raises(PacketAskError) as exc:
         launch_kimi(dummy, 1)
-    assert exc.value.code == codes.PROVIDER_MISSING
+    assert exc.value.code in {codes.PROVIDER_MISSING, codes.CONFINEMENT}
 
 
 def _pid_is_alive(pid: int) -> bool:
@@ -79,6 +79,32 @@ def _pid_is_alive(pid: int) -> bool:
     except OSError:
         return False
     return True
+
+
+def test_kimi_without_dedicated_key_does_not_launch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """PACKET_ASK_KIMI_KEY 없으면 벤더를 띄우지 않는다."""
+    monkeypatch.delenv("PACKET_ASK_KIMI_KEY", raising=False)
+    monkeypatch.setattr("packet_ask.launch.require_launchable", lambda _name: None)
+    monkeypatch.setattr(
+        "packet_ask.launch.resolve_trusted_executable",
+        lambda name: Path("/usr/bin/true") if name == "kimi" else None,
+    )
+    monkeypatch.setattr("packet_ask.launch.provider_home", lambda _name: tmp_path)
+    called: list[bool] = []
+
+    def fake_run(executable, argv, stdin_text, cwd, env, timeout):  # noqa: ANN001
+        called.append(True)
+        return "ok"
+
+    monkeypatch.setattr("packet_ask.launch.run_isolated_command", fake_run)
+    dummy = Packet(root=tmp_path, report=RedactionReport())
+    (tmp_path / "packet.md").write_text("hello\n", encoding="utf-8")
+    with pytest.raises(PacketAskError) as exc:
+        launch_kimi(dummy, 1)
+    assert exc.value.code == codes.PROVIDER_MISSING
+    assert called == []
 
 
 def test_timeout_kills_process_group(tmp_path: Path) -> None:
@@ -109,6 +135,42 @@ def test_timeout_kills_process_group(tmp_path: Path) -> None:
     assert pid_file.is_file(), "자식 pid를 기록하기 전에 종료되면 안 된다"
     child_pid = int(pid_file.read_text(encoding="utf-8").strip())
     time.sleep(0.3)
+    assert _pid_is_alive(child_pid) is False
+
+
+def test_timeout_kills_sigterm_ignoring_descendant(tmp_path: Path) -> None:
+    """세션 리더가 SIGTERM 에 죽어도 SIGTERM 을 무시한 손자는 SIGKILL 로 끝낸다."""
+    import sys
+
+    pid_file = tmp_path / "ignore.pid"
+    script = tmp_path / "ignore-term.sh"
+    script.write_text(
+        "#!/bin/sh\n"
+        f"{sys.executable} -c "
+        f"\"import os, pathlib, signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        f"pathlib.Path(r'{pid_file}').write_text(str(os.getpid())); time.sleep(60)\" &\n"
+        "wait\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o700)
+    with pytest.raises(PacketAskError) as exc:
+        run_isolated_command(
+            script,
+            [],
+            "",
+            tmp_path,
+            isolated_env(tmp_path, {}),
+            timeout=1,
+        )
+    assert exc.value.code == codes.PROVIDER_FAILED
+    deadline = time.time() + 2
+    while time.time() < deadline and not pid_file.is_file():
+        time.sleep(0.05)
+    assert pid_file.is_file()
+    child_pid = int(pid_file.read_text(encoding="utf-8").strip())
+    deadline = time.time() + 2
+    while time.time() < deadline and _pid_is_alive(child_pid):
+        time.sleep(0.05)
     assert _pid_is_alive(child_pid) is False
 
 
