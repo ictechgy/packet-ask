@@ -1,8 +1,8 @@
 # packet-ask
 
-개인용 Kimi Code·GLM Coding Plan 구독을 **메인 에이전트가 아니라 서브**로 쓰기 위한 로컬 CLI입니다.
+스크럽된 패킷만 **서브** 에이전트에 보내는 로컬 CLI입니다. 메인은 지금 세션을 돌리는 에이전트입니다.
 
-메인(Grok / Claude / Codex)은 워크트리를 그대로 다룹니다. 이 도구는 고른 파일·diff만 스크럽해서, 공식 도구가 그것만 보게 하거나, 붙여넣을 `packet.md`를 만듭니다.
+이 도구는 고른 파일·diff만 스크럽해서, 공식 도구가 그것만 보게 하거나, 붙여넣을 `packet.md`를 만듭니다.
 
 > 이 도구는 의도적으로 보내는 범위를 줄입니다. 유출이 없음도, 학습되지 않음도 보장하지 않습니다. 벤더 약관은 그대로입니다. 자세한 내용은 [SECURITY.md](SECURITY.md)를 보세요.
 
@@ -12,9 +12,9 @@ MIT 라이선스입니다. 전문은 [LICENSE](LICENSE)를 보세요.
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) 0.10.9+ (`pyproject.toml` 의 `uv_build` 하한과 같습니다)
-- GLM 실행: 신뢰 경로의 공식 `claude` CLI
+- GLM / Claude 서브 실행: 신뢰 경로의 공식 `claude` CLI
 - Kimi 실행: 신뢰 경로의 공식 `kimi` CLI
-- `paste` 프로바이더는 벤더 CLI가 없어도 됩니다
+- `paste` / `grok` / `agy` 는 벤더를 띄우지 않고 패킷만 출력합니다
 
 키는 환경변수로만 넘깁니다. **이 도구는 `.env` 파일을 읽지 않습니다.** 명령줄에 키 값을 적지 마세요. 셸 히스토리에 남습니다. `.env` 는 저장소에서 무시합니다. 변수 이름은 [.env.example](.env.example)을 참고하세요. 신뢰 경로(공식 CLI를 찾는 디렉터리)는 [SECURITY.md](SECURITY.md)를 보세요.
 
@@ -41,14 +41,22 @@ packet-ask install-skills
 ## 사용
 
 ```bash
+uv run packet-ask providers
+
 # 벤더를 실행하지 않고 패킷만 본다
 uv run packet-ask review --provider paste --files src/app.py --question "이 코드의 경쟁 상태를 찾아줘"
 
-# GLM. 키는 미리 환경에만 두고 명령줄에 값을 적지 마세요
+# GLM. 키는 PACKET_ASK_GLM_KEY
 uv run packet-ask review --provider glm --diff HEAD --question "이 변경을 리뷰해줘"
 
-# Kimi. 키는 PACKET_ASK_KIMI_KEY 환경변수입니다
+# Anthropic Claude 서브. 키는 PACKET_ASK_CLAUDE_KEY. 부모 BASE_URL 은 바꾸지 않습니다
+uv run packet-ask review --provider claude --files src/app.py --question "이 코드를 리뷰해줘"
+
+# Kimi. 키는 PACKET_ASK_KIMI_KEY
 uv run packet-ask review --provider kimi --files src/app.py --question "이 코드를 리뷰해줘"
+
+# grok/agy 는 아직 무도구 원샷을 실행하지 않고 paste 합니다
+uv run packet-ask review --provider grok --files src/app.py --question "이 코드를 리뷰해줘"
 
 # 리서치. 로컬 파일은 기본 금지
 uv run packet-ask research --provider paste --question "Tailwind v4 마이그레이션에서 자주 깨지는 점"
@@ -61,6 +69,14 @@ Kimi는 공식 `kimi --quiet` 원샷입니다. 대화형 세션을 열지 않습
 GLM은 공식 `claude` 바이너리를 쓰되, **부모 셸의 `ANTHROPIC_BASE_URL` 은 바꾸지 않습니다.** 자식 환경에만 [Z.ai Claude Code 연동](https://docs.z.ai/scenario-example/develop-tools/claude) 엔드포인트와 `PACKET_ASK_GLM_KEY` 를 넣습니다.
 
 패킷 임시 디렉터리는 워크트리가 아니라 OS 캐시에 만듭니다. cwd는 샌드박스가 아닙니다. `.gitignore` 의 `.packet-ask-tmp/` 와 `packet.md` 는 예전 산출물이나 실수로 만든 파일을 커밋하지 않기 위한 방어입니다.
+
+사용자 설정 `~/.config/packet-ask/providers.toml` 은 **paste 별명만** 추가합니다. 실행 파일·argv·env 는 받지 않습니다.
+
+```toml
+version = 1
+[providers.gemini]
+label = "Gemini CLI"
+```
 
 ## 스킬
 

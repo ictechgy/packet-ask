@@ -1,6 +1,10 @@
 # packet-ask 설계
 
-개인 코딩 구독(Kimi Code, GLM 개인 Coding Plan)을 메인 에이전트가 아니라 **서브**로 쓰기 위한 로컬 CLI.
+메인은 지금 세션을 돌리는 에이전트다. 서브만 스크럽된 패킷을 받는다.
+
+실행형 내장: `paste`(출력만), `glm`, `kimi`, `claude`.
+paste 전용 내장: `grok`, `agy` (무도구 원샷 계약 확인 전).
+사용자 `providers.toml` 은 paste 별명만 추가한다. 실행 파일은 지정할 수 없다.
 
 ## 목표
 

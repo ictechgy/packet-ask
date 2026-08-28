@@ -26,6 +26,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 | 변수 | 용도 |
 | --- | --- |
 | `PACKET_ASK_GLM_KEY` | GLM Coding Plan 키. 전역 Anthropic 키 금지 |
+| `PACKET_ASK_CLAUDE_KEY` | Anthropic Claude 서브 키. 전역 Anthropic 키 금지 |
 | `PACKET_ASK_KIMI_KEY` | Kimi 키. 디스크에 쓰지 않음 |
 | `PACKET_ASK_CACHE_DIR` | 패킷 캐시 위치 재지정 |
 | `PACKET_ASK_CLAUDE_BIN` / `PACKET_ASK_KIMI_BIN` | 절대경로 실행 파일 재지정 |
