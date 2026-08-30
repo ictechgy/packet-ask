@@ -32,13 +32,19 @@ packet-ask review --provider glm --credential-source prompt ...
 interactive `-w` prompt. The key is not placed in packet-ask argv, stdout,
 stderr, or shell history. Noninteractive calls fail instead of waiting.
 
-`--access command` is the default and trusts the fixed `/usr/bin/security`
-binary so background agents can retrieve the item without a GUI approval. It
+`--access` is required so the user must choose the Keychain threat model.
+`--access command` trusts the fixed `/usr/bin/security` binary so background
+agents can retrieve the item without a GUI approval. It
 protects the key at rest but is not a boundary against another process already
 running as the same user, because that process can invoke `/usr/bin/security`.
 `--access prompt` stores the item with no trusted application (`-T ""`) and asks
 macOS for approval on each password read. That mode can fail in headless or
 background sessions where the approval UI is unavailable.
+
+After a successful `command` save, packet-ask immediately reads the canonical
+item back without printing it. This validates both the stored value shape and
+headless retrievability, catching macOS versions or existing-item updates that
+do not apply the requested trusted-application ACL.
 
 ## Security invariants
 
