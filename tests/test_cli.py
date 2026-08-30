@@ -1,12 +1,15 @@
 """CLI 종료 코드와 paste 출력."""
 
+import argparse
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from packet_ask import codes
+from packet_ask import cli
 from packet_ask.cli import main
+from packet_ask.errors import PacketAskError
 from packet_ask.keysource import CredentialStatus
 
 
@@ -60,6 +63,34 @@ def test_research_requires_question() -> None:
     """research 는 질문이 없으면 usage 오류."""
     code = main(["research", "--provider", "paste"])
     assert code == codes.USAGE
+
+
+@pytest.mark.parametrize(
+    ("command", "files", "include_files"),
+    [
+        ("research", [Path("a.py")], []),
+        ("review", [], [Path("a.py")]),
+    ],
+)
+def test_collect_scope_rejects_wrong_mode_file_flags(
+    tmp_path: Path,
+    command: str,
+    files: list[Path],
+    include_files: list[Path],
+) -> None:
+    """policy 호출 순서가 바뀌어도 scope 계층이 잘못된 플래그를 버리지 않는다."""
+    args = argparse.Namespace(
+        command=command,
+        files=files,
+        include_files=include_files,
+        max_files=25,
+        max_bytes=256 * 1024,
+        staged=False,
+        diff=None,
+        unstaged=False,
+    )
+    with pytest.raises(PacketAskError):
+        cli._collect_scope(args, tmp_path)
 
 
 def test_claude_without_dedicated_key(
@@ -474,6 +505,73 @@ def test_review_paste_uses_cache_dir_not_repo(
     assert not (repo / ".packet-ask-tmp").exists()
     leftovers = list(cache.glob("packet-ask-*")) if cache.exists() else []
     assert leftovers == []
+
+
+def test_success_cleanup_failure_emits_no_success_body(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """packet 삭제 실패 시 성공 stdout을 먼저 내보내지 않는다."""
+    repo = _init_repo(tmp_path / "repo")
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("PACKET_ASK_CACHE_DIR", str(tmp_path / "cache"))
+
+    def fail_destroy(_packet: object) -> None:
+        raise OSError("blocked")
+
+    monkeypatch.setattr("packet_ask.packet.Packet.destroy", fail_destroy)
+    code = main(
+        [
+            "review",
+            "--provider",
+            "paste",
+            "--files",
+            "src/app.py",
+            "--question",
+            "review",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == codes.INTERNAL
+    assert captured.out == ""
+    assert "temporary packet" in captured.err.lower()
+
+
+def test_cleanup_failure_does_not_mask_provider_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """provider 실패 뒤 cleanup 오류는 원래 종료 코드를 바꾸지 않는다."""
+    repo = _init_repo(tmp_path / "repo")
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("PACKET_ASK_CACHE_DIR", str(tmp_path / "cache"))
+
+    def fail_provider(*_args: object, **_kwargs: object) -> str:
+        raise PacketAskError("provider failed", codes.PROVIDER_FAILED)
+
+    def fail_destroy(_packet: object) -> None:
+        raise OSError("blocked")
+
+    monkeypatch.setattr("packet_ask.cli._execute_provider", fail_provider)
+    monkeypatch.setattr("packet_ask.packet.Packet.destroy", fail_destroy)
+    code = main(
+        [
+            "review",
+            "--provider",
+            "paste",
+            "--files",
+            "src/app.py",
+            "--question",
+            "review",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == codes.PROVIDER_FAILED
+    assert captured.out == ""
+    assert "provider failed" in captured.err
+    assert "clean" in captured.err.lower()
 
 
 def test_credentials_status_does_not_print_key(

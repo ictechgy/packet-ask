@@ -60,9 +60,12 @@ _PHONE_RE = re.compile(
     r"(?<!\d)(?:\+82[-\s]?)?0?1[016789][-\s]?\d{3,4}[-\s]?\d{4}(?!\d)"
 )
 # 재검증용. 스크럽 패턴과 완전히 같으면 놓친 형식을 같이 놓친다.
-_VERIFY_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+_VERIFY_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 _VERIFY_PHONE_RE = re.compile(r"(?:\+82|0)1[016789]\d{7,8}")
 _VERIFY_KEY_RE = re.compile(r"\b(?:sk-|gh[pousr]_|AKIA|github_pat_)[A-Za-z0-9_-]{8,}")
+_VERIFY_PRIVATE_KEY_HEADER_RE = re.compile(
+    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----"
+)
 _VERIFY_SECRET_LITERAL_RE = re.compile(
     rf'(?i)(?<![A-Za-z0-9_.-])(?:[\'\"]{_SECRET_KEY_FRAGMENT}[\'\"]|'
     rf'{_SECRET_KEY_FRAGMENT})\s*[:=]\s*(?P<quote>[\'\"])(?!\[REDACTED\](?P=quote))'
@@ -84,6 +87,27 @@ class RedactionReport:
     emails: int = 0
     phones: int = 0
     extras: dict[str, int] = field(default_factory=dict)
+
+
+_PUBLIC_REDACTION_FIELDS = (
+    "private_key_blocks",
+    "secret_lines",
+    "secret_values",
+    "home_paths",
+    "emails",
+    "phones",
+)
+
+
+def public_redaction_counts(report: RedactionReport) -> dict[str, int]:
+    """receipt/manifest에 허용된 비민감 count만 복사한다."""
+    counts: dict[str, int] = {}
+    for name in _PUBLIC_REDACTION_FIELDS:
+        value = getattr(report, name)
+        if type(value) is not int or value < 0:
+            raise RedactionError(message("redaction_report_invalid"))
+        counts[name] = value
+    return counts
 
 
 def _redact_secret_rest(rest: str) -> str:
@@ -226,7 +250,7 @@ def verify_scrubbed(text: str, home: str | None = None) -> None:
     compact = re.sub(r"[\s-]", "", text)
     if _VERIFY_PHONE_RE.search(compact):
         leftovers.append("phone")
-    if _VERIFY_KEY_RE.search(text) or "PRIVATE KEY-----" in text:
+    if _VERIFY_KEY_RE.search(text) or _VERIFY_PRIVATE_KEY_HEADER_RE.search(text):
         leftovers.append("secret")
     if _VERIFY_SECRET_LITERAL_RE.search(text):
         leftovers.append("secret_literal")

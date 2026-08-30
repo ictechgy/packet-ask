@@ -1,11 +1,17 @@
 """워크트리 스코프 수집과 거절 규칙."""
 
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from packet_ask.errors import BudgetError, ScopeError
-from packet_ask.scope import collect_files, collect_git_diff, is_secret_path, resolve_worktree
+from packet_ask.scope import (
+    collect_files,
+    collect_git_diff,
+    is_secret_path,
+    resolve_worktree,
+)
 
 
 def _init_repo(root: Path) -> Path:
@@ -27,6 +33,47 @@ def test_resolve_worktree(tmp_path: Path) -> None:
     """git 루트를 반환한다."""
     repo = _init_repo(tmp_path)
     assert resolve_worktree(repo / "src") == repo.resolve()
+
+
+def test_resolve_worktree_uses_bounded_metadata_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """worktree discovery도 bounded process 정책을 우회하지 않는다."""
+    captured: dict[str, object] = {}
+
+    def bounded(worktree: Path, extra: list[str], max_bytes: int) -> str:
+        captured["worktree"] = worktree
+        captured["extra"] = extra
+        captured["max_bytes"] = max_bytes
+        raise ScopeError("timeout")
+
+    monkeypatch.setattr("packet_ask.scope.run_bounded_git", bounded)
+    with pytest.raises(ScopeError):
+        resolve_worktree(tmp_path)
+    assert captured["extra"] == ["rev-parse", "--show-toplevel"]
+    assert captured["max_bytes"] == 4096
+
+
+def test_resolve_worktree_caps_metadata_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """rev-parse의 비정상적으로 큰 stdout을 경로로 받아들이지 않는다."""
+    monkeypatch.setattr("packet_ask.scope.run_bounded_git", lambda *_args: "x" * 5000)
+    with pytest.raises(ScopeError):
+        resolve_worktree(tmp_path)
+
+
+def test_bounded_git_runner_has_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """모든 bounded git 호출은 공통 deadline을 적용한다."""
+    script = tmp_path / "git"
+    script.write_text("#!/bin/sh\nsleep 60\n", encoding="utf-8")
+    script.chmod(0o700)
+    monkeypatch.setenv("PACKET_ASK_GIT_BIN", str(script))
+    monkeypatch.setattr("packet_ask.scope.GIT_TIMEOUT_SECONDS", 0)
+    with pytest.raises(ScopeError):
+        resolve_worktree(tmp_path)
 
 
 def test_rejects_secret_filename(tmp_path: Path) -> None:
@@ -147,18 +194,26 @@ def test_git_diff_disables_textconv(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     repo = _init_repo(tmp_path)
     (repo / "src" / "app.py").write_text("print(2)\n", encoding="utf-8")
     seen: list[list[str]] = []
+    seen_envs: list[dict[str, str]] = []
     real = subprocess.Popen
 
     def wrapper(*args: object, **kwargs: object) -> subprocess.Popen[bytes]:
         cmd = list(args[0]) if args else list(kwargs.get("args", []))  # type: ignore[arg-type]
         seen.append([str(part) for part in cmd])
+        env = kwargs.get("env")
+        if isinstance(env, dict):
+            seen_envs.append(env)
         return real(*args, **kwargs)
 
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "parent-secret")
     monkeypatch.setattr("packet_ask.scope.subprocess.Popen", wrapper)
     collect_git_diff(repo, unstaged=True)
     joined = [" ".join(item) for item in seen]
     assert any("--no-textconv" in item for item in joined)
     assert any("--name-status" in item and "-z" in item for item in joined)
+    assert seen_envs
+    assert all("ANTHROPIC_API_KEY" not in env for env in seen_envs)
+    assert all("parent-secret" not in env.values() for env in seen_envs)
 
 
 def test_collect_git_diff_budget(tmp_path: Path) -> None:
@@ -167,3 +222,55 @@ def test_collect_git_diff_budget(tmp_path: Path) -> None:
     (repo / "src" / "app.py").write_text("x" * 10_000, encoding="utf-8")
     with pytest.raises(BudgetError):
         collect_git_diff(repo, unstaged=True, max_bytes=100)
+
+
+def test_git_interrupt_kills_process_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ctrl+C가 bounded git 자식 그룹을 고아로 남기지 않는다."""
+    script = tmp_path / "git"
+    script.write_text("#!/bin/sh\nsleep 60\n", encoding="utf-8")
+    script.chmod(0o700)
+    monkeypatch.setenv("PACKET_ASK_GIT_BIN", str(script))
+    holder: dict[str, subprocess.Popen[bytes]] = {}
+    real_popen = subprocess.Popen
+
+    def spy(*args: object, **kwargs: object) -> subprocess.Popen[bytes]:
+        proc = real_popen(*args, **kwargs)
+        holder["proc"] = proc
+        return proc
+
+    def interrupt(*_args: object, **_kwargs: object) -> tuple[list[object], list[object], list[object]]:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("packet_ask.scope.subprocess.Popen", spy)
+    monkeypatch.setattr("packet_ask.scope.select.select", interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        collect_git_diff(tmp_path, unstaged=True)
+    assert holder["proc"].poll() is not None
+
+
+def test_git_setup_interrupt_kills_process_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """stdout nonblocking 설정 중 Ctrl+C도 생성된 git 그룹을 종료한다."""
+    script = tmp_path / "git"
+    script.write_text("#!/bin/sh\nsleep 60\n", encoding="utf-8")
+    script.chmod(0o700)
+    monkeypatch.setenv("PACKET_ASK_GIT_BIN", str(script))
+    holder: dict[str, subprocess.Popen[bytes]] = {}
+    real_popen = subprocess.Popen
+
+    def spy(*args: object, **kwargs: object) -> subprocess.Popen[bytes]:
+        proc = real_popen(*args, **kwargs)
+        holder["proc"] = proc
+        return proc
+
+    def interrupt(*_args: object, **_kwargs: object) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("packet_ask.scope.subprocess.Popen", spy)
+    monkeypatch.setattr("packet_ask.scope.os.set_blocking", interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        collect_git_diff(tmp_path, unstaged=True)
+    assert holder["proc"].poll() is not None

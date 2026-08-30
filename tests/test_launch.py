@@ -175,6 +175,42 @@ def test_timeout_kills_process_group(tmp_path: Path) -> None:
     assert _pid_is_alive(child_pid) is False
 
 
+def test_interrupt_kills_provider_process_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ctrl+C가 새 세션의 provider 자식을 고아로 남기지 않는다."""
+    import subprocess
+
+    from packet_ask import launch
+
+    script = tmp_path / "provider.sh"
+    script.write_text("#!/bin/sh\nsleep 60\n", encoding="utf-8")
+    script.chmod(0o700)
+    holder: dict[str, subprocess.Popen[str]] = {}
+    real_spawn = launch._spawn_isolated
+
+    def spy(*args: object, **kwargs: object) -> subprocess.Popen[str]:
+        proc = real_spawn(*args, **kwargs)  # type: ignore[arg-type]
+        holder["proc"] = proc
+        return proc
+
+    def interrupt(*_args: object, **_kwargs: object) -> tuple[list[object], list[object], list[object]]:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("packet_ask.launch._spawn_isolated", spy)
+    monkeypatch.setattr("packet_ask.launch.select.select", interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        run_isolated_command(
+            script,
+            [],
+            "",
+            tmp_path,
+            isolated_env(tmp_path, {}),
+            timeout=5,
+        )
+    assert holder["proc"].poll() is not None
+
+
 def test_timeout_kills_sigterm_ignoring_descendant(tmp_path: Path) -> None:
     """세션 리더가 SIGTERM 에 죽어도 SIGTERM 을 무시한 손자는 SIGKILL 로 끝낸다."""
     import sys

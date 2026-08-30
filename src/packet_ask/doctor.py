@@ -69,7 +69,7 @@ def _help_text(executable: str) -> str | None:
     if key is not None and key in _HELP_CACHE:
         return _HELP_CACHE[key]
     text = _run_help(path)
-    if key is not None:
+    if key is not None and text is not None:
         _HELP_CACHE[key] = text
     return text
 

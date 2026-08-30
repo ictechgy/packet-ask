@@ -95,9 +95,13 @@ def run_isolated_command(
     timeout: int,
 ) -> str:
     """stdin으로 패킷을 넣고 stdout만 돌려받는다. timeout 시 프로세스 그룹을 죽인다."""
-    proc = _spawn_isolated(executable, argv, cwd, env)
-    pgid = proc.pid
     try:
+        proc = _spawn_isolated(executable, argv, cwd, env)
+    except OSError as exc:
+        raise PacketAskError(message("provider_failed"), codes.PROVIDER_FAILED) from exc
+    pgid: int | None = None
+    try:
+        pgid = proc.pid
         stdout, stderr = _communicate_bounded(proc, stdin_text, timeout, pgid)
         proc.wait(timeout=1)
     except subprocess.TimeoutExpired as exc:
@@ -109,6 +113,9 @@ def run_isolated_command(
     except (OSError, ValueError) as exc:
         _kill_process_group(proc, pgid)
         raise PacketAskError(message("provider_failed"), codes.PROVIDER_FAILED) from exc
+    except BaseException:
+        _kill_process_group(proc, pgid)
+        raise
     if proc.returncode != 0:
         raise PacketAskError(message("provider_failed"), codes.PROVIDER_FAILED)
     if _utf8_size(stdout) > MAX_OUTPUT_BYTES or _utf8_size(stderr) > MAX_OUTPUT_BYTES:
@@ -351,7 +358,7 @@ def launch_glm(
     key = _require_glm_key(credential_source)
     executable = _require_executable("claude")
     home = provider_home("glm")
-    stdin_text = (packet.root / "packet.md").read_text(encoding="utf-8")
+    stdin_text = packet.payload_text()
     env = isolated_env(home, _glm_child_env(home, key))
     output = run_isolated_command(
         executable,
@@ -382,7 +389,7 @@ def launch_claude(
     key = _require_claude_key(credential_source)
     executable = _require_executable("claude")
     home = provider_home("claude")
-    stdin_text = (packet.root / "packet.md").read_text(encoding="utf-8")
+    stdin_text = packet.payload_text()
     env = isolated_env(home, _claude_child_env(home, key))
     output = run_isolated_command(
         executable,
@@ -483,7 +490,7 @@ def launch_kimi(
     skills_dir.mkdir(exist_ok=True)
     skills_dir.chmod(0o700)
     env = isolated_env(home, _kimi_child_env(home, kimi_home, api_key))
-    stdin_text = (packet.root / "packet.md").read_text(encoding="utf-8")
+    stdin_text = packet.payload_text()
     argv = kimi_launch_args(packet.root, agent_file, skills_dir)
     try:
         output = run_isolated_command(

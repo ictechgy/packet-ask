@@ -9,7 +9,7 @@ from pathlib import Path
 
 from packet_ask import codes
 from packet_ask.errors import PacketAskError
-from packet_ask.text import message
+from packet_ask.text import language, message
 
 BUILTIN_IDS = frozenset({"paste", "glm", "kimi", "claude", "grok", "agy"})
 _FORBIDDEN_TOML_KEYS = frozenset(
@@ -111,6 +111,7 @@ def builtin_providers() -> list[ProviderSpec]:
 
 
 _UNSET = object()
+_USER_ALIAS_CACHE: dict[tuple[str, int, int, str], tuple[ProviderSpec, ...]] = {}
 
 
 def load_catalog(user_file: Path | None | object = _UNSET) -> list[ProviderSpec]:
@@ -144,6 +145,9 @@ def lookup_provider(provider_id: str, catalog: list[ProviderSpec] | None = None)
 
 def _load_user_aliases(path: Path) -> list[ProviderSpec]:
     """paste 별명만 읽는다. 실행 필드는 파일 전체를 거절한다."""
+    key = _user_alias_cache_key(path)
+    if key is not None and key in _USER_ALIAS_CACHE:
+        return list(_USER_ALIAS_CACHE[key])
     try:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError) as exc:
@@ -158,7 +162,24 @@ def _load_user_aliases(path: Path) -> list[ProviderSpec]:
     aliases: list[ProviderSpec] = []
     for raw_id, body in table.items():
         aliases.append(_parse_user_alias(raw_id, body))
+    if key is not None:
+        for stale in [item for item in _USER_ALIAS_CACHE if item[0] == key[0]]:
+            _USER_ALIAS_CACHE.pop(stale, None)
+        _USER_ALIAS_CACHE[key] = tuple(aliases)
     return aliases
+
+
+def _user_alias_cache_key(path: Path) -> tuple[str, int, int, str] | None:
+    """overlay 내용과 기본 note 언어를 반영하는 프로세스 수명 캐시 키."""
+    try:
+        info = path.stat()
+    except OSError:
+        return None
+    try:
+        canonical = str(path.resolve())
+    except OSError:
+        return None
+    return (canonical, int(info.st_mtime_ns), int(info.st_size), language())
 
 
 def _parse_user_alias(raw_id: str, body: object) -> ProviderSpec:

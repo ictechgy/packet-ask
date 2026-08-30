@@ -1,10 +1,11 @@
 """패킷 디렉터리 생성과 스크럽 반영."""
 
+import subprocess
 from pathlib import Path
 
 import pytest
 
-from packet_ask.errors import RedactionFailed
+from packet_ask.errors import BudgetError, RedactionFailed, ScopeError
 from packet_ask.packet import build_packet
 from packet_ask.scope import ScopedFile
 
@@ -80,21 +81,20 @@ def test_packet_stores_payload_away_from_control_files(tmp_path: Path) -> None:
     packet.destroy()
 
 
-def test_git_boundary_does_not_copy_parent_keys(
+def test_git_boundary_uses_bounded_runner(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """패킷 git init 은 부모 클라우드 키를 물려주지 않는다."""
-    import subprocess
-
+    """패킷 git init도 공통 bounded runner와 metadata 상한을 쓴다."""
     captured: dict[str, object] = {}
-    real = subprocess.run
 
-    def wrapper(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        captured["env"] = kwargs.get("env")
-        return real(*args, **kwargs)
+    def bounded(worktree: Path, extra: list[str], max_bytes: int) -> str:
+        captured["worktree"] = worktree
+        captured["extra"] = extra
+        captured["max_bytes"] = max_bytes
+        (worktree / ".git").mkdir()
+        return ""
 
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "parent-secret")
-    monkeypatch.setattr("packet_ask.packet.subprocess.run", wrapper)
+    monkeypatch.setattr("packet_ask.packet.run_bounded_git", bounded)
     files = [ScopedFile(relative="a.py", content="x = 1\n")]
     packet = build_packet(
         mode="review",
@@ -103,10 +103,33 @@ def test_git_boundary_does_not_copy_parent_keys(
         diff_text=None,
         parent=tmp_path,
     )
-    env = captured["env"]
-    assert isinstance(env, dict)
-    assert "parent-secret" not in env.values()
-    assert "ANTHROPIC_API_KEY" not in env
+    assert captured["extra"] == ["init"]
+    assert captured["max_bytes"] == 4096
+    packet.destroy()
+
+
+def test_packet_git_boundary_runner_does_not_copy_parent_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """공통 runner로 수렴해도 packet git init의 최소 env 계약을 유지한다."""
+    captured: list[dict[str, str]] = []
+    real_popen = subprocess.Popen
+
+    def spy(*args: object, **kwargs: object) -> subprocess.Popen[bytes]:
+        command = [str(part) for part in args[0]] if args else []  # type: ignore[index]
+        env = kwargs.get("env")
+        if "init" in command and isinstance(env, dict):
+            captured.append(env)
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "parent-secret")
+    monkeypatch.setenv("GIT_DIR", str(tmp_path / "outside.git"))
+    monkeypatch.setattr("packet_ask.scope.subprocess.Popen", spy)
+    packet = build_packet("review", "review", [], None, tmp_path / "packets")
+    assert captured
+    assert all("ANTHROPIC_API_KEY" not in env for env in captured)
+    assert all("parent-secret" not in env.values() for env in captured)
+    assert all("GIT_DIR" not in env for env in captured)
     packet.destroy()
 
 
@@ -121,3 +144,45 @@ def test_packet_rejects_git_relative_path(tmp_path: Path) -> None:
             diff_text=None,
             parent=tmp_path,
         )
+
+
+def test_packet_git_init_timeout_is_redaction_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """packet-local git init의 timeout은 traceback 대신 안정된 오류가 된다."""
+    monkeypatch.setattr(
+        "packet_ask.packet.run_bounded_git",
+        lambda *_args: (_ for _ in ()).throw(ScopeError("timeout")),
+    )
+    with pytest.raises(RedactionFailed):
+        build_packet("review", "review", [], None, tmp_path / "packets")
+    assert list((tmp_path / "packets").glob("packet-ask-*")) == []
+
+
+def test_packet_git_init_nonzero_is_redaction_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """git init 실패는 CalledProcessError를 외부로 노출하지 않는다."""
+    monkeypatch.setattr(
+        "packet_ask.packet.run_bounded_git",
+        lambda *_args: (_ for _ in ()).throw(BudgetError("too large")),
+    )
+    with pytest.raises(RedactionFailed):
+        build_packet("review", "review", [], None, tmp_path / "packets")
+
+
+def test_built_packet_reuses_cached_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """receipt와 launch용 payload·digest를 packet.md에서 반복해 읽지 않는다."""
+    packet = build_packet("review", "review", [], None, tmp_path / "packets")
+
+    def fail_read(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("packet.md must use the in-memory payload")
+
+    monkeypatch.setattr(Path, "read_text", fail_read)
+    monkeypatch.setattr(Path, "read_bytes", fail_read)
+    assert "# Task" in packet.payload_text()
+    assert packet.payload_bytes().startswith(b"# Task")
+    assert len(packet.payload_digest()) == 64
+    packet.destroy()
