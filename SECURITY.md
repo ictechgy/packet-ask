@@ -25,6 +25,9 @@ How personal Kimi Code or GLM Coding Plan subscriptions handle data is defined b
 - The final rendered `packet.md`, not only its source fragments, must fit `--max-bytes`. Binary and non-UTF-8 explicit files are rejected.
 - ANSI CSI/OSC/DCS and unsafe control characters are removed from vendor output. Receipt paths are JSON escaped.
 - Tool-owned provider profile directories reject final-component symlinks. A Kimi session cleanup failure is reported rather than silently ignored.
+- Worktree discovery, diff collection, and packet-local Git initialization use one bounded runner with process-group termination on timeout, output excess, and interrupts.
+- Success output is withheld until the temporary packet is removed. Cleanup failure cannot replace an existing provider failure code.
+- Receipt and manifest redaction metadata use an exact allowlist of non-negative integer counters; internal report fields are never serialized.
 
 ## What this tool does not do
 

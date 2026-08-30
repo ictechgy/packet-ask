@@ -32,6 +32,10 @@ paste 전용 내장: `grok`, `agy` (무도구 원샷 계약 확인 전).
 16. credential source는 `auto`/`env`/`keychain`/`prompt`만 허용한다. `auto`는 전용 env 다음 packet-ask canonical macOS Keychain만 보고 prompt하지 않는다.
 17. 실제 선택된 key는 저장 위치와 무관하게 벤더 출력의 원문·터미널 정규화 결과 모두에서 반사 여부를 검사한다.
 18. macOS Keychain 저장은 `command`(고정 `/usr/bin/security` 신뢰, background 사용)와 `prompt`(trusted app 없음, 매회 사용자 승인)를 구분한다. 둘의 위협 모델을 같은 것으로 주장하지 않는다.
+19. worktree discovery, diff, packet-local `git init`은 같은 bounded Git runner를 써 deadline·출력 상한·interrupt group kill을 공유한다.
+20. provider 성공 stdout과 timing은 packet cleanup 뒤에만 공개한다. 기존 실패가 있으면 cleanup 경고가 원래 종료 코드를 가리지 않는다.
+21. 공개 redaction metadata는 허용된 음이 아닌 정수 count만 직렬화한다.
+22. `Packet`은 렌더링 text/bytes/digest를 소유하고 receipt·launch가 재사용한다. user provider overlay는 path·mtime·size·언어로 캐시한다.
 
 ## 금지
 

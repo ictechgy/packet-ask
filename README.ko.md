@@ -114,6 +114,13 @@ password를 읽지 않고 항목 존재만 확인합니다. 어느 source에서 
 
 패킷 임시 디렉터리는 git 워크트리가 아니라 OS 캐시에 만듭니다. cwd는 샌드박스가 아닙니다. `PACKET_ASK_CACHE_DIR` 을 워크트리 안으로 두면 거절합니다. `.gitignore` 의 `.packet-ask-tmp/` 와 `packet.md` 는 예전 산출물이나 실수로 만든 파일을 커밋하지 않기 위한 방어입니다.
 
+모든 Git subprocess는 같은 bounded process-group runner를 씁니다. worktree
+discovery, diff 수집, packet-local `git init`이 deadline과 byte limit을
+공유하며 Ctrl+C는 생성된 Git/provider 그룹을 종료합니다. packet cleanup이
+성공한 뒤에만 성공 stdout을 냅니다. packet payload byte/digest와 변경되지
+않은 사용자 provider overlay는 프로세스 안에서 재사용해 반복 read/hash/TOML
+parse를 피합니다.
+
 사용자 설정 `~/.config/packet-ask/providers.toml` 은 **paste 별명만** 추가합니다. 실행 파일·argv·env 는 받지 않습니다.
 
 구현·장애 질문 게이트는 보수적인 어휘 검사이며 의도를 증명하지는 않습니다.
@@ -155,6 +162,7 @@ uv run pytest
 ```
 
 현재 confinement 보강의 근거는 [docs/hardening.md](docs/hardening.md)에 있습니다.
+runtime/process와 hot-path 결정은 [docs/runtime-hardening.md](docs/runtime-hardening.md)에 있습니다.
 
 기여는 [CONTRIBUTING.md](CONTRIBUTING.md)를 따릅니다.
 
