@@ -96,8 +96,14 @@ _EN = {
     "credential_prompt_failed": "Could not read the credential securely.",
     "credential_store_tty": "Saving to Keychain requires an interactive terminal.",
     "credential_store_failed": "Could not save the credential to macOS Keychain.",
-    "credential_saved": "Saved the {provider} credential to macOS Keychain.",
+    "credential_saved": (
+        "Saved the {provider} credential to macOS Keychain with {access} access."
+    ),
     "credential_access": "Unknown Keychain access mode: {access}",
+    "credential_account": "Could not determine the current Keychain account.",
+    "credential_store_verify": (
+        "The credential was saved, but command-mode Keychain read-back failed."
+    ),
 }
 
 _KO = {
@@ -204,8 +210,14 @@ _KO = {
     "credential_prompt_failed": "credential을 안전하게 읽지 못했습니다.",
     "credential_store_tty": "Keychain 저장에는 대화형 터미널이 필요합니다.",
     "credential_store_failed": "credential을 macOS Keychain에 저장하지 못했습니다.",
-    "credential_saved": "{provider} credential을 macOS Keychain에 저장했습니다.",
+    "credential_saved": (
+        "{provider} credential을 {access} access로 macOS Keychain에 저장했습니다."
+    ),
     "credential_access": "알 수 없는 Keychain access mode입니다: {access}",
+    "credential_account": "현재 Keychain 계정을 확인하지 못했습니다.",
+    "credential_store_verify": (
+        "credential을 저장했지만 command mode Keychain read-back 검증에 실패했습니다."
+    ),
 }
 
 

@@ -30,6 +30,7 @@ _KEYCHAIN_SERVICE = {
 _SECURITY_BIN = Path("/usr/bin/security")
 _KEYCHAIN_TIMEOUT_SECONDS = 30
 _KEYCHAIN_STORE_TIMEOUT_SECONDS = 60
+_MIN_KEY_CHARS = 8
 _MAX_KEY_CHARS = 4096
 
 
@@ -39,8 +40,8 @@ class CredentialStatus:
 
     provider: str
     environment: str
-    keychain: str
-    effective: str
+    keychain_item: str
+    auto_candidate: str
 
 
 def _provider_env(provider: str) -> str:
@@ -66,8 +67,11 @@ def _keychain_account() -> str:
         import pwd
 
         return pwd.getpwuid(os.getuid()).pw_name
-    except (ImportError, KeyError):
-        return getpass.getuser()
+    except (ImportError, KeyError, OSError):
+        try:
+            return getpass.getuser()
+        except (KeyError, OSError) as exc:
+            raise PacketAskError(message("credential_account"), codes.INTERNAL) from exc
 
 
 def _security_env() -> dict[str, str]:
@@ -89,7 +93,7 @@ def _validate_key(value: str, provider: str) -> str:
     """빈 값·제어문자·비정상적으로 큰 값을 자식 환경에 넣지 않는다."""
     key = value.strip()
     if (
-        not key
+        len(key) < _MIN_KEY_CHARS
         or len(key) > _MAX_KEY_CHARS
         or any(char in key for char in ("\x00", "\r", "\n"))
     ):
@@ -216,19 +220,19 @@ def credential_status(provider: str) -> CredentialStatus:
     env_name = _provider_env(provider)
     environment = "set" if os.environ.get(env_name, "").strip() else "unset"
     if not _macos_keychain_supported():
-        keychain = "unsupported"
+        keychain_item = "unsupported"
     else:
-        keychain = "available" if _keychain_item_exists(provider) else "missing"
+        keychain_item = "available" if _keychain_item_exists(provider) else "missing"
     if environment == "set":
-        effective = "env"
-    elif keychain == "available":
-        effective = "keychain"
+        auto_candidate = "env"
+    elif keychain_item == "available":
+        auto_candidate = "keychain"
     else:
-        effective = "missing"
-    return CredentialStatus(provider, environment, keychain, effective)
+        auto_candidate = "missing"
+    return CredentialStatus(provider, environment, keychain_item, auto_candidate)
 
 
-def store_macos_keychain(provider: str, access: str = "command") -> None:
+def store_macos_keychain(provider: str, access: str) -> None:
     """secret 입력은 `/usr/bin/security -w`가 직접 담당하게 한다."""
     _provider_env(provider)
     if access not in {"command", "prompt"}:
@@ -262,3 +266,5 @@ def store_macos_keychain(provider: str, access: str = "command") -> None:
         raise PacketAskError(message("credential_store_failed"), codes.INTERNAL) from exc
     if result.returncode != 0:
         raise PacketAskError(message("credential_store_failed"), codes.INTERNAL)
+    if access == "command" and _read_macos_keychain(provider) is None:
+        raise PacketAskError(message("credential_store_verify"), codes.INTERNAL)

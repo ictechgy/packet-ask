@@ -487,7 +487,10 @@ def test_credentials_status_does_not_print_key(
     code = main(["credentials", "status", "glm"])
     captured = capsys.readouterr()
     assert code == codes.SUCCESS
-    assert "glm | env=unset | keychain=available | effective=keychain" in captured.out
+    assert (
+        "glm | env=unset | keychain-item=available | auto-candidate=keychain"
+        in captured.out
+    )
     assert "secret" not in captured.out.lower()
 
 
@@ -500,11 +503,27 @@ def test_credentials_set_delegates_to_keychain(
         "packet_ask.cli.store_macos_keychain",
         lambda provider, access: called.append(f"{provider}:{access}"),
     )
-    code = main(["credentials", "set", "glm", "--store", "macos-keychain"])
+    code = main(
+        [
+            "credentials",
+            "set",
+            "glm",
+            "--store",
+            "macos-keychain",
+            "--access",
+            "command",
+        ]
+    )
     captured = capsys.readouterr()
     assert code == codes.SUCCESS
     assert called == ["glm:command"]
     assert "glm" in captured.out
+
+
+def test_credentials_set_requires_explicit_access_mode() -> None:
+    """Keychain 위협 모델은 안전·자동화 trade-off를 사용자가 직접 고른다."""
+    with pytest.raises(SystemExit):
+        main(["credentials", "set", "glm", "--store", "macos-keychain"])
 
 
 def test_review_passes_explicit_credential_source_to_launch(

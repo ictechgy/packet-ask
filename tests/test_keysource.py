@@ -114,8 +114,8 @@ def test_status_checks_existence_without_reading_password(
 
     monkeypatch.setattr("packet_ask.keysource.subprocess.run", fake_run)
     status = credential_status("glm")
-    assert status.keychain == "available"
-    assert status.effective == "keychain"
+    assert status.keychain_item == "available"
+    assert status.auto_candidate == "keychain"
     assert all("-w" not in args for args in seen)
 
 
@@ -125,6 +125,10 @@ def test_store_delegates_secret_prompt_to_security_without_key_argv(
     """Keychain 저장은 packet-ask argv에 key를 넣지 않고 security가 직접 묻는다."""
     monkeypatch.setattr("packet_ask.keysource._macos_keychain_supported", lambda: True)
     monkeypatch.setattr("packet_ask.keysource._interactive_terminal", lambda: True)
+    monkeypatch.setattr(
+        "packet_ask.keysource._read_macos_keychain",
+        lambda _provider: "stored-secret-value",
+    )
     captured: dict[str, object] = {}
 
     def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -133,7 +137,7 @@ def test_store_delegates_secret_prompt_to_security_without_key_argv(
         return subprocess.CompletedProcess(args, 0, "", "")
 
     monkeypatch.setattr("packet_ask.keysource.subprocess.run", fake_run)
-    store_macos_keychain("glm")
+    store_macos_keychain("glm", access="command")
     args = captured["args"]
     assert isinstance(args, list)
     assert args[-1] == "-w"
@@ -166,5 +170,34 @@ def test_noninteractive_keychain_store_fails_closed(
     monkeypatch.setattr("packet_ask.keysource._macos_keychain_supported", lambda: True)
     monkeypatch.setattr("packet_ask.keysource._interactive_terminal", lambda: False)
     with pytest.raises(PacketAskError) as exc:
-        store_macos_keychain("glm")
+        store_macos_keychain("glm", access="command")
     assert exc.value.code == codes.USAGE
+
+
+def test_command_store_requires_successful_readback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """command ACL 갱신·저장값 검증이 실패하면 성공으로 보고하지 않는다."""
+    monkeypatch.setattr("packet_ask.keysource._macos_keychain_supported", lambda: True)
+    monkeypatch.setattr("packet_ask.keysource._interactive_terminal", lambda: True)
+    monkeypatch.setattr(
+        "packet_ask.keysource.subprocess.run",
+        lambda args, **_kwargs: subprocess.CompletedProcess(args, 0, "", ""),
+    )
+    monkeypatch.setattr(
+        "packet_ask.keysource._read_macos_keychain",
+        lambda _provider: None,
+    )
+    with pytest.raises(PacketAskError) as exc:
+        store_macos_keychain("glm", access="command")
+    assert exc.value.code == codes.INTERNAL
+
+
+def test_short_key_is_rejected_for_output_guard_compatibility(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """출력 가드 최소 길이보다 짧은 credential은 source 단계에서 거절한다."""
+    monkeypatch.setenv("PACKET_ASK_GLM_KEY", "short")
+    with pytest.raises(PacketAskError) as exc:
+        resolve_provider_key("glm", "env")
+    assert exc.value.code == codes.PROVIDER_MISSING

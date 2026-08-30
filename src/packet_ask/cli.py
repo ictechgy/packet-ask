@@ -71,7 +71,7 @@ def _parser() -> argparse.ArgumentParser:
     set_cmd.add_argument(
         "--access",
         choices=("command", "prompt"),
-        default="command",
+        required=True,
         help="command supports agents; prompt requires macOS approval on every read",
     )
     return parser
@@ -256,12 +256,19 @@ def _run_credentials(args: argparse.Namespace) -> int:
             status = credential_status(provider)
             print(
                 f"{status.provider} | env={status.environment} | "
-                f"keychain={status.keychain} | effective={status.effective}"
+                f"keychain-item={status.keychain_item} | "
+                f"auto-candidate={status.auto_candidate}"
             )
         return codes.SUCCESS
     if args.credentials_command == "set":
         store_macos_keychain(args.provider, access=args.access)
-        print(message("credential_saved", provider=args.provider))
+        print(
+            message(
+                "credential_saved",
+                provider=args.provider,
+                access=args.access,
+            )
+        )
         return codes.SUCCESS
     raise PacketAskError(message("no_adapter"), codes.USAGE)
 
