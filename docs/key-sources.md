@@ -7,7 +7,8 @@ user-defined commands.
 ## Sources
 
 - `auto` (task CLI default): use the dedicated environment variable first,
-  then the packet-ask-owned macOS Keychain item. It never prompts.
+  then the packet-ask-owned macOS Keychain item. It never opens packet-ask's
+  one-run secret prompt, though macOS may still request Keychain approval.
 - `env`: use only `PACKET_ASK_<PROVIDER>_KEY`.
 - `keychain`: use only the canonical packet-ask macOS Keychain item.
 - `prompt`: read once with a no-echo terminal prompt and keep the value only in
@@ -42,9 +43,10 @@ macOS for approval on each password read. That mode can fail in headless or
 background sessions where the approval UI is unavailable.
 
 After a successful `command` save, packet-ask immediately reads the canonical
-item back without printing it. This validates both the stored value shape and
-headless retrievability, catching macOS versions or existing-item updates that
-do not apply the requested trusted-application ACL.
+item back without printing it. This validates the stored value shape and gives
+a best-effort check that the requested trusted-application ACL is usable. An
+interactive macOS approval can make this check pass even when a later headless
+session cannot show that approval, so runtime retrieval remains fail-closed.
 
 ## Security invariants
 
