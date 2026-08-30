@@ -1,5 +1,6 @@
 """프로바이더 카탈로그와 paste 전용 사용자 TOML."""
 
+import re
 from pathlib import Path
 
 import pytest
@@ -70,3 +71,11 @@ def test_unknown_provider_is_usage() -> None:
     with pytest.raises(PacketAskError) as exc:
         lookup_provider("nope", catalog)
     assert exc.value.code == codes.USAGE
+
+
+def test_builtin_catalog_uses_english_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """영어 모드의 내장 카탈로그에는 한글 사용자 문구가 없다."""
+    monkeypatch.setenv("PACKET_ASK_LANG", "en")
+    for item in load_catalog(user_file=None):
+        assert re.search(r"[가-힣]", item.label) is None
+        assert re.search(r"[가-힣]", item.note) is None

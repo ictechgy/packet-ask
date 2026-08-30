@@ -12,17 +12,29 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from packet_ask.errors import RedactionFailed
+from packet_ask.errors import BudgetError, RedactionFailed
 from packet_ask.paths import git_subprocess_env, resolve_trusted_executable
 from packet_ask.redact import RedactionError, RedactionReport, scrub_text, verify_scrubbed
 from packet_ask.scope import ScopedFile
+from packet_ask.text import language, message
 
-_TASK_CONTRACT = """
+_TASK_CONTRACT_EN = """
+Output rules:
+- Use only the provided packet. Do not assume access to files, home, or network outside it.
+- Do not implement or apply patches. Return only review, research, or ideas.
+- Do not put instructions to invoke tools in the output.
+""".strip()
+_TASK_CONTRACT_KO = """
 출력 규칙:
 - 제공된 패킷만 사용한다. 패킷 밖 파일·홈·네트워크를 가정하지 않는다.
 - 구현 패치를 적용하지 않는다. 리뷰·조사·아이디어만 반환한다.
 - 도구를 호출하라는 지시를 출력에 넣지 않는다.
 """.strip()
+
+
+def _task_contract() -> str:
+    """프로바이더에 보내는 계약도 CLI 언어 선택을 따른다."""
+    return _TASK_CONTRACT_KO if language() == "ko" else _TASK_CONTRACT_EN
 
 
 @dataclass
@@ -50,14 +62,14 @@ def _scrub_or_raise(text: str) -> tuple[str, RedactionReport]:
 def _assert_packet_relative(relative: Path) -> None:
     """패킷 안 상대경로만 허용한다. .git 과 상위 탈출은 거절한다."""
     if relative.is_absolute() or ".." in relative.parts or ".git" in relative.parts:
-        raise RedactionFailed("상대경로가 아닌 파일은 패킷에 넣지 않습니다.")
+        raise RedactionFailed(message("packet_relative"))
 
 
 def _git_executable() -> str:
     """신뢰 경로의 git 만 쓴다."""
     found = resolve_trusted_executable("git")
     if found is None:
-        raise RedactionFailed("신뢰 경로에서 git 을 찾지 못했습니다.")
+        raise RedactionFailed(message("missing_git"))
     return str(found)
 
 
@@ -98,6 +110,7 @@ def build_packet(
     files: list[ScopedFile],
     diff_text: str | None,
     parent: Path,
+    max_bytes: int | None = None,
 ) -> Packet:
     """스크럽된 패킷 디렉터리를 parent 아래에 만든다."""
     parent.mkdir(parents=True, exist_ok=True)
@@ -109,7 +122,7 @@ def build_packet(
         root.chmod(stat.S_IRWXU)
         question_text, report = _scrub_or_raise(question)
         reports.append(report)
-        task = f"# Task\n\nmode: {mode}\n\n{question_text}\n\n{_TASK_CONTRACT}\n"
+        task = f"# Task\n\nmode: {mode}\n\n{question_text}\n\n{_task_contract()}\n"
         _write_private(root / "TASK.md", task)
         _write_private(root / "CLAUDE.md", "")
         _write_private(root / "AGENTS.md", "")
@@ -127,7 +140,11 @@ def build_packet(
             reports.append(report)
             _write_private(root / "files" / "changes.patch", diff_body)
             rendered.append(f"## Diff\n\n```\n{diff_body}\n```\n")
-        _write_private(root / "packet.md", "\n".join(rendered))
+        packet_text = "\n".join(rendered)
+        packet_bytes = packet_text.encode("utf-8")
+        if max_bytes is not None and len(packet_bytes) > max_bytes:
+            raise BudgetError(f"total packet exceeds {max_bytes} bytes")
+        _write_private(root / "packet.md", packet_text)
         merged = _merge_reports(reports)
         try:
             verify_scrubbed((root / "packet.md").read_text(encoding="utf-8"))

@@ -80,6 +80,29 @@ def test_tokenizer_filename_is_not_secret() -> None:
     assert is_secret_path(Path("client_secrets.json")) is True
 
 
+def test_collect_files_rejects_binary_content(tmp_path: Path) -> None:
+    """명시 파일의 NUL 포함 바이너리를 텍스트로 변환하지 않는다."""
+    root = tmp_path.resolve()
+    binary = root / "image.bin"
+    binary.write_bytes(b"header\x00payload")
+    with pytest.raises(ScopeError):
+        collect_files(root, [binary])
+
+
+def test_collect_git_diff_applies_file_count_budget(tmp_path: Path) -> None:
+    """diff도 변경 경로 수에 max-files를 적용한다."""
+    import subprocess
+
+    repo = _init_repo(tmp_path)
+    (repo / "src" / "other.py").write_text("print(1)\n", encoding="utf-8")
+    subprocess.run(["git", "add", "src/other.py"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "other"], cwd=repo, check=True, capture_output=True)
+    (repo / "src" / "app.py").write_text("print(2)\n", encoding="utf-8")
+    (repo / "src" / "other.py").write_text("print(3)\n", encoding="utf-8")
+    with pytest.raises(BudgetError):
+        collect_git_diff(repo, unstaged=True, max_files=1)
+
+
 def test_rejects_git_metadata_file(tmp_path: Path) -> None:
     """.git 아래 파일은 수집하지 않는다."""
     repo = _init_repo(tmp_path)
@@ -124,14 +147,14 @@ def test_git_diff_disables_textconv(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     repo = _init_repo(tmp_path)
     (repo / "src" / "app.py").write_text("print(2)\n", encoding="utf-8")
     seen: list[list[str]] = []
-    real = subprocess.run
+    real = subprocess.Popen
 
-    def wrapper(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def wrapper(*args: object, **kwargs: object) -> subprocess.Popen[bytes]:
         cmd = list(args[0]) if args else list(kwargs.get("args", []))  # type: ignore[arg-type]
         seen.append([str(part) for part in cmd])
         return real(*args, **kwargs)
 
-    monkeypatch.setattr("packet_ask.scope.subprocess.run", wrapper)
+    monkeypatch.setattr("packet_ask.scope.subprocess.Popen", wrapper)
     collect_git_diff(repo, unstaged=True)
     joined = [" ".join(item) for item in seen]
     assert any("--no-textconv" in item for item in joined)

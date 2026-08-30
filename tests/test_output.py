@@ -4,7 +4,13 @@ import pytest
 
 from packet_ask import codes
 from packet_ask.errors import PacketAskError
-from packet_ask.output import MAX_OUTPUT_BYTES, guard_provider_output, wrap_untrusted
+from packet_ask.output import (
+    MAX_OUTPUT_BYTES,
+    guard_provider_output,
+    sanitize_provider_output,
+    wrap_untrusted,
+)
+from packet_ask.receipt import format_receipt_line
 
 
 def test_wraps_body() -> None:
@@ -43,3 +49,40 @@ def test_guard_rejects_oversized_output() -> None:
     with pytest.raises(PacketAskError) as exc:
         guard_provider_output(huge)
     assert exc.value.code == codes.OUTPUT_GUARD
+
+
+def test_sanitize_provider_output_strips_terminal_controls() -> None:
+    """OSC clipboard와 CSI 화면 제어가 터미널에 도달하지 않는다."""
+    raw = "before\x1b]52;c;copied\x07\x1b[2Jafter\rreplace\x00"
+    cleaned = sanitize_provider_output(raw)
+    assert "before" in cleaned
+    assert "after" in cleaned
+    assert "replace" in cleaned
+    assert "\x1b" not in cleaned
+    assert "\x07" not in cleaned
+    assert "\x00" not in cleaned
+    assert "\r" not in cleaned
+
+
+def test_sanitize_then_guard_detects_key_split_by_ansi(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ANSI로 쪼갠 전용 키도 정규화 후 가드가 잡는다."""
+    monkeypatch.setenv("PACKET_ASK_GLM_KEY", "glm-secret-value-xyz")
+    raw = "glm-secret\x1b[31m-value-xyz"
+    with pytest.raises(PacketAskError) as exc:
+        sanitize_provider_output(raw)
+    assert exc.value.code == codes.OUTPUT_GUARD
+
+
+def test_receipt_escapes_control_characters_in_paths() -> None:
+    """조작된 파일명이 receipt에 새 줄이나 ANSI를 만들지 않는다."""
+    receipt = {
+        "provider": "paste",
+        "selector": "files",
+        "paths": ["src/bad\n\x1b[2J.py"],
+        "bytes": 10,
+        "sha256_packet_md": "a" * 64,
+    }
+    line = format_receipt_line(receipt)
+    assert line.count("\n") == 0
+    assert "\x1b" not in line
+    assert r"\n" in line

@@ -8,8 +8,10 @@ from packet_ask.errors import PolicyError
 from packet_ask.text import message
 
 _IMPLEMENTATION_RE = re.compile(
-    r"(구현해|리팩터링해|패치를 적용|코드를 작성|"
-    r"implement this|write the code|apply this patch|refactor the (code|repo))",
+    r"(구현해|리팩터링해|패치를 적용|패치(?:를)? 만들어|코드를 작성|"
+    r"(?:코드|버그)(?:을|를)?\s*(?:수정|고쳐)|수정해\s*줘|고쳐\s*줘|"
+    r"implement this|write the code|apply this patch|refactor the (?:code|repo)|"
+    r"fix (?:this|the) (?:bug|code)|make (?:a )?patch)",
     re.IGNORECASE,
 )
 _INCIDENT_RE = re.compile(

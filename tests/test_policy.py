@@ -17,6 +17,21 @@ def test_rejects_implementation_request() -> None:
         assert_allowed_task("review", "이 버그를 고치도록 구현해줘")
 
 
+@pytest.mark.parametrize(
+    "question",
+    [
+        "fix this bug",
+        "make a patch for this",
+        "이 코드를 수정해줘",
+        "이 버그를 고쳐줘",
+    ],
+)
+def test_rejects_common_implementation_imperatives(question: str) -> None:
+    """흔한 영문·한글 구현 명령도 정책이 거절한다."""
+    with pytest.raises(PolicyError):
+        assert_allowed_task("review", question)
+
+
 def test_research_rejects_implicit_files_flag_name() -> None:
     """리서치에 파일 첨부는 include-files 로만 허용한다."""
     with pytest.raises(PolicyError):

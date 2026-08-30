@@ -10,6 +10,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from packet_ask.text import message
+
 _SECRET_HEADER_PATTERNS = (
     re.compile(r"(?im)^(\s*(?:Proxy-)?Authorization\s*:\s*)([^\r\n]*)(\r?)$"),
     re.compile(r"(?im)^(\s*(?:Cookie|Set-Cookie)\s*:\s*)([^\r\n]*)(\r?)$"),
@@ -26,8 +28,10 @@ _SECRET_KEY_FRAGMENT = (
     r"access[_-]?key|client[_-]?secret|secret[_-]?key|secret[_-]?token|"
     r"auth[_-]?token|service[_-]?account[_-]?key)[A-Za-z0-9_.-]*"
 )
-_INLINE_SECRET_JSON_RE = re.compile(
-    rf'(?i)([\'\"]{_SECRET_KEY_FRAGMENT}[\'\"]\s*:\s*)([\'\"])(.*?)(\2)'
+_INLINE_SECRET_PREFIX_RE = re.compile(
+    rf'(?i)(?<![A-Za-z0-9_.-])('
+    rf'(?:[\'\"]{_SECRET_KEY_FRAGMENT}[\'\"]|{_SECRET_KEY_FRAGMENT})\s*[:=]\s*'
+    rf')([\'\"])'
 )
 _SECRET_ASSIGNMENT_RE = re.compile(
     rf"(?im)^(?P<prefix>\s*(?:(?:(?:export|const|let|var|ENV)\s+)?"
@@ -59,6 +63,10 @@ _PHONE_RE = re.compile(
 _VERIFY_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 _VERIFY_PHONE_RE = re.compile(r"(?:\+82|0)1[016789]\d{7,8}")
 _VERIFY_KEY_RE = re.compile(r"\b(?:sk-|gh[pousr]_|AKIA|github_pat_)[A-Za-z0-9_-]{8,}")
+_VERIFY_SECRET_LITERAL_RE = re.compile(
+    rf'(?i)(?<![A-Za-z0-9_.-])(?:[\'\"]{_SECRET_KEY_FRAGMENT}[\'\"]|'
+    rf'{_SECRET_KEY_FRAGMENT})\s*[:=]\s*(?P<quote>[\'\"])(?!\[REDACTED\](?P=quote))'
+)
 
 
 class RedactionError(Exception):
@@ -134,6 +142,36 @@ def _assignment_replacer(match: re.Match[str]) -> str:
     return f"{match.group('prefix')}{_redact_secret_rest(rest)}{match.group('cr')}"
 
 
+def _redact_inline_secret_literals(text: str) -> tuple[str, int]:
+    """JSON/객체의 인라인 문자열 값을 escape를 인식해 끝까지 가린다."""
+    rendered: list[str] = []
+    cursor = 0
+    count = 0
+    while match := _INLINE_SECRET_PREFIX_RE.search(text, cursor):
+        quote = match.group(2)
+        value_end = match.end()
+        escaped = False
+        while value_end < len(text):
+            char = text[value_end]
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                break
+            value_end += 1
+        rendered.append(text[cursor : match.end()])
+        rendered.append("[REDACTED]")
+        if value_end < len(text):
+            rendered.append(quote)
+            cursor = value_end + 1
+        else:
+            cursor = value_end
+        count += 1
+    rendered.append(text[cursor:])
+    return "".join(rendered), count
+
+
 def _home_strings(home: str) -> tuple[str, ...]:
     """macOS /var vs /private/var 별칭을 포함해 홈 경로 변형을 만든다."""
     resolved = str(Path(home).expanduser().resolve())
@@ -161,7 +199,7 @@ def scrub_text(text: str, home: str | None = None) -> tuple[str, RedactionReport
         report.secret_values += n
     text, n = _URL_USERINFO_RE.subn(r"\1[REDACTED]\3", text)
     report.secret_values += n
-    text, n = _INLINE_SECRET_JSON_RE.subn(r'\1\2[REDACTED]\2', text)
+    text, n = _redact_inline_secret_literals(text)
     report.secret_values += n
     for variant in _home_strings(home):
         if variant and variant in text:
@@ -190,7 +228,9 @@ def verify_scrubbed(text: str, home: str | None = None) -> None:
         leftovers.append("phone")
     if _VERIFY_KEY_RE.search(text) or "PRIVATE KEY-----" in text:
         leftovers.append("secret")
+    if _VERIFY_SECRET_LITERAL_RE.search(text):
+        leftovers.append("secret_literal")
     if _VERIFY_URL_USERINFO_RE.search(text):
         leftovers.append("secret")
     if leftovers:
-        raise RedactionError("재검증에서 민감 값이 남았습니다: " + ", ".join(leftovers))
+        raise RedactionError(message("redaction_leftovers", kinds=", ".join(leftovers)))

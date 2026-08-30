@@ -8,7 +8,13 @@ import pytest
 
 from packet_ask import codes
 from packet_ask.errors import PacketAskError
-from packet_ask.launch import isolated_env, launch_kimi, run_isolated_command
+from packet_ask.launch import (
+    _cleanup_kimi_sessions,
+    ensure_kimi_config,
+    isolated_env,
+    launch_kimi,
+    run_isolated_command,
+)
 from packet_ask.packet import Packet
 from packet_ask.redact import RedactionReport
 
@@ -39,6 +45,33 @@ def test_run_isolated_command_stdin(tmp_path: Path) -> None:
         timeout=5,
     )
     assert "packet-body" in out
+
+
+def test_run_isolated_command_drains_output_while_writing_stdin(tmp_path: Path) -> None:
+    """자식이 stdout을 먼저 채워도 stdin 전달과 timeout이 교착되지 않는다."""
+    import sys
+
+    script = tmp_path / "output-before-stdin"
+    script.write_text(
+        "#!" + sys.executable + "\n"
+        "import sys\n"
+        "sys.stdout.write('o' * 131072)\n"
+        "sys.stdout.flush()\n"
+        "data = sys.stdin.read()\n"
+        "sys.stdout.write('\\nstdin=' + str(len(data)))\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o700)
+    body = "i" * 262144
+    out = run_isolated_command(
+        script,
+        [],
+        body,
+        tmp_path,
+        isolated_env(tmp_path, {}),
+        timeout=5,
+    )
+    assert out.endswith(f"stdin={len(body)}")
 
 
 def test_kimi_launch_args_disable_tools(tmp_path: Path) -> None:
@@ -241,12 +274,37 @@ def test_run_isolated_command_caps_stderr(tmp_path: Path) -> None:
 
 def test_kimi_config_does_not_write_api_key(tmp_path: Path) -> None:
     """격리 config.toml 에 API 키를 쓰지 않는다."""
-    from packet_ask.launch import ensure_kimi_config
-
     ensure_kimi_config(tmp_path)
     text = (tmp_path / "config.toml").read_text(encoding="utf-8")
     assert "KIMI_API_KEY" not in text
     assert "api_key" not in text.lower()
+
+
+def test_kimi_config_rejects_symlink_file(tmp_path: Path) -> None:
+    """격리 설정 파일 심링크를 따라가 다른 파일을 덮지 않는다."""
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep", encoding="utf-8")
+    kimi_home = tmp_path / "kimi-home"
+    kimi_home.mkdir()
+    (kimi_home / "config.toml").symlink_to(victim)
+    with pytest.raises(PacketAskError) as exc:
+        ensure_kimi_config(kimi_home)
+    assert exc.value.code == codes.CONFINEMENT
+    assert victim.read_text(encoding="utf-8") == "keep"
+
+
+def test_kimi_cleanup_failure_is_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """세션 정리가 실패하면 성공으로 숨기지 않는다."""
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+
+    def fail_cleanup(*_args: object, **_kwargs: object) -> None:
+        raise OSError("blocked")
+
+    monkeypatch.setattr("packet_ask.launch.shutil.rmtree", fail_cleanup)
+    with pytest.raises(PacketAskError) as exc:
+        _cleanup_kimi_sessions(tmp_path)
+    assert exc.value.code == codes.INTERNAL
 
 
 def test_kimi_config_disables_tools_without_star_allowlist(tmp_path: Path) -> None:
