@@ -16,6 +16,7 @@ from packet_ask.text import message
 
 CREDENTIAL_SOURCES = ("auto", "env", "keychain", "prompt")
 CREDENTIAL_PROVIDERS = ("glm", "kimi", "claude")
+MIN_CREDENTIAL_LENGTH = 8
 
 _PROVIDER_ENV = {
     "glm": "PACKET_ASK_GLM_KEY",
@@ -30,7 +31,6 @@ _KEYCHAIN_SERVICE = {
 _SECURITY_BIN = Path("/usr/bin/security")
 _KEYCHAIN_TIMEOUT_SECONDS = 30
 _KEYCHAIN_STORE_TIMEOUT_SECONDS = 60
-_MIN_KEY_CHARS = 8
 _MAX_KEY_CHARS = 4096
 
 
@@ -93,7 +93,7 @@ def _validate_key(value: str, provider: str) -> str:
     """빈 값·제어문자·비정상적으로 큰 값을 자식 환경에 넣지 않는다."""
     key = value.strip()
     if (
-        len(key) < _MIN_KEY_CHARS
+        len(key) < MIN_CREDENTIAL_LENGTH
         or len(key) > _MAX_KEY_CHARS
         or any(char in key for char in ("\x00", "\r", "\n"))
     ):
@@ -266,5 +266,13 @@ def store_macos_keychain(provider: str, access: str) -> None:
         raise PacketAskError(message("credential_store_failed"), codes.INTERNAL) from exc
     if result.returncode != 0:
         raise PacketAskError(message("credential_store_failed"), codes.INTERNAL)
-    if access == "command" and _read_macos_keychain(provider) is None:
-        raise PacketAskError(message("credential_store_verify"), codes.INTERNAL)
+    if access == "command":
+        try:
+            verified_key = _read_macos_keychain(provider)
+        except PacketAskError as exc:
+            raise PacketAskError(
+                message("credential_store_verify"),
+                codes.INTERNAL,
+            ) from exc
+        if verified_key is None:
+            raise PacketAskError(message("credential_store_verify"), codes.INTERNAL)

@@ -7,6 +7,7 @@ import secrets
 import unicodedata
 
 from packet_ask import codes
+from packet_ask.keysource import MIN_CREDENTIAL_LENGTH
 from packet_ask.errors import PacketAskError
 from packet_ask.text import message
 
@@ -16,7 +17,6 @@ _DEDICATED_KEY_ENVS = (
     "PACKET_ASK_KIMI_KEY",
     "PACKET_ASK_CLAUDE_KEY",
 )
-_MIN_KEY_LENGTH = 8
 
 _INJECTION_HINTS = (
     "ignore previous instructions",
@@ -36,7 +36,7 @@ def guard_provider_output(
         os.environ.get(name, "").strip() for name in _DEDICATED_KEY_ENVS
     )
     for value in (*environment_values, *protected_values):
-        if len(value) >= _MIN_KEY_LENGTH and value in text:
+        if len(value) >= MIN_CREDENTIAL_LENGTH and value in text:
             raise PacketAskError(message("output_guard_key"), codes.OUTPUT_GUARD)
 
 

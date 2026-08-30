@@ -193,6 +193,30 @@ def test_command_store_requires_successful_readback(
     assert exc.value.code == codes.INTERNAL
 
 
+def test_command_store_maps_invalid_readback_to_store_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """저장값 형식 오류도 task-time missing이 아니라 store 검증 실패로 보고한다."""
+    monkeypatch.setattr("packet_ask.keysource._macos_keychain_supported", lambda: True)
+    monkeypatch.setattr("packet_ask.keysource._interactive_terminal", lambda: True)
+    monkeypatch.setattr(
+        "packet_ask.keysource.subprocess.run",
+        lambda args, **_kwargs: subprocess.CompletedProcess(args, 0, "", ""),
+    )
+
+    def invalid_readback(_provider: str) -> str:
+        raise PacketAskError("invalid", codes.PROVIDER_MISSING)
+
+    monkeypatch.setattr(
+        "packet_ask.keysource._read_macos_keychain",
+        invalid_readback,
+    )
+    with pytest.raises(PacketAskError) as exc:
+        store_macos_keychain("glm", access="command")
+    assert exc.value.code == codes.INTERNAL
+    assert "read-back" in str(exc.value)
+
+
 def test_short_key_is_rejected_for_output_guard_compatibility(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
