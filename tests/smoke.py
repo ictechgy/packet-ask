@@ -18,6 +18,14 @@ def main() -> None:
         raise SystemExit(completed.returncode or 1)
     if "review" not in completed.stdout:
         raise SystemExit("packet-ask --help 에 review 가 없습니다.")
+    credentials = subprocess.run(
+        ["packet-ask", "credentials", "status", "glm"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if credentials.returncode != 0 or "glm |" not in credentials.stdout:
+        raise SystemExit("설치 산출물의 credentials status가 실패했습니다.")
     skill = files("packet_ask.data").joinpath("SKILL.md").read_text(encoding="utf-8")
     if "packet-ask" not in skill:
         raise SystemExit("wheel/sdist 에 SKILL.md 가 없습니다.")

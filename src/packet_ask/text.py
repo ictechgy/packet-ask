@@ -79,6 +79,25 @@ _EN = {
     "provider_alias_note": "User paste alias; no vendor process is started.",
     "provider_builtin_override": "Built-in provider IDs cannot be overridden.",
     "provider_invalid_id": "Invalid provider ID: {name}",
+    "credential_provider": "Provider does not have a credential: {provider}",
+    "credential_invalid": "The {provider} credential is empty or invalid.",
+    "credential_source": "Unknown credential source: {source}",
+    "credential_missing": (
+        "No {provider} credential is available. Set {env}, store the canonical "
+        "macOS Keychain item, or explicitly use --credential-source prompt."
+    ),
+    "keychain_unsupported": "macOS Keychain is not available on this platform.",
+    "keychain_unavailable": (
+        "The packet-ask {provider} Keychain item is missing, inaccessible, or access was denied. "
+        "Headless use requires an item saved with --access command."
+    ),
+    "credential_prompt": "{provider} credential for this run: ",
+    "credential_prompt_tty": "Credential prompt requires an interactive terminal.",
+    "credential_prompt_failed": "Could not read the credential securely.",
+    "credential_store_tty": "Saving to Keychain requires an interactive terminal.",
+    "credential_store_failed": "Could not save the credential to macOS Keychain.",
+    "credential_saved": "Saved the {provider} credential to macOS Keychain.",
+    "credential_access": "Unknown Keychain access mode: {access}",
 }
 
 _KO = {
@@ -168,6 +187,25 @@ _KO = {
     "provider_alias_note": "사용자 paste 별명이며 벤더를 실행하지 않습니다.",
     "provider_builtin_override": "내장 프로바이더 ID는 덮어쓸 수 없습니다.",
     "provider_invalid_id": "잘못된 프로바이더 ID입니다: {name}",
+    "credential_provider": "credential이 없는 프로바이더입니다: {provider}",
+    "credential_invalid": "{provider} credential이 비어 있거나 잘못되었습니다.",
+    "credential_source": "알 수 없는 credential source입니다: {source}",
+    "credential_missing": (
+        "{provider} credential이 없습니다. {env}를 설정하거나 canonical macOS "
+        "Keychain 항목을 저장하거나 --credential-source prompt를 명시하세요."
+    ),
+    "keychain_unsupported": "이 플랫폼에서는 macOS Keychain을 사용할 수 없습니다.",
+    "keychain_unavailable": (
+        "packet-ask {provider} Keychain 항목이 없거나 접근할 수 없거나 접근이 거절됐습니다. "
+        "headless 사용에는 --access command로 저장한 항목이 필요합니다."
+    ),
+    "credential_prompt": "이번 실행의 {provider} credential: ",
+    "credential_prompt_tty": "credential prompt에는 대화형 터미널이 필요합니다.",
+    "credential_prompt_failed": "credential을 안전하게 읽지 못했습니다.",
+    "credential_store_tty": "Keychain 저장에는 대화형 터미널이 필요합니다.",
+    "credential_store_failed": "credential을 macOS Keychain에 저장하지 못했습니다.",
+    "credential_saved": "{provider} credential을 macOS Keychain에 저장했습니다.",
+    "credential_access": "알 수 없는 Keychain access mode입니다: {access}",
 }
 
 

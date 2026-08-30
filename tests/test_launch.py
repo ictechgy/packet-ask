@@ -374,6 +374,37 @@ def test_glm_passes_key_in_child_env(
     assert env["DISABLE_TELEMETRY"] == "1"
 
 
+def test_glm_uses_explicit_keychain_source_and_guards_reflection(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Keychain 키를 자식에 넣되 벤더가 반사하면 출력을 폐기한다."""
+    from packet_ask.launch import launch_glm
+
+    monkeypatch.setattr("packet_ask.launch.require_launchable", lambda _name: None)
+    monkeypatch.setattr(
+        "packet_ask.launch.resolve_trusted_executable",
+        lambda name: Path("/usr/bin/true") if name == "claude" else None,
+    )
+    monkeypatch.setattr("packet_ask.launch.provider_home", lambda _name: tmp_path)
+    seen: list[tuple[str, str]] = []
+
+    def fake_resolve(provider: str, source: str) -> str:
+        seen.append((provider, source))
+        return "keychain-secret-value"
+
+    monkeypatch.setattr("packet_ask.launch.resolve_provider_key", fake_resolve)
+    monkeypatch.setattr(
+        "packet_ask.launch.run_isolated_command",
+        lambda *_args, **_kwargs: "keychain-secret\x1b[31m-value",
+    )
+    dummy = Packet(root=tmp_path, report=RedactionReport())
+    (tmp_path / "packet.md").write_text("hello\n", encoding="utf-8")
+    with pytest.raises(PacketAskError) as exc:
+        launch_glm(dummy, 1, credential_source="keychain")
+    assert exc.value.code == codes.OUTPUT_GUARD
+    assert seen == [("glm", "keychain")]
+
+
 def test_require_launchable_probes_only_selected_binary(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
