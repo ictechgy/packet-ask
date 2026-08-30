@@ -11,6 +11,7 @@ from pathlib import Path
 
 from packet_ask.paths import minimal_child_env, resolve_trusted_executable
 from packet_ask.providers import ProviderSpec, load_catalog
+from packet_ask.text import message
 
 _HELP_TIMEOUT_SECONDS = 10
 _HELP_CACHE: dict[tuple[str, int, int], str | None] = {}
@@ -100,7 +101,7 @@ def inspect_provider(provider_id: str) -> ProviderStatus:
     for spec in load_catalog():
         if spec.provider_id == provider_id:
             return _status_for(spec)
-    return ProviderStatus(provider_id, False, False, "알 수 없는 프로바이더", "unknown", "paste")
+    return ProviderStatus(provider_id, False, False, message("provider_unknown_status"), "unknown", "paste")
 
 
 def inspect_providers() -> list[ProviderStatus]:
@@ -121,7 +122,14 @@ def _launch_status(spec: ProviderSpec) -> ProviderStatus:
     binary = spec.binary or spec.provider_id
     help_text = _help_text(binary)
     if help_text is None:
-        return ProviderStatus(spec.provider_id, False, False, f"{binary} CLI가 없습니다.", spec.source, spec.mode)
+        return ProviderStatus(
+            spec.provider_id,
+            False,
+            False,
+            message("provider_cli_missing", name=binary),
+            spec.source,
+            spec.mode,
+        )
     if binary == "claude" and claude_supports_isolated_print(help_text):
         return ProviderStatus(spec.provider_id, True, True, spec.note, spec.source, spec.mode)
     if binary == "kimi" and kimi_supports_isolated_print(help_text):
@@ -131,8 +139,15 @@ def _launch_status(spec: ProviderSpec) -> ProviderStatus:
             spec.provider_id,
             True,
             False,
-            "--agent-file/--work-dir 가 없어 격리 원샷을 못 합니다.",
+            message("kimi_flags_missing"),
             spec.source,
             spec.mode,
         )
-    return ProviderStatus(spec.provider_id, True, False, "필요한 원샷 플래그가 없어 paste만 가능합니다.", spec.source, spec.mode)
+    return ProviderStatus(
+        spec.provider_id,
+        True,
+        False,
+        message("launch_flags_missing"),
+        spec.source,
+        spec.mode,
+    )

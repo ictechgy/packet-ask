@@ -52,6 +52,19 @@ def test_packet_md_contains_task_and_files(tmp_path: Path) -> None:
     packet.destroy()
 
 
+def test_packet_contract_uses_selected_language(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """패킷 내부 계약도 기본 영어와 명시 한글을 구분한다."""
+    monkeypatch.setenv("PACKET_ASK_LANG", "en")
+    english = build_packet("review", "review", [], None, tmp_path / "en")
+    assert "Output rules:" in (english.root / "packet.md").read_text(encoding="utf-8")
+    english.destroy()
+
+    monkeypatch.setenv("PACKET_ASK_LANG", "ko")
+    korean = build_packet("review", "리뷰", [], None, tmp_path / "ko")
+    assert "출력 규칙:" in (korean.root / "packet.md").read_text(encoding="utf-8")
+    korean.destroy()
+
+
 def test_packet_stores_payload_away_from_control_files(tmp_path: Path) -> None:
     """수집 파일은 files/ 아래에 두어 CLAUDE.md 와 겹치지 않게 한다."""
     files = [ScopedFile(relative="CLAUDE.md", content="# user file\n")]

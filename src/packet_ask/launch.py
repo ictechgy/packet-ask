@@ -7,6 +7,7 @@ import os
 import select
 import shutil
 import signal
+import stat
 import subprocess
 import time
 from pathlib import Path
@@ -25,13 +26,58 @@ KIMI_DISABLED_TOOL_SENTINEL = "packet-ask-no-such-tool"
 
 def provider_home(name: str) -> Path:
     """패킷과 분리된 인증 프로필 경로."""
-    base = Path.home() / ".config" / "packet-ask" / "providers" / name
-    base.mkdir(parents=True, exist_ok=True)
-    base.chmod(0o700)
+    base = Path.home() / ".config"
+    try:
+        base.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise PacketAskError(message("provider_path_invalid"), codes.CONFINEMENT) from exc
+    for part in ("packet-ask", "providers", name):
+        base = base / part
+        _ensure_private_directory(base)
     tmp = base / "tmp"
-    tmp.mkdir(exist_ok=True)
-    tmp.chmod(0o700)
+    _ensure_private_directory(tmp)
     return base
+
+
+def _ensure_private_directory(path: Path) -> None:
+    """도구 소유 디렉터리를 만들고 최종 심링크·소유권을 검사한다."""
+    if path.is_symlink():
+        raise PacketAskError(message("provider_path_symlink"), codes.CONFINEMENT)
+    try:
+        path.mkdir(exist_ok=True)
+        flags = os.O_RDONLY
+        if hasattr(os, "O_DIRECTORY"):
+            flags |= os.O_DIRECTORY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise PacketAskError(message("provider_path_invalid"), codes.CONFINEMENT) from exc
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid():
+            raise PacketAskError(message("provider_path_invalid"), codes.CONFINEMENT)
+        os.fchmod(descriptor, 0o700)
+    except OSError as exc:
+        raise PacketAskError(message("provider_path_invalid"), codes.CONFINEMENT) from exc
+    finally:
+        os.close(descriptor)
+
+
+def _write_private_text(path: Path, content: str) -> None:
+    """최종 심링크를 따르지 않고 0600 텍스트 파일을 쓴다."""
+    if path.is_symlink():
+        raise PacketAskError(message("provider_path_symlink"), codes.CONFINEMENT)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            stream.write(content)
+        path.chmod(0o600)
+    except OSError as exc:
+        raise PacketAskError(message("provider_path_symlink"), codes.CONFINEMENT) from exc
 
 
 def isolated_env(home: Path, extra: dict[str, str]) -> dict[str, str]:
@@ -59,6 +105,9 @@ def run_isolated_command(
     except PacketAskError:
         _kill_process_group(proc, pgid)
         raise
+    except (OSError, ValueError) as exc:
+        _kill_process_group(proc, pgid)
+        raise PacketAskError(message("provider_failed"), codes.PROVIDER_FAILED) from exc
     if proc.returncode != 0:
         raise PacketAskError(message("provider_failed"), codes.PROVIDER_FAILED)
     if _utf8_size(stdout) > MAX_OUTPUT_BYTES or _utf8_size(stderr) > MAX_OUTPUT_BYTES:
@@ -85,8 +134,10 @@ def _spawn_isolated(
     )
 
 
-def _utf8_size(text: str) -> int:
+def _utf8_size(text: str | bytes) -> int:
     """UTF-8 바이트 수."""
+    if isinstance(text, bytes):
+        return len(text)
     return len(text.encode("utf-8"))
 
 
@@ -100,20 +151,18 @@ def _set_nonblocking(stream: object) -> None:
     fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
 
 
-def _read_pipe(stream: object) -> str | None:
+def _read_pipe(stream: object) -> bytes | None:
     """None 은 아직 데이터 없음, 빈 문자열은 EOF."""
     fileno = getattr(stream, "fileno", None)
     if fileno is None:
-        return ""
+        return b""
     try:
         raw = os.read(fileno(), 8192)
     except BlockingIOError:
         return None
     except OSError:
-        return ""
-    if raw == b"":
-        return ""
-    return raw.decode("utf-8", errors="replace")
+        return b""
+    return raw
 
 
 def _communicate_bounded(
@@ -123,35 +172,53 @@ def _communicate_bounded(
     pgid: int | None,
 ) -> tuple[str, str]:
     """stdout/stderr 를 한도 안에서 읽고, 넘치면 그룹을 죽인다."""
-    if proc.stdin is not None:
-        proc.stdin.write(stdin_text)
-        proc.stdin.close()
+    deadline = time.monotonic() + max(timeout, 1)
+    stdin_bytes = stdin_text.encode("utf-8")
+    stdin_offset = 0
+    stdin_stream = proc.stdin
+    stdin_closed = stdin_stream is None
+    if stdin_stream is not None:
+        _set_nonblocking(stdin_stream)
     if proc.stdout is not None:
         _set_nonblocking(proc.stdout)
     if proc.stderr is not None:
         _set_nonblocking(proc.stderr)
-    deadline = time.monotonic() + max(timeout, 1)
-    stdout_parts: list[str] = []
-    stderr_parts: list[str] = []
+    stdout_parts: list[bytes] = []
+    stderr_parts: list[bytes] = []
     stdout_n = 0
     stderr_n = 0
     stdout_stream = proc.stdout
     stderr_stream = proc.stderr
     waiters = [item for item in (stdout_stream, stderr_stream) if item is not None]
     eof = {stream: False for stream in waiters}
-    while not all(eof.values()):
+    while not stdin_closed or not all(eof.values()):
         if stdout_n > MAX_OUTPUT_BYTES or stderr_n > MAX_OUTPUT_BYTES:
             _kill_process_group(proc, pgid)
             raise PacketAskError(message("output_guard_size"), codes.OUTPUT_GUARD)
         if time.monotonic() > deadline:
             raise subprocess.TimeoutExpired(proc.args, timeout)
-        pending = [stream for stream, done in eof.items() if not done]
-        ready, _, _ = select.select(pending, [], [], 0.1)
-        for stream in ready:
+        readers = [stream for stream, done in eof.items() if not done]
+        writers = [] if stdin_closed or stdin_stream is None else [stdin_stream]
+        ready_read, ready_write, _ = select.select(readers, writers, [], 0.1)
+        for stream in ready_write:
+            try:
+                written = os.write(stream.fileno(), stdin_bytes[stdin_offset : stdin_offset + 8192])
+                stdin_offset += written
+            except BlockingIOError:
+                continue
+            except (BrokenPipeError, OSError):
+                stdin_offset = len(stdin_bytes)
+            if stdin_offset >= len(stdin_bytes):
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+                stdin_closed = True
+        for stream in ready_read:
             chunk = _read_pipe(stream)
             if chunk is None:
                 continue
-            if chunk == "":
+            if chunk == b"":
                 eof[stream] = True
                 continue
             if stream is stdout_stream:
@@ -160,7 +227,9 @@ def _communicate_bounded(
             else:
                 stderr_parts.append(chunk)
                 stderr_n += _utf8_size(chunk)
-    return "".join(stdout_parts), "".join(stderr_parts)
+    stdout = b"".join(stdout_parts).decode("utf-8", errors="replace")
+    stderr = b"".join(stderr_parts).decode("utf-8", errors="replace")
+    return stdout, stderr
 
 
 def _kill_process_group(proc: subprocess.Popen[str], pgid: int | None) -> None:
@@ -352,8 +421,7 @@ def kimi_launch_args(work_dir: Path, agent_file: Path, skills_dir: Path) -> list
 
 def ensure_kimi_config(kimi_home: Path) -> None:
     """키 없는 최소 config. 도구 allowlist는 매칭되지 않는 이름만 둔다."""
-    kimi_home.mkdir(parents=True, exist_ok=True)
-    kimi_home.chmod(0o700)
+    _ensure_private_directory(kimi_home)
     body = (
         "telemetry = false\n"
         "default_yolo = false\n"
@@ -361,18 +429,22 @@ def ensure_kimi_config(kimi_home: Path) -> None:
         f'enabled = ["{KIMI_DISABLED_TOOL_SENTINEL}"]\n'
     )
     config = kimi_home / "config.toml"
-    config.write_text(body, encoding="utf-8")
-    config.chmod(0o600)
+    _write_private_text(config, body)
     mcp = kimi_home / "mcp.json"
-    mcp.write_text('{"mcpServers":{}}\n', encoding="utf-8")
-    mcp.chmod(0o600)
+    _write_private_text(mcp, '{"mcpServers":{}}\n')
 
 
 def _cleanup_kimi_sessions(kimi_home: Path) -> None:
     """실행 후 세션 로그를 지워 패킷 사본이 홈에 남지 않게 한다."""
     sessions = kimi_home / "sessions"
-    if sessions.is_dir():
-        shutil.rmtree(sessions, ignore_errors=True)
+    if not sessions.exists() and not sessions.is_symlink():
+        return
+    if sessions.is_symlink():
+        raise PacketAskError(message("kimi_cleanup_failed"), codes.INTERNAL)
+    try:
+        shutil.rmtree(sessions, ignore_errors=False)
+    except OSError as exc:
+        raise PacketAskError(message("kimi_cleanup_failed"), codes.INTERNAL) from exc
 
 
 def _kimi_child_env(home: Path, kimi_home: Path, api_key: str) -> dict[str, str]:

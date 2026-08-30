@@ -18,6 +18,10 @@ How personal Kimi Code or GLM Coding Plan subscriptions handle data is defined b
 - `doctor` checks that required flag names appear in `--help`. It does not prove a no-tools OS sandbox. Launch probes only the selected binary. `doctor` still walks the catalog and caches `--help` by path, mtime, and size for the process lifetime.
 - GLM and Claude child environments set `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, and `DISABLE_ERROR_REPORTING=1`. The vendor can ignore those flags. This CLI does not delete `~/.claude/projects/`.
 - If vendor stdout contains a dedicated key value or is too large, it is discarded and the process exits 22.
+- Vendor stdin, stdout, and stderr share one bounded, nonblocking deadline. Explicit file, stdin-question, and git diff collection also stop at configured limits.
+- The final rendered `packet.md`, not only its source fragments, must fit `--max-bytes`. Binary and non-UTF-8 explicit files are rejected.
+- ANSI CSI/OSC/DCS and unsafe control characters are removed from vendor output. Receipt paths are JSON escaped.
+- Tool-owned provider profile directories reject final-component symlinks. A Kimi session cleanup failure is reported rather than silently ignored.
 
 ## What this tool does not do
 
@@ -26,6 +30,7 @@ How personal Kimi Code or GLM Coding Plan subscriptions handle data is defined b
 - It does not send implementation, patch application, or production incident response to a sub.
 - It does not run user zsh functions or wrappers at the front of `PATH`. The default allowlist is `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`, `/bin`, `~/.local/bin`, and `PACKET_ASK_*_BIN`.
 - It does not prove Claude auto-memory is off. The child env flags are best-effort vendor switches.
+- The implementation/incident wording gate is lexical and best-effort; it does not prove semantic intent.
 
 ## Keys and profiles
 

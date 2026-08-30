@@ -303,6 +303,28 @@ def test_review_budget_counts_question_and_files(
     assert code == codes.BUDGET
 
 
+def test_review_budget_counts_rendered_packet_overhead(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """헤더·경로·계약문을 포함한 실제 packet.md가 예산을 지킨다."""
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    code = main(
+        [
+            "review",
+            "--provider",
+            "paste",
+            "--files",
+            "src/app.py",
+            "--max-bytes",
+            "100",
+            "--question",
+            "q",
+        ]
+    )
+    assert code == codes.BUDGET
+
+
 def test_review_prints_receipt_on_stderr(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -61,6 +61,10 @@ uv run packet-ask doctor
 
 `research` does not attach local files or diffs by default. The only exception is `--include-files`. `--diff` and `--staged` are rejected.
 
+`--max-files` applies to explicit files and diff paths. `--max-bytes` applies to
+the final UTF-8 `packet.md`, including framing and path labels. Reads stop at
+the configured bound, and explicit binary or non-UTF-8 files are rejected.
+
 ## Usage
 
 ```bash
@@ -95,11 +99,15 @@ Kimi is official `kimi --quiet` one-shot. It does not open an interactive sessio
 
 GLM uses the official `claude` binary. **It does not change the parent shell `ANTHROPIC_BASE_URL`.** Only the child environment gets the [Z.ai Claude Code endpoint](https://docs.z.ai/scenario-example/develop-tools/claude) and `PACKET_ASK_GLM_KEY`. GLM and Claude child environments also set `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, and `DISABLE_ERROR_REPORTING`. That reduces local session residue. It does not prove the vendor stores nothing.
 
-On success, stderr prints a receipt before launch (`packet-ask receipt …`) and millisecond phase times after (`packet-ask timing …`). `--json` adds a `timing` object. Neither line contains keys.
+On success, stderr prints a receipt before launch (`packet-ask receipt …`) and millisecond phase times after (`packet-ask timing …`). `--json` adds a `timing` object. Neither line contains keys. Receipt paths are JSON escaped, and terminal control sequences are removed from untrusted provider output before it is printed.
 
 Packet temp dirs live in the OS cache, not the git worktree. cwd is not a sandbox. A `PACKET_ASK_CACHE_DIR` inside the worktree is rejected. `.gitignore` entries for `.packet-ask-tmp/` and `packet.md` only stop leftover files from being committed.
 
 User config `~/.config/packet-ask/providers.toml` adds **paste aliases only**. It does not accept executables, argv, or env.
+
+The implementation/incident question gate is a conservative lexical check, not
+a proof of intent. Launch adapters still disable tools and confine the child to
+the packet even if wording is novel.
 
 ```toml
 version = 1
@@ -135,6 +143,8 @@ label = "Gemini CLI"
 uv sync --group dev
 uv run pytest
 ```
+
+The current confinement hardening rationale is in [docs/hardening.md](docs/hardening.md).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 

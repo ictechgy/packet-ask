@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import re
+import select
+import signal
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,6 +17,7 @@ from packet_ask.text import message
 
 DEFAULT_MAX_FILES = 25
 DEFAULT_MAX_BYTES = 256 * 1024
+_GIT_TIMEOUT_SECONDS = 30
 
 _SECRET_SUFFIXES = (
     ".pem",
@@ -56,7 +61,7 @@ def resolve_worktree(start: Path) -> Path:
         env=_git_env(),
     )
     if result.returncode != 0:
-        raise ScopeError("git 워크트리가 아닙니다.")
+        raise ScopeError(message("not_worktree"))
     return Path(result.stdout.strip()).resolve()
 
 
@@ -86,11 +91,11 @@ def _must_stay_inside(worktree: Path, candidate: Path) -> Path:
     try:
         real.relative_to(worktree)
     except ValueError as exc:
-        raise ScopeError(f"워크트리 밖 경로입니다: {candidate}") from exc
+        raise ScopeError(message("outside_worktree", name=candidate)) from exc
     if real.is_symlink() or candidate.is_symlink():
-        raise ScopeError(f"심링크는 허용하지 않습니다: {candidate}")
+        raise ScopeError(message("symlink_path", name=candidate))
     if not real.is_file():
-        raise ScopeError(f"일반 파일이 아닙니다: {candidate}")
+        raise ScopeError(message("regular_file", name=candidate))
     return real
 
 
@@ -103,25 +108,43 @@ def collect_files(
     """지정 파일을 읽어 상대경로 목록으로 반환한다."""
     worktree = worktree.resolve()
     if len(paths) > max_files:
-        raise BudgetError(f"파일 수가 {max_files}개를 넘습니다.")
+        raise BudgetError(message("max_files", limit=max_files))
     collected: list[ScopedFile] = []
     total = 0
     for raw in paths:
         real = _must_stay_inside(worktree, raw)
         relative = real.relative_to(worktree)
         _reject_blocked_relative(relative)
-        data = real.read_bytes()
+        remaining = max_bytes - total
+        if remaining < 0:
+            raise BudgetError(message("max_bytes", limit=max_bytes))
+        data = _read_text_file_bounded(real, remaining)
         total += len(data)
         if total > max_bytes:
-            raise BudgetError(f"총 용량이 {max_bytes}바이트를 넘습니다.")
-        collected.append(ScopedFile(relative=relative.as_posix(), content=data.decode("utf-8", errors="replace")))
+            raise BudgetError(message("max_bytes", limit=max_bytes))
+        collected.append(ScopedFile(relative=relative.as_posix(), content=data.decode("utf-8")))
     return collected
+
+
+def _read_text_file_bounded(path: Path, max_bytes: int) -> bytes:
+    """파일을 max_bytes + 1까지만 읽고 바이너리·비 UTF-8을 거절한다."""
+    with path.open("rb") as stream:
+        data = stream.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise BudgetError(message("max_bytes", limit=max_bytes))
+    if b"\x00" in data:
+        raise ScopeError(message("binary_file", name=path.name))
+    try:
+        data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ScopeError(message("utf8_file", name=path.name)) from exc
+    return data
 
 
 def _reject_blocked_relative(relative: Path) -> None:
     """git 메타데이터와 시크릿 파일명을 거절한다."""
     if is_vcs_path(relative):
-        raise ScopeError(f"git 메타데이터는 보낼 수 없습니다: {relative.as_posix()}")
+        raise ScopeError(message("vcs_path", name=relative.as_posix()))
     if is_secret_path(relative):
         raise ScopeError(message("secret_path", name=relative.name))
 
@@ -130,7 +153,7 @@ def _git_executable() -> str:
     """신뢰 경로의 git 만 쓴다."""
     found = resolve_trusted_executable("git")
     if found is None:
-        raise ScopeError("신뢰 경로에서 git 을 찾지 못했습니다.")
+        raise ScopeError(message("missing_git"))
     return str(found)
 
 
@@ -147,31 +170,78 @@ def _git_range_args(
     """사용자 문자열을 옵션으로 쓰지 않고 diff 범위만 고른다."""
     if range_spec is not None:
         if range_spec.startswith("-"):
-            raise ScopeError("잘못된 diff 범위입니다.")
+            raise ScopeError(message("invalid_diff_range"))
         return [range_spec]
     if staged:
         return ["--cached"]
     if unstaged:
         return []
-    raise ScopeError("diff 범위를 지정하세요.")
+    raise ScopeError(message("diff_required"))
 
 
-def _run_git(worktree: Path, extra: list[str]) -> str:
-    """git 을 셸 없이 실행한다."""
+def _stop_process_group(proc: subprocess.Popen[bytes]) -> None:
+    """bounded git 실행을 그룹 단위로 끝낸다."""
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except OSError:
+        try:
+            proc.kill()
+        except OSError:
+            pass
+    try:
+        proc.wait(timeout=1)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def _run_git(worktree: Path, extra: list[str], max_bytes: int) -> str:
+    """git stdout을 제한·timeout 아래에서 셸 없이 읽는다."""
     command = [_git_executable(), *extra]
-    result = subprocess.run(
+    proc = subprocess.Popen(
         command,
         cwd=worktree,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
         env=_git_env(),
+        start_new_session=True,
     )
-    if result.returncode != 0:
-        raise ScopeError("git 명령을 실행하지 못했습니다.")
-    return result.stdout
+    if proc.stdout is None:
+        _stop_process_group(proc)
+        raise ScopeError(message("git_output_failed"))
+    os.set_blocking(proc.stdout.fileno(), False)
+    deadline = time.monotonic() + _GIT_TIMEOUT_SECONDS
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        remaining_time = deadline - time.monotonic()
+        if remaining_time <= 0:
+            _stop_process_group(proc)
+            raise ScopeError(message("git_timeout"))
+        ready, _, _ = select.select([proc.stdout], [], [], min(0.1, remaining_time))
+        if not ready:
+            continue
+        try:
+            chunk = os.read(proc.stdout.fileno(), min(65536, max_bytes - total + 1))
+        except BlockingIOError:
+            continue
+        if not chunk:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+        if total > max_bytes:
+            _stop_process_group(proc)
+            raise BudgetError(message("max_bytes", limit=max_bytes))
+    try:
+        returncode = proc.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        _stop_process_group(proc)
+        raise ScopeError(message("git_exit_timeout")) from None
+    if returncode != 0:
+        raise ScopeError(message("git_failed"))
+    text = b"".join(chunks).decode("utf-8", errors="replace")
+    _reject_oversized_diff(text, max_bytes)
+    return text
 
 
 def _diff_guard_args() -> list[str]:
@@ -191,9 +261,13 @@ def _diff_guard_args() -> list[str]:
     ]
 
 
-def _name_status_paths(worktree: Path, range_args: list[str]) -> list[str]:
+def _name_status_paths(worktree: Path, range_args: list[str], max_bytes: int) -> list[str]:
     """NUL 구분 name-status 로 원본·대상 경로를 모두 모은다."""
-    raw = _run_git(worktree, [*_diff_guard_args(), "--name-status", "-z", *range_args])
+    raw = _run_git(
+        worktree,
+        [*_diff_guard_args(), "--name-status", "-z", *range_args],
+        max_bytes,
+    )
     return _parse_name_status(raw)
 
 
@@ -209,7 +283,7 @@ def _parse_name_status(raw: str) -> list[str]:
             index += 3
             continue
         if index + 1 >= len(parts):
-            raise ScopeError("git name-status 출력을 해석하지 못했습니다.")
+            raise ScopeError(message("name_status_parse"))
         paths.append(parts[index + 1])
         index += 2
     return paths
@@ -218,7 +292,7 @@ def _parse_name_status(raw: str) -> list[str]:
 def _reject_oversized_diff(text: str, max_bytes: int) -> None:
     """diff 용량 예산을 넘기면 거절한다."""
     if len(text.encode("utf-8")) > max_bytes:
-        raise BudgetError(f"총 용량이 {max_bytes}바이트를 넘습니다.")
+        raise BudgetError(message("max_bytes", limit=max_bytes))
 
 
 def _reject_secret_diff_paths(paths: list[str]) -> None:
@@ -235,16 +309,22 @@ def collect_git_diff(
     unstaged: bool = False,
     staged: bool = False,
     max_bytes: int = DEFAULT_MAX_BYTES,
+    max_files: int = DEFAULT_MAX_FILES,
 ) -> str:
     """요청한 diff를 텍스트로 모은다. 사용자 문자열을 셸에 넣지 않는다."""
+    if max_bytes < 1:
+        raise BudgetError(message("max_bytes", limit=max_bytes))
+    if max_files < 1:
+        raise BudgetError(message("max_files", limit=max_files))
     range_args = _git_range_args(range_spec, unstaged, staged)
-    paths = _name_status_paths(worktree, range_args)
-    text = _run_git(worktree, [*_diff_guard_args(), *range_args])
+    paths = _name_status_paths(worktree, range_args, max_bytes)
+    if len(set(paths)) > max_files:
+        raise BudgetError(message("max_files", limit=max_files))
+    text = _run_git(worktree, [*_diff_guard_args(), *range_args], max_bytes)
     if not text.strip():
-        raise ScopeError("범위에 변경이 없습니다.")
+        raise ScopeError(message("empty_diff"))
     if not paths:
-        raise ScopeError("diff 본문은 있는데 경로를 읽지 못했습니다.")
+        raise ScopeError(message("missing_diff_paths"))
     _reject_oversized_diff(text, max_bytes)
     _reject_secret_diff_paths(paths)
     return text
-

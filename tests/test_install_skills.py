@@ -39,3 +39,13 @@ def test_install_skills_force_overwrites(tmp_path: Path) -> None:
     path.write_text("custom skill\n", encoding="utf-8")
     install_skills(home=tmp_path, force=True)
     assert "packet-ask" in path.read_text(encoding="utf-8")
+
+
+def test_install_skills_rejects_intermediate_symlink(tmp_path: Path) -> None:
+    """하니스 경로의 중간 심링크를 따라가 쓰지 않는다."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (tmp_path / ".claude").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(PacketAskError):
+        install_skills(home=tmp_path)
+    assert not (outside / "skills" / "packet-ask" / "SKILL.md").exists()

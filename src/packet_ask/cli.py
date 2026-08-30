@@ -15,7 +15,7 @@ from packet_ask.errors import PacketAskError
 from packet_ask.install_skills import install_skills
 from packet_ask.launch import launch_claude, launch_glm, launch_kimi
 from packet_ask.providers import lookup_provider, load_catalog
-from packet_ask.output import guard_provider_output, wrap_untrusted
+from packet_ask.output import wrap_untrusted
 from packet_ask.packet import Packet, build_packet
 from packet_ask.policy import assert_allowed_task
 from packet_ask.errors import BudgetError
@@ -51,6 +51,17 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _positive_int(raw: str) -> int:
+    """자원 제한 인자는 1 이상의 정수만 받는다."""
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if value < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return value
+
+
 def _add_task_parser(sub: argparse._SubParsersAction, name: str, help_text: str) -> None:
     """review/research/brainstorm/paste 공통 인자를 붙인다."""
     item = sub.add_parser(name, help=help_text)
@@ -63,9 +74,9 @@ def _add_task_parser(sub: argparse._SubParsersAction, name: str, help_text: str)
     item.add_argument("--staged", action="store_true")
     if name == "review":
         item.add_argument("--unstaged", action="store_true")
-    item.add_argument("--timeout", type=int, default=300)
-    item.add_argument("--max-files", type=int, default=DEFAULT_MAX_FILES)
-    item.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
+    item.add_argument("--timeout", type=_positive_int, default=300)
+    item.add_argument("--max-files", type=_positive_int, default=DEFAULT_MAX_FILES)
+    item.add_argument("--max-bytes", type=_positive_int, default=DEFAULT_MAX_BYTES)
     item.add_argument("--dry-run", action="store_true")
     item.add_argument("--json", action="store_true")
 
@@ -73,7 +84,17 @@ def _add_task_parser(sub: argparse._SubParsersAction, name: str, help_text: str)
 def _read_question(args: argparse.Namespace) -> str:
     """질문 텍스트를 모은다."""
     if args.question_stdin:
-        return sys.stdin.read()
+        parts: list[str] = []
+        total = 0
+        while True:
+            chunk = sys.stdin.read(min(4096, args.max_bytes - total + 1))
+            if not chunk:
+                break
+            parts.append(chunk)
+            total += len(chunk.encode("utf-8"))
+            if total > args.max_bytes:
+                raise BudgetError(f"total packet exceeds {args.max_bytes} bytes")
+        return "".join(parts)
     return args.question
 
 
@@ -94,11 +115,17 @@ def _collect_scope(args: argparse.Namespace, worktree: Path) -> tuple[list, str 
     diff_text = None
     budget = args.max_bytes
     if args.staged:
-        diff_text = collect_git_diff(worktree, staged=True, max_bytes=budget)
+        diff_text = collect_git_diff(
+            worktree, staged=True, max_bytes=budget, max_files=args.max_files
+        )
     elif args.diff:
-        diff_text = collect_git_diff(worktree, range_spec=args.diff, max_bytes=budget)
+        diff_text = collect_git_diff(
+            worktree, range_spec=args.diff, max_bytes=budget, max_files=args.max_files
+        )
     elif getattr(args, "unstaged", False):
-        diff_text = collect_git_diff(worktree, unstaged=True, max_bytes=budget)
+        diff_text = collect_git_diff(
+            worktree, unstaged=True, max_bytes=budget, max_files=args.max_files
+        )
     return scoped_files, diff_text
 
 
@@ -227,6 +254,7 @@ def _run_task(args: argparse.Namespace) -> int:
     provider, question, files_flag, has_diff = _task_inputs(args)
     mode = args.command if args.command != "paste" else "review"
     assert_allowed_task(mode, question, files_flag, has_diff=has_diff)
+    lookup_provider(provider)
     _require_explicit_review_scope(args)
     worktree = resolve_worktree(Path.cwd())
     scoped_files, diff_text = _collect_scope(args, worktree)
@@ -242,6 +270,7 @@ def _run_task(args: argparse.Namespace) -> int:
         files=scoped_files,
         diff_text=diff_text,
         parent=parent,
+        max_bytes=args.max_bytes,
     )
     selector = _review_selectors(args)[0] if _review_selectors(args) else files_flag or "none"
     receipt = build_receipt(provider, selector, scoped_files, diff_text, packet)
@@ -281,7 +310,6 @@ def _finish_task(
     """벤더 실행 후 타이밍과 출력을 쓴다. 패킷 삭제는 호출측 finally."""
     launch_started = time.monotonic()
     raw = _execute_provider(provider, packet, args.timeout)
-    guard_provider_output(raw)
     wrapped = wrap_untrusted(raw)
     timing = _phase_timing(started, preflight_ms, packet_ms, launch_started)
     print(format_timing_line(timing), file=sys.stderr)

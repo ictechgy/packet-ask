@@ -140,6 +140,15 @@ def test_release_workflow_uses_trusted_publishing() -> None:
     assert workflow.count("id-token: write") == 1
 
 
+def test_ci_actions_are_pinned_and_declared_pythons_are_tested() -> None:
+    """일반 CI도 immutable action과 지원 Python 경계를 검사한다."""
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    action_lines = [line.strip() for line in workflow.splitlines() if "uses:" in line]
+    assert action_lines
+    assert all(re.search(r"@[0-9a-f]{40}(?:\s|$)", line) for line in action_lines)
+    assert 'python-version: ["3.11", "3.13"]' in workflow
+
+
 def test_smoke_test_script_exists() -> None:
     """배포 산출물 스모크 테스트가 휠만으로 실행 가능하다."""
     script = ROOT / "tests/smoke.py"

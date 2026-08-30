@@ -41,7 +41,11 @@ def build_receipt(
 
 def format_receipt_line(receipt: dict[str, Any]) -> str:
     """사람이 읽는 한 줄 영수증."""
-    paths = ",".join(str(path) for path in receipt["paths"])
+    paths = json.dumps(
+        [str(path) for path in receipt["paths"]],
+        ensure_ascii=True,
+        separators=(",", ":"),
+    )
     digest = str(receipt["sha256_packet_md"])[:12]
     return (
         f"packet-ask receipt provider={receipt['provider']} "

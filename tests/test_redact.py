@@ -55,6 +55,12 @@ def test_verify_passes_after_scrub() -> None:
     verify_scrubbed(text)
 
 
+def test_verify_rejects_unredacted_generic_secret_literal() -> None:
+    """알려진 토큰 prefix가 없어도 secret-key 문자열 리터럴을 재검증한다."""
+    with pytest.raises(RedactionError):
+        verify_scrubbed('const cfg = {api_key: "plain-secret-value"}\n')
+
+
 def test_keeps_identifier_and_type_assignments() -> None:
     """시크릿 이름 식별자·타입 애노테이션은 소스 문법을 깨지 않는다."""
     source = (
@@ -80,6 +86,26 @@ def test_redacts_inline_json_api_key() -> None:
     text, report = scrub_text('{"ok":1,"api_key":"supersecretvalue123456","x":2}\n')
     assert "supersecretvalue123456" not in text
     assert "[REDACTED]" in text
+    assert report.secret_values >= 1
+
+
+def test_redacts_inline_secret_with_escaped_quote() -> None:
+    """이스케이프 따옴표가 있는 문자열도 값 전체를 가린다."""
+    source = r'{"api_key":"prefix\"suffix","x":2}' + "\n"
+    text, report = scrub_text(source)
+    assert "prefix" not in text
+    assert "suffix" not in text
+    assert r'"api_key":"[REDACTED]"' in text
+    assert '"x":2' in text
+    assert report.secret_values >= 1
+
+
+def test_redacts_unquoted_inline_secret_literal_only() -> None:
+    """객체 내부의 unquoted 키는 문자열 리터럴만 가리고 표현식은 둔다."""
+    source = 'const cfg = {api_key: "plain-secret-value", token: loadToken()}\n'
+    text, report = scrub_text(source)
+    assert "plain-secret-value" not in text
+    assert "loadToken()" in text
     assert report.secret_values >= 1
 
 

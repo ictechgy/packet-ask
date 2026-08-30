@@ -28,10 +28,20 @@ def install_skills(home: Path | None = None, force: bool = False) -> list[Path]:
     body = skill_markdown()
     written: list[Path] = []
     for relative in SKILL_RELATIVE_PATHS:
+        _reject_symlink_components(root, Path(relative))
         path = root / relative
         _write_skill(path, body, force)
         written.append(path)
     return written
+
+
+def _reject_symlink_components(root: Path, relative: Path) -> None:
+    """선택한 하니스 홈 아래 기존 경로 조각의 심링크를 모두 거절한다."""
+    current = root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise PacketAskError(message("skill_symlink"), codes.CONFINEMENT)
 
 
 def _write_skill(path: Path, body: str, force: bool) -> None:
