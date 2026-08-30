@@ -55,12 +55,16 @@ _SECRET_VALUE_PATTERNS = (
 _PRIVATE_KEY_RE = re.compile(
     r"(?is)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----"
 )
-_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
+_EMAIL_RE = re.compile(
+    r"(?a:\b)[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}(?a:\b)"
+)
 _PHONE_RE = re.compile(
     r"(?<!\d)(?:\+82[-\s]?)?0?1[016789][-\s]?\d{3,4}[-\s]?\d{4}(?!\d)"
 )
 # 재검증용. 스크럽 패턴과 완전히 같으면 놓친 형식을 같이 놓친다.
-_VERIFY_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+_VERIFY_EMAIL_RE = re.compile(
+    r"(?a:\b)[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"
+)
 _VERIFY_PHONE_RE = re.compile(r"(?:\+82|0)1[016789]\d{7,8}")
 _VERIFY_KEY_RE = re.compile(r"\b(?:sk-|gh[pousr]_|AKIA|github_pat_)[A-Za-z0-9_-]{8,}")
 _VERIFY_PRIVATE_KEY_HEADER_RE = re.compile(

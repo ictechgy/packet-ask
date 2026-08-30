@@ -53,6 +53,24 @@ def test_packet_md_contains_task_and_files(tmp_path: Path) -> None:
     packet.destroy()
 
 
+def test_packet_diff_does_not_retain_unicode_adjacent_email(tmp_path: Path) -> None:
+    """diff 조각과 최종 packet 모두 Unicode 인접 이메일 원문을 담지 않는다."""
+    sample = "+한alice@example.com\n"
+    packet = build_packet(
+        mode="review",
+        question="review",
+        files=[],
+        diff_text=sample,
+        parent=tmp_path,
+    )
+    diff = (packet.root / "files" / "changes.patch").read_text(encoding="utf-8")
+    assert "@example.com" not in diff
+    assert "@example.com" not in packet.payload_text()
+    assert "[REDACTED EMAIL]" in diff
+    assert packet.report.emails == 1
+    packet.destroy()
+
+
 def test_packet_contract_uses_selected_language(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """패킷 내부 계약도 기본 영어와 명시 한글을 구분한다."""
     monkeypatch.setenv("PACKET_ASK_LANG", "en")

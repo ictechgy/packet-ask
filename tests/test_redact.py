@@ -78,6 +78,39 @@ def test_redacts_email_and_phone() -> None:
     assert report.phones >= 1
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "한alice@example.com",
+        "漢alice@example.com",
+        "éAlice+tag@example.com",
+        "한alice@example.com字",
+    ],
+)
+def test_redacts_ascii_email_adjacent_to_unicode(source: str) -> None:
+    """Unicode word 문자에 붙은 ASCII 이메일도 provider 전에 가린다."""
+    text, report = scrub_text(source + "\n")
+    assert "@example.com" not in text
+    assert "[REDACTED EMAIL]" in text
+    assert report.emails == 1
+    verify_scrubbed(text)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "한alice@example.com",
+        "漢alice@example.com",
+        "éAlice+tag@example.com",
+        "한alice@example.com字",
+    ],
+)
+def test_verify_rejects_unicode_adjacent_ascii_email(source: str) -> None:
+    """독립 verifier도 unsanitized Unicode 인접 이메일을 fail-closed한다."""
+    with pytest.raises(RedactionError):
+        verify_scrubbed(source + "\n")
+
+
 def test_verify_fails_when_home_path_remains() -> None:
     """재검증은 홈 경로가 남으면 실패한다."""
     home = str(Path.home())
@@ -95,6 +128,9 @@ def test_verify_passes_after_scrub() -> None:
 def test_verify_does_not_treat_diff_decorator_as_email() -> None:
     """추가된 Python decorator의 +@prefix를 이메일로 오탐하지 않는다."""
     verify_scrubbed("+@pytest.mark.parametrize(\n")
+    text, report = scrub_text("+@pytest.mark.parametrize(\n")
+    assert text == "+@pytest.mark.parametrize(\n"
+    assert report.emails == 0
 
 
 def test_verify_rejects_unredacted_generic_secret_literal() -> None:
