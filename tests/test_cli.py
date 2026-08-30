@@ -7,6 +7,7 @@ import pytest
 
 from packet_ask import codes
 from packet_ask.cli import main
+from packet_ask.keysource import CredentialStatus
 
 
 def _init_repo(root: Path) -> Path:
@@ -74,6 +75,8 @@ def test_claude_without_dedicated_key(
             "review",
             "--provider",
             "claude",
+            "--credential-source",
+            "env",
             "--files",
             "src/app.py",
             "--question",
@@ -96,6 +99,8 @@ def test_glm_without_dedicated_key(
             "review",
             "--provider",
             "glm",
+            "--credential-source",
+            "env",
             "--files",
             "src/app.py",
             "--question",
@@ -469,3 +474,83 @@ def test_review_paste_uses_cache_dir_not_repo(
     assert not (repo / ".packet-ask-tmp").exists()
     leftovers = list(cache.glob("packet-ask-*")) if cache.exists() else []
     assert leftovers == []
+
+
+def test_credentials_status_does_not_print_key(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """credentials status는 source 존재만 출력하고 key 값은 출력하지 않는다."""
+    monkeypatch.setattr(
+        "packet_ask.cli.credential_status",
+        lambda provider: CredentialStatus(provider, "unset", "available", "keychain"),
+    )
+    code = main(["credentials", "status", "glm"])
+    captured = capsys.readouterr()
+    assert code == codes.SUCCESS
+    assert (
+        "glm | env=unset | keychain-item=available | auto-candidate=keychain"
+        in captured.out
+    )
+    assert "secret" not in captured.out.lower()
+
+
+def test_credentials_set_delegates_to_keychain(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """credentials set은 선택한 provider를 Keychain 저장기로 넘긴다."""
+    called: list[str] = []
+    monkeypatch.setattr(
+        "packet_ask.cli.store_macos_keychain",
+        lambda provider, access: called.append(f"{provider}:{access}"),
+    )
+    code = main(
+        [
+            "credentials",
+            "set",
+            "glm",
+            "--store",
+            "macos-keychain",
+            "--access",
+            "command",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == codes.SUCCESS
+    assert called == ["glm:command"]
+    assert "glm" in captured.out
+
+
+def test_credentials_set_requires_explicit_access_mode() -> None:
+    """Keychain 위협 모델은 안전·자동화 trade-off를 사용자가 직접 고른다."""
+    with pytest.raises(SystemExit):
+        main(["credentials", "set", "glm", "--store", "macos-keychain"])
+
+
+def test_review_passes_explicit_credential_source_to_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """task의 credential source가 선택한 launch adapter까지 전달된다."""
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    captured: dict[str, object] = {}
+
+    def fake_launch(packet, timeout, credential_source):  # noqa: ANN001
+        captured["source"] = credential_source
+        return "reviewed"
+
+    monkeypatch.setattr("packet_ask.cli.launch_glm", fake_launch)
+    code = main(
+        [
+            "review",
+            "--provider",
+            "glm",
+            "--credential-source",
+            "keychain",
+            "--files",
+            "src/app.py",
+            "--question",
+            "리뷰해줘",
+        ]
+    )
+    assert code == codes.SUCCESS
+    assert captured["source"] == "keychain"

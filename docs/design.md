@@ -29,6 +29,9 @@ paste 전용 내장: `grok`, `agy` (무도구 원샷 계약 확인 전).
 13. 벤더 stdin/stdout/stderr를 하나의 deadline 아래 동시에 처리한다. stdout 선출력으로 stdin 쓰기와 timeout을 막지 못한다.
 14. 벤더 출력의 터미널 제어문자를 제거한 뒤 전용 키를 다시 검사한다. receipt 경로는 JSON 이스케이프한다.
 15. 프로바이더 프로필의 심링크와 Kimi 세션 정리 실패를 숨기지 않는다.
+16. credential source는 `auto`/`env`/`keychain`/`prompt`만 허용한다. `auto`는 전용 env 다음 packet-ask canonical macOS Keychain만 보고 prompt하지 않는다.
+17. 실제 선택된 key는 저장 위치와 무관하게 벤더 출력의 원문·터미널 정규화 결과 모두에서 반사 여부를 검사한다.
+18. macOS Keychain 저장은 `command`(고정 `/usr/bin/security` 신뢰, background 사용)와 `prompt`(trusted app 없음, 매회 사용자 승인)를 구분한다. 둘의 위협 모델을 같은 것으로 주장하지 않는다.
 
 ## 금지
 

@@ -21,7 +21,7 @@ MIT licensed. See [LICENSE](LICENSE).
 - Kimi runs: a `kimi` CLI on the allowlist path
 - `paste` / `grok` / `agy` print a packet and do not launch a vendor
 
-Keys are environment variables only. **This tool does not read `.env` files.** Do not put key values on the command line; they land in shell history. `.env` is gitignored. Variable names are in [.env.example](.env.example). The executable allowlist is in [SECURITY.md](SECURITY.md). `doctor` only checks that help text mentions required flags. It does not prove a no-tools sandbox. Launch probes only the selected binary. `doctor` still lists the catalog and caches `--help` by executable path, mtime, and size for the process lifetime.
+Credentials come from a dedicated environment variable, a packet-ask-owned macOS Keychain item, or an explicitly requested one-run prompt. **This tool does not read `.env`, ZCode, Claude Code, arbitrary key files, or key commands.** Never put key values on the command line; they land in shell history. Variable names are in [.env.example](.env.example), and the complete source contract is in [docs/key-sources.md](docs/key-sources.md). The executable allowlist is in [SECURITY.md](SECURITY.md). `doctor` only checks that help text mentions required flags. It does not prove a no-tools sandbox.
 
 ## Install
 
@@ -69,13 +69,17 @@ the configured bound, and explicit binary or non-UTF-8 files are rejected.
 
 ```bash
 packet-ask providers
+packet-ask credentials status
+
+# Store through the interactive macOS Keychain prompt; no key in argv/history
+packet-ask credentials set glm --store macos-keychain --access command
 
 # Packet only; do not launch a vendor
 packet-ask review --provider paste --files src/app.py --question "Find race conditions in this code"
 packet-ask review --provider paste --files src/app.py --json --question "Find race conditions in this code"
 
-# GLM. Key: PACKET_ASK_GLM_KEY
-packet-ask review --provider glm --diff HEAD --question "Review this change"
+# GLM. auto = dedicated env first, then packet-ask-glm in macOS Keychain
+packet-ask review --provider glm --credential-source auto --diff HEAD --question "Review this change"
 
 # Uncommitted working-tree diff. review without a scope flag is rejected
 packet-ask review --provider paste --unstaged --question "Review this change"
@@ -95,9 +99,16 @@ packet-ask research --provider paste --question "What usually breaks in a Tailwi
 packet-ask doctor
 ```
 
-Kimi is official `kimi --quiet` one-shot. It does not open an interactive session. It refuses to run without `PACKET_ASK_KIMI_KEY`. Tools are disabled with a `tools: []` agent file and a non-matching `[tools] enabled` list. `KIMI_CODE_HOME` is only the isolated profile `~/.config/packet-ask/providers/kimi/kimi-code`. Do not run `kimi` in the real repo.
+Kimi is official `kimi --quiet` one-shot. It does not open an interactive session. It refuses to run without a resolved dedicated Kimi credential. Tools are disabled with a `tools: []` agent file and a non-matching `[tools] enabled` list. `KIMI_CODE_HOME` is only the isolated profile `~/.config/packet-ask/providers/kimi/kimi-code`. Do not run `kimi` in the real repo.
 
-GLM uses the official `claude` binary. **It does not change the parent shell `ANTHROPIC_BASE_URL`.** Only the child environment gets the [Z.ai Claude Code endpoint](https://docs.z.ai/scenario-example/develop-tools/claude) and `PACKET_ASK_GLM_KEY`. GLM and Claude child environments also set `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, and `DISABLE_ERROR_REPORTING`. That reduces local session residue. It does not prove the vendor stores nothing.
+GLM uses the official `claude` binary. **It does not change the parent shell `ANTHROPIC_BASE_URL`.** Only the child environment gets the [Z.ai Claude Code endpoint](https://docs.z.ai/scenario-example/develop-tools/claude) and the resolved dedicated GLM credential. GLM and Claude child environments also set `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, and `DISABLE_ERROR_REPORTING`. That reduces local session residue. It does not prove the vendor stores nothing.
+
+Task commands default to `--credential-source auto`: the dedicated environment
+variable wins, then the canonical macOS Keychain item is tried. `env`,
+`keychain`, and `prompt` select exactly one source and never silently fall back.
+`prompt` requires an interactive terminal and never persists the value. Status
+checks Keychain item existence without retrieving its password. Resolved keys
+from every source are included in raw and terminal-normalized output guards.
 
 On success, stderr prints a receipt before launch (`packet-ask receipt …`) and millisecond phase times after (`packet-ask timing …`). `--json` adds a `timing` object. Neither line contains keys. Receipt paths are JSON escaped, and terminal control sequences are removed from untrusted provider output before it is printed.
 

@@ -10,6 +10,12 @@ from pathlib import Path
 from typing import Any
 
 from packet_ask import codes
+from packet_ask.keysource import (
+    CREDENTIAL_PROVIDERS,
+    CREDENTIAL_SOURCES,
+    credential_status,
+    store_macos_keychain,
+)
 from packet_ask.doctor import inspect_providers
 from packet_ask.errors import PacketAskError
 from packet_ask.install_skills import install_skills
@@ -48,6 +54,26 @@ def _parser() -> argparse.ArgumentParser:
     providers_cmd.add_argument("--json", action="store_true")
     skills_cmd = sub.add_parser("install-skills", help="Install harness skills")
     skills_cmd.add_argument("--force", action="store_true")
+    credentials_cmd = sub.add_parser("credentials", help="Manage credential sources")
+    credentials_sub = credentials_cmd.add_subparsers(
+        dest="credentials_command",
+        required=True,
+    )
+    status_cmd = credentials_sub.add_parser("status", help="Show credential availability")
+    status_cmd.add_argument("provider", nargs="?", choices=CREDENTIAL_PROVIDERS)
+    set_cmd = credentials_sub.add_parser("set", help="Store a provider credential")
+    set_cmd.add_argument("provider", choices=CREDENTIAL_PROVIDERS)
+    set_cmd.add_argument(
+        "--store",
+        choices=("macos-keychain",),
+        default="macos-keychain",
+    )
+    set_cmd.add_argument(
+        "--access",
+        choices=("command", "prompt"),
+        required=True,
+        help="command supports agents; prompt requires macOS approval on every read",
+    )
     return parser
 
 
@@ -77,6 +103,11 @@ def _add_task_parser(sub: argparse._SubParsersAction, name: str, help_text: str)
     item.add_argument("--timeout", type=_positive_int, default=300)
     item.add_argument("--max-files", type=_positive_int, default=DEFAULT_MAX_FILES)
     item.add_argument("--max-bytes", type=_positive_int, default=DEFAULT_MAX_BYTES)
+    item.add_argument(
+        "--credential-source",
+        choices=CREDENTIAL_SOURCES,
+        default="auto",
+    )
     item.add_argument("--dry-run", action="store_true")
     item.add_argument("--json", action="store_true")
 
@@ -217,17 +248,47 @@ def _run_providers(as_json: bool) -> int:
     return _run_doctor()
 
 
-def _execute_provider(provider: str, packet: Packet, timeout: int) -> str:
+def _run_credentials(args: argparse.Namespace) -> int:
+    """키 값 없이 status를 보거나 `/usr/bin/security`에 저장을 위임한다."""
+    if args.credentials_command == "status":
+        providers = [args.provider] if args.provider else list(CREDENTIAL_PROVIDERS)
+        for provider in providers:
+            status = credential_status(provider)
+            print(
+                f"{status.provider} | env={status.environment} | "
+                f"keychain-item={status.keychain_item} | "
+                f"auto-candidate={status.auto_candidate}"
+            )
+        return codes.SUCCESS
+    if args.credentials_command == "set":
+        store_macos_keychain(args.provider, access=args.access)
+        print(
+            message(
+                "credential_saved",
+                provider=args.provider,
+                access=args.access,
+            )
+        )
+        return codes.SUCCESS
+    raise PacketAskError(message("no_adapter"), codes.USAGE)
+
+
+def _execute_provider(
+    provider: str,
+    packet: Packet,
+    timeout: int,
+    credential_source: str,
+) -> str:
     """카탈로그에 있는 프로바이더만 실행한다. paste 모드는 벤더를 띄우지 않는다."""
     spec = lookup_provider(provider)
     if spec.mode == "paste":
         return (packet.root / "packet.md").read_text(encoding="utf-8")
     if spec.provider_id == "glm":
-        return launch_glm(packet, timeout)
+        return launch_glm(packet, timeout, credential_source)
     if spec.provider_id == "kimi":
-        return launch_kimi(packet, timeout)
+        return launch_kimi(packet, timeout, credential_source)
     if spec.provider_id == "claude":
-        return launch_claude(packet, timeout)
+        return launch_claude(packet, timeout, credential_source)
     raise PacketAskError(message("no_adapter"), codes.CONFINEMENT)
 
 
@@ -309,7 +370,12 @@ def _finish_task(
 ) -> int:
     """벤더 실행 후 타이밍과 출력을 쓴다. 패킷 삭제는 호출측 finally."""
     launch_started = time.monotonic()
-    raw = _execute_provider(provider, packet, args.timeout)
+    raw = _execute_provider(
+        provider,
+        packet,
+        args.timeout,
+        args.credential_source,
+    )
     wrapped = wrap_untrusted(raw)
     timing = _phase_timing(started, preflight_ms, packet_ms, launch_started)
     print(format_timing_line(timing), file=sys.stderr)
@@ -331,6 +397,8 @@ def main(argv: list[str] | None = None) -> int:
             return _run_install_skills(force=getattr(args, "force", False))
         if args.command == "providers":
             return _run_providers(args.json)
+        if args.command == "credentials":
+            return _run_credentials(args)
         return _run_task(args)
     except PacketAskError as exc:
         print(str(exc), file=sys.stderr)

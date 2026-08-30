@@ -7,6 +7,7 @@ import secrets
 import unicodedata
 
 from packet_ask import codes
+from packet_ask.keysource import MIN_CREDENTIAL_LENGTH
 from packet_ask.errors import PacketAskError
 from packet_ask.text import message
 
@@ -16,7 +17,6 @@ _DEDICATED_KEY_ENVS = (
     "PACKET_ASK_KIMI_KEY",
     "PACKET_ASK_CLAUDE_KEY",
 )
-_MIN_KEY_LENGTH = 8
 
 _INJECTION_HINTS = (
     "ignore previous instructions",
@@ -25,13 +25,18 @@ _INJECTION_HINTS = (
 )
 
 
-def guard_provider_output(text: str) -> None:
+def guard_provider_output(
+    text: str,
+    protected_values: tuple[str, ...] = (),
+) -> None:
     """전용 키 유출과 과대 출력을 폐기한다. 값은 로그에 남기지 않는다."""
     if len(text.encode("utf-8")) > MAX_OUTPUT_BYTES:
         raise PacketAskError(message("output_guard_size"), codes.OUTPUT_GUARD)
-    for name in _DEDICATED_KEY_ENVS:
-        value = os.environ.get(name, "").strip()
-        if len(value) >= _MIN_KEY_LENGTH and value in text:
+    environment_values = tuple(
+        os.environ.get(name, "").strip() for name in _DEDICATED_KEY_ENVS
+    )
+    for value in (*environment_values, *protected_values):
+        if len(value) >= MIN_CREDENTIAL_LENGTH and value in text:
             raise PacketAskError(message("output_guard_key"), codes.OUTPUT_GUARD)
 
 
@@ -87,11 +92,14 @@ def _strip_terminal_controls(text: str) -> str:
     return "".join(cleaned)
 
 
-def sanitize_provider_output(text: str) -> str:
+def sanitize_provider_output(
+    text: str,
+    protected_values: tuple[str, ...] = (),
+) -> str:
     """원문과 제어문자 제거 결과를 모두 검사한 뒤 안전한 표시 문자열을 돌려준다."""
-    guard_provider_output(text)
+    guard_provider_output(text, protected_values)
     cleaned = _strip_terminal_controls(text)
-    guard_provider_output(cleaned)
+    guard_provider_output(cleaned, protected_values)
     return cleaned
 
 

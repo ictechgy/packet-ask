@@ -21,7 +21,7 @@ MIT 라이선스입니다. 전문은 [LICENSE](LICENSE)를 보세요.
 - Kimi 실행: allowlist 경로의 `kimi` CLI
 - `paste` / `grok` / `agy` 는 벤더를 띄우지 않고 패킷만 출력합니다
 
-키는 환경변수로만 넘깁니다. **이 도구는 `.env` 파일을 읽지 않습니다.** 명령줄에 키 값을 적지 마세요. 셸 히스토리에 남습니다. `.env` 는 저장소에서 무시합니다. 변수 이름은 [.env.example](.env.example)을 참고하세요. 실행 파일을 찾는 allowlist 는 [SECURITY.md](SECURITY.md)를 보세요. `doctor`는 help에 플래그가 보이는지만 확인하며, 무도구를 증명하지 않습니다. 런치는 고른 바이너리만 프로브합니다. `doctor`는 카탈로그 전체를 나열하고, `--help` 결과는 실행 파일 경로·mtime·크기로 프로세스 동안 캐시합니다.
+credential은 전용 환경변수, packet-ask 소유 macOS Keychain 항목, 명시한 일회성 prompt 중 하나에서 받습니다. **`.env`, ZCode, Claude Code, 임의 key 파일이나 key command는 읽지 않습니다.** 키 값을 명령행에 직접 넣으면 셸 히스토리에 남으므로 금지합니다. 변수 이름만 [.env.example](.env.example)에 있고 전체 source 계약은 [docs/key-sources.md](docs/key-sources.md)에 있습니다. 실행 파일 allowlist는 [SECURITY.md](SECURITY.md)를 보세요. `doctor`는 help에 필요한 플래그 이름이 있는지만 보며 무도구 샌드박스를 증명하지 않습니다.
 
 ## 설치
 
@@ -69,13 +69,17 @@ uv run packet-ask doctor
 
 ```bash
 packet-ask providers
+packet-ask credentials status
+
+# argv/history에 key를 넣지 않고 macOS Keychain prompt로 저장
+packet-ask credentials set glm --store macos-keychain --access command
 
 # 벤더를 실행하지 않고 패킷만 본다
 packet-ask review --provider paste --files src/app.py --question "이 코드의 경쟁 상태를 찾아줘"
 packet-ask review --provider paste --files src/app.py --json --question "이 코드의 경쟁 상태를 찾아줘"
 
-# GLM. 키는 PACKET_ASK_GLM_KEY
-packet-ask review --provider glm --diff HEAD --question "이 변경을 리뷰해줘"
+# GLM. auto는 전용 env를 먼저 보고 macOS Keychain packet-ask-glm을 봅니다
+packet-ask review --provider glm --credential-source auto --diff HEAD --question "이 변경을 리뷰해줘"
 
 # 워킹 트리 미커밋 diff. 플래그 없이 review 하면 보내지 않습니다
 packet-ask review --provider paste --unstaged --question "이 변경을 리뷰해줘"
@@ -95,9 +99,16 @@ packet-ask research --provider paste --question "Tailwind v4 마이그레이션�
 packet-ask doctor
 ```
 
-Kimi는 공식 `kimi --quiet` 원샷입니다. 대화형 세션을 열지 않습니다. `PACKET_ASK_KIMI_KEY` 가 없으면 실행하지 않습니다. 도구는 `tools: []` 에이전트 파일과 매칭되지 않는 `[tools] enabled` 로 끄고, `KIMI_CODE_HOME` 은 `~/.config/packet-ask/providers/kimi/kimi-code` 격리 프로필만 씁니다. 실제 레포에서 `kimi`를 직접 실행하지 마세요.
+Kimi는 공식 `kimi --quiet` 원샷입니다. 대화형 세션을 열지 않습니다. 전용 Kimi credential을 resolve하지 못하면 실행하지 않습니다. 도구는 `tools: []` 에이전트 파일과 매칭되지 않는 `[tools] enabled` 로 끄고, `KIMI_CODE_HOME` 은 `~/.config/packet-ask/providers/kimi/kimi-code` 격리 프로필만 씁니다. 실제 레포에서 `kimi`를 직접 실행하지 마세요.
 
-GLM은 공식 `claude` 바이너리를 쓰되, **부모 셸의 `ANTHROPIC_BASE_URL` 은 바꾸지 않습니다.** 자식 환경에만 [Z.ai Claude Code 연동](https://docs.z.ai/scenario-example/develop-tools/claude) 엔드포인트와 `PACKET_ASK_GLM_KEY` 를 넣습니다. GLM과 Claude 자식 환경에는 `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_ERROR_REPORTING` 도 넣습니다. 로컬 세션 잔여를 줄이기 위한 것이며, 벤더가 아무것도 저장하지 않음을 증명하지 않습니다.
+GLM은 공식 `claude` 바이너리를 쓰되, **부모 셸의 `ANTHROPIC_BASE_URL` 은 바꾸지 않습니다.** 자식 환경에만 [Z.ai Claude Code 연동](https://docs.z.ai/scenario-example/develop-tools/claude) 엔드포인트와 resolve한 전용 GLM credential을 넣습니다. GLM과 Claude 자식 환경에는 `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_ERROR_REPORTING` 도 넣습니다. 로컬 세션 잔여를 줄이기 위한 것이며, 벤더가 아무것도 저장하지 않음을 증명하지 않습니다.
+
+task 명령의 기본값은 `--credential-source auto`입니다. 전용 환경변수가
+우선이고, 그다음 canonical macOS Keychain 항목을 봅니다. `env`, `keychain`,
+`prompt`를 명시하면 그 source만 쓰고 fallback하지 않습니다. `prompt`는
+대화형 터미널에서만 동작하고 값을 저장하지 않습니다. status는 Keychain
+password를 읽지 않고 항목 존재만 확인합니다. 어느 source에서 고른 키든
+원문·터미널 정규화 출력의 반사 검사를 거칩니다.
 
 성공하면 stderr에 런치 전 영수증(`packet-ask receipt …`)과 완료 후 밀리초 구간(`packet-ask timing …`)을 씁니다. `--json` 에는 `timing` 객체가 들어갑니다. 두 줄 모두 키 값을 넣지 않습니다. 영수증 경로는 JSON 이스케이프하며, 불신뢰 프로바이더 출력의 터미널 제어 시퀀스는 출력 전에 제거합니다.
 

@@ -13,9 +13,10 @@ import time
 from pathlib import Path
 
 from packet_ask import codes
+from packet_ask.keysource import resolve_provider_key
 from packet_ask.doctor import inspect_provider
 from packet_ask.errors import PacketAskError
-from packet_ask.output import MAX_OUTPUT_BYTES
+from packet_ask.output import MAX_OUTPUT_BYTES, sanitize_provider_output
 from packet_ask.packet import Packet
 from packet_ask.paths import minimal_child_env, resolve_trusted_executable
 from packet_ask.text import message
@@ -283,36 +284,19 @@ def _require_executable(name: str) -> Path:
     return found
 
 
-def _require_dedicated_key(env_name: str, hint: str) -> str:
-    """전용 키만 받는다. 부모 셸의 일반 키는 쓰지 않는다."""
-    key = os.environ.get(env_name, "").strip()
-    if not key:
-        raise PacketAskError(hint, codes.PROVIDER_MISSING)
-    return key
-
-
-def _require_glm_key() -> str:
+def _require_glm_key(credential_source: str = "env") -> str:
     """전역 Anthropic 키가 아니라 PACKET_ASK_GLM_KEY 만 받는다."""
-    return _require_dedicated_key(
-        "PACKET_ASK_GLM_KEY",
-        message("missing_key", name="PACKET_ASK_GLM_KEY"),
-    )
+    return resolve_provider_key("glm", credential_source)
 
 
-def _require_claude_key() -> str:
+def _require_claude_key(credential_source: str = "env") -> str:
     """Anthropic 서브는 PACKET_ASK_CLAUDE_KEY 만 받는다."""
-    return _require_dedicated_key(
-        "PACKET_ASK_CLAUDE_KEY",
-        message("missing_key", name="PACKET_ASK_CLAUDE_KEY"),
-    )
+    return resolve_provider_key("claude", credential_source)
 
 
-def _require_kimi_key() -> str:
+def _require_kimi_key(credential_source: str = "env") -> str:
     """Kimi 서브는 PACKET_ASK_KIMI_KEY 만 받는다."""
-    return _require_dedicated_key(
-        "PACKET_ASK_KIMI_KEY",
-        message("missing_key", name="PACKET_ASK_KIMI_KEY"),
-    )
+    return resolve_provider_key("kimi", credential_source)
 
 
 def _claude_isolation_env(home: Path) -> dict[str, str]:
@@ -357,15 +341,27 @@ def _glm_argv() -> list[str]:
     return glm_argv()
 
 
-def launch_glm(packet: Packet, timeout: int) -> str:
+def launch_glm(
+    packet: Packet,
+    timeout: int,
+    credential_source: str = "env",
+) -> str:
     """공식 claude 바이너리를 GLM 엔드포인트로 한 번 호출한다."""
     require_launchable("glm")
-    key = _require_glm_key()
+    key = _require_glm_key(credential_source)
     executable = _require_executable("claude")
     home = provider_home("glm")
     stdin_text = (packet.root / "packet.md").read_text(encoding="utf-8")
     env = isolated_env(home, _glm_child_env(home, key))
-    return run_isolated_command(executable, glm_argv(), stdin_text, packet.root, env, timeout)
+    output = run_isolated_command(
+        executable,
+        glm_argv(),
+        stdin_text,
+        packet.root,
+        env,
+        timeout,
+    )
+    return sanitize_provider_output(output, protected_values=(key,))
 
 
 def _claude_child_env(home: Path, key: str) -> dict[str, str]:
@@ -376,15 +372,27 @@ def _claude_child_env(home: Path, key: str) -> dict[str, str]:
     return extra
 
 
-def launch_claude(packet: Packet, timeout: int) -> str:
+def launch_claude(
+    packet: Packet,
+    timeout: int,
+    credential_source: str = "env",
+) -> str:
     """공식 claude 를 Anthropic 엔드포인트로 한 번 호출한다."""
     require_launchable("claude")
-    key = _require_claude_key()
+    key = _require_claude_key(credential_source)
     executable = _require_executable("claude")
     home = provider_home("claude")
     stdin_text = (packet.root / "packet.md").read_text(encoding="utf-8")
     env = isolated_env(home, _claude_child_env(home, key))
-    return run_isolated_command(executable, glm_argv(), stdin_text, packet.root, env, timeout)
+    output = run_isolated_command(
+        executable,
+        glm_argv(),
+        stdin_text,
+        packet.root,
+        env,
+        timeout,
+    )
+    return sanitize_provider_output(output, protected_values=(key,))
 
 
 _KIMI_NO_TOOLS_AGENT = """---
@@ -458,10 +466,14 @@ def _kimi_child_env(home: Path, kimi_home: Path, api_key: str) -> dict[str, str]
     return extra
 
 
-def launch_kimi(packet: Packet, timeout: int) -> str:
+def launch_kimi(
+    packet: Packet,
+    timeout: int,
+    credential_source: str = "env",
+) -> str:
     """공식 kimi CLI를 TUI 없이 한 번 호출한다. 도구는 에이전트 파일로 끈다."""
     require_launchable("kimi")
-    api_key = _require_kimi_key()
+    api_key = _require_kimi_key(credential_source)
     executable = _require_executable("kimi")
     home = provider_home("kimi")
     kimi_home = home / "kimi-code"
@@ -474,6 +486,14 @@ def launch_kimi(packet: Packet, timeout: int) -> str:
     stdin_text = (packet.root / "packet.md").read_text(encoding="utf-8")
     argv = kimi_launch_args(packet.root, agent_file, skills_dir)
     try:
-        return run_isolated_command(executable, argv, stdin_text, packet.root, env, timeout)
+        output = run_isolated_command(
+            executable,
+            argv,
+            stdin_text,
+            packet.root,
+            env,
+            timeout,
+        )
+        return sanitize_provider_output(output, protected_values=(api_key,))
     finally:
         _cleanup_kimi_sessions(kimi_home)

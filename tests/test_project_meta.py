@@ -91,6 +91,8 @@ def _assert_install_paths(text: str) -> None:
     assert "https://pypi.org/project/packet-ask/" in text
     assert "--unstaged" in text
     assert "kimi-code" in text
+    assert "credentials status" in text
+    assert "credential-source" in text
 
 
 def test_readme_is_english_and_shows_install() -> None:

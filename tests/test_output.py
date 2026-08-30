@@ -73,6 +73,17 @@ def test_sanitize_then_guard_detects_key_split_by_ansi(monkeypatch: pytest.Monke
     assert exc.value.code == codes.OUTPUT_GUARD
 
 
+def test_sanitize_guard_checks_resolved_non_environment_key() -> None:
+    """Keychain/prompt에서 고른 키도 ANSI 제거 전후로 출력 반사를 막는다."""
+    raw = "keychain-secret\x1b[31m-value"
+    with pytest.raises(PacketAskError) as exc:
+        sanitize_provider_output(
+            raw,
+            protected_values=("keychain-secret-value",),
+        )
+    assert exc.value.code == codes.OUTPUT_GUARD
+
+
 def test_receipt_escapes_control_characters_in_paths() -> None:
     """조작된 파일명이 receipt에 새 줄이나 ANSI를 만들지 않는다."""
     receipt = {
