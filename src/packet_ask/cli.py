@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import json
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +38,14 @@ from packet_ask.scope import (
     resolve_worktree,
 )
 from packet_ask.text import message
+
+
+@dataclass(frozen=True)
+class TaskResult:
+    """cleanup 뒤에만 공개할 provider 결과와 timing."""
+
+    wrapped: str
+    timing: dict[str, int]
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -131,10 +141,11 @@ def _read_question(args: argparse.Namespace) -> str:
 
 def _collect_scope(args: argparse.Namespace, worktree: Path) -> tuple[list, str | None]:
     """모드에 맞는 파일과 diff를 모은다."""
-    files_arg = list(args.include_files or []) if args.command == "research" else list(args.files or [])
     if args.command == "research" and args.files:
-        files_arg = []
-        # policy가 files 플래그를 거절하게 한다.
+        raise PacketAskError(message("research_files"), codes.USAGE)
+    if args.command == "review" and args.include_files:
+        raise PacketAskError(message("review_include_files"), codes.USAGE)
+    files_arg = list(args.include_files or []) if args.command == "research" else list(args.files or [])
     scoped_files = []
     if files_arg:
         scoped_files = collect_files(
@@ -282,7 +293,7 @@ def _execute_provider(
     """카탈로그에 있는 프로바이더만 실행한다. paste 모드는 벤더를 띄우지 않는다."""
     spec = lookup_provider(provider)
     if spec.mode == "paste":
-        return (packet.root / "packet.md").read_text(encoding="utf-8")
+        return packet.payload_text()
     if spec.provider_id == "glm":
         return launch_glm(packet, timeout, credential_source)
     if spec.provider_id == "kimi":
@@ -338,11 +349,32 @@ def _run_task(args: argparse.Namespace) -> int:
     packet_ms = _ms_since(packet_started)
     print(format_receipt_line(receipt), file=sys.stderr)
     try:
-        return _finish_task(args, provider, packet, receipt, started, preflight_ms, packet_ms)
-    finally:
-        packet.destroy()
-        if parent.exists() and not any(parent.iterdir()):
-            parent.rmdir()
+        result = _finish_task(args, provider, packet, started, preflight_ms, packet_ms)
+    except BaseException:
+        try:
+            _cleanup_packet(packet, parent)
+        except OSError:
+            print(message("packet_cleanup_warning"), file=sys.stderr)
+        raise
+    try:
+        _cleanup_packet(packet, parent)
+    except OSError as exc:
+        raise PacketAskError(message("packet_cleanup_failed"), codes.INTERNAL) from exc
+    result.timing["total_ms"] = _ms_since(started)
+    return _emit_task_result(args, receipt, result)
+
+
+def _cleanup_packet(packet: Packet, parent: Path) -> None:
+    """packet은 반드시 지우고 공유 cache parent 경합은 정상으로 취급한다."""
+    packet.destroy()
+    try:
+        parent.rmdir()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        if exc.errno in {errno.ENOTEMPTY, errno.EEXIST}:
+            return
+        raise
 
 
 def _task_inputs(args: argparse.Namespace) -> tuple[str, str, str | None, bool]:
@@ -363,12 +395,11 @@ def _finish_task(
     args: argparse.Namespace,
     provider: str,
     packet: Packet,
-    receipt: dict[str, Any],
     started: float,
     preflight_ms: int,
     packet_ms: int,
-) -> int:
-    """벤더 실행 후 타이밍과 출력을 쓴다. 패킷 삭제는 호출측 finally."""
+) -> TaskResult:
+    """벤더 실행 결과를 준비하되 cleanup 전에는 공개하지 않는다."""
     launch_started = time.monotonic()
     raw = _execute_provider(
         provider,
@@ -378,11 +409,20 @@ def _finish_task(
     )
     wrapped = wrap_untrusted(raw)
     timing = _phase_timing(started, preflight_ms, packet_ms, launch_started)
-    print(format_timing_line(timing), file=sys.stderr)
+    return TaskResult(wrapped=wrapped, timing=timing)
+
+
+def _emit_task_result(
+    args: argparse.Namespace,
+    receipt: dict[str, Any],
+    result: TaskResult,
+) -> int:
+    """cleanup이 성공한 task 결과만 stdout/stderr에 공개한다."""
+    print(format_timing_line(result.timing), file=sys.stderr)
     if getattr(args, "json", False):
-        sys.stdout.write(json_envelope(receipt, wrapped, timing))
+        sys.stdout.write(json_envelope(receipt, result.wrapped, result.timing))
     else:
-        sys.stdout.write(wrapped)
+        sys.stdout.write(result.wrapped)
     return codes.SUCCESS
 
 

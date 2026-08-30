@@ -4,7 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from packet_ask.redact import RedactionError, scrub_text, verify_scrubbed
+from packet_ask.redact import (
+    RedactionError,
+    public_redaction_counts,
+    scrub_text,
+    verify_scrubbed,
+)
 
 
 def test_redacts_api_key_assignment() -> None:
@@ -13,6 +18,38 @@ def test_redacts_api_key_assignment() -> None:
     assert "sk-abcdefghijklmnopqrstuvwxyz012345" not in text
     assert "[REDACTED]" in text
     assert report.secret_lines + report.secret_values >= 1
+
+
+def test_redaction_module_can_scrub_its_own_detector_source() -> None:
+    """정규식 소스의 PRIVATE KEY 문구를 실제 PEM 잔여로 오탐하지 않는다."""
+    source = Path(__file__).resolve().parents[1] / "src" / "packet_ask" / "redact.py"
+    scrubbed, _ = scrub_text(source.read_text(encoding="utf-8"))
+    verify_scrubbed(scrubbed)
+
+
+def test_public_redaction_counts_are_exact_nonnegative_integers() -> None:
+    """receipt/manifest에는 허용된 count만 공개하고 내부 extras를 버린다."""
+    _text, report = scrub_text("plain text\n")
+    report.extras["internal"] = 1
+    counts = public_redaction_counts(report)
+    assert set(counts) == {
+        "private_key_blocks",
+        "secret_lines",
+        "secret_values",
+        "home_paths",
+        "emails",
+        "phones",
+    }
+    assert all(type(value) is int and value >= 0 for value in counts.values())
+    assert "extras" not in counts
+
+
+def test_public_redaction_counts_reject_invalid_field_type() -> None:
+    """미래 report 필드 회귀가 원값을 공개 경로에 싣지 못한다."""
+    _text, report = scrub_text("plain text\n")
+    report.secret_values = "not-a-count"  # type: ignore[assignment]
+    with pytest.raises(RedactionError):
+        public_redaction_counts(report)
 
 
 def test_redacts_private_key_block() -> None:
@@ -41,6 +78,39 @@ def test_redacts_email_and_phone() -> None:
     assert report.phones >= 1
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "한alice@example.com",
+        "漢alice@example.com",
+        "éAlice+tag@example.com",
+        "한alice@example.com字",
+    ],
+)
+def test_redacts_ascii_email_adjacent_to_unicode(source: str) -> None:
+    """Unicode word 문자에 붙은 ASCII 이메일도 provider 전에 가린다."""
+    text, report = scrub_text(source + "\n")
+    assert "@example.com" not in text
+    assert "[REDACTED EMAIL]" in text
+    assert report.emails == 1
+    verify_scrubbed(text)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "한alice@example.com",
+        "漢alice@example.com",
+        "éAlice+tag@example.com",
+        "한alice@example.com字",
+    ],
+)
+def test_verify_rejects_unicode_adjacent_ascii_email(source: str) -> None:
+    """독립 verifier도 unsanitized Unicode 인접 이메일을 fail-closed한다."""
+    with pytest.raises(RedactionError):
+        verify_scrubbed(source + "\n")
+
+
 def test_verify_fails_when_home_path_remains() -> None:
     """재검증은 홈 경로가 남으면 실패한다."""
     home = str(Path.home())
@@ -53,6 +123,14 @@ def test_verify_passes_after_scrub() -> None:
     home = str(Path.home())
     text, _ = scrub_text(f"log {home}/proj email a@b.co 010-1111-2222\n")
     verify_scrubbed(text)
+
+
+def test_verify_does_not_treat_diff_decorator_as_email() -> None:
+    """추가된 Python decorator의 +@prefix를 이메일로 오탐하지 않는다."""
+    verify_scrubbed("+@pytest.mark.parametrize(\n")
+    text, report = scrub_text("+@pytest.mark.parametrize(\n")
+    assert text == "+@pytest.mark.parametrize(\n"
+    assert report.emails == 0
 
 
 def test_verify_rejects_unredacted_generic_secret_literal() -> None:

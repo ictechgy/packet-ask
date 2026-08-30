@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from typing import Any
 
 from packet_ask.packet import Packet
+from packet_ask.redact import public_redaction_counts
 from packet_ask.scope import ScopedFile
 
 SCHEMA = "packet-ask.v1"
@@ -23,19 +23,15 @@ def build_receipt(
     paths = [item.relative for item in files]
     if diff_text:
         paths.append("changes.patch")
-    payload = (packet.root / "packet.md").read_bytes()
-    redaction = {
-        key: value
-        for key, value in packet.report.__dict__.items()
-        if key != "extras"
-    }
+    payload = packet.payload_bytes()
+    redaction = public_redaction_counts(packet.report)
     return {
         "provider": provider,
         "selector": selector,
         "paths": paths,
         "bytes": len(payload),
         "redaction": redaction,
-        "sha256_packet_md": hashlib.sha256(payload).hexdigest(),
+        "sha256_packet_md": packet.payload_digest(),
     }
 
 

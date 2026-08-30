@@ -104,6 +104,10 @@ _EN = {
     "credential_store_verify": (
         "The credential was saved, but command-mode Keychain read-back failed."
     ),
+    "redaction_report_invalid": "Redaction metadata contains an invalid public count.",
+    "packet_cleanup_failed": "Could not remove the temporary packet safely.",
+    "packet_cleanup_warning": "Warning: temporary packet cleanup also failed.",
+    "packet_git_failed": "Could not initialize the packet Git boundary.",
 }
 
 _KO = {
@@ -218,6 +222,10 @@ _KO = {
     "credential_store_verify": (
         "credential을 저장했지만 command mode Keychain read-back 검증에 실패했습니다."
     ),
+    "redaction_report_invalid": "redaction metadata의 공개 count가 잘못되었습니다.",
+    "packet_cleanup_failed": "임시 패킷을 안전하게 제거하지 못했습니다.",
+    "packet_cleanup_warning": "경고: 임시 패킷 정리도 실패했습니다.",
+    "packet_git_failed": "패킷 Git 경계를 초기화하지 못했습니다.",
 }
 
 

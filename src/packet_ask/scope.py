@@ -17,7 +17,8 @@ from packet_ask.text import message
 
 DEFAULT_MAX_FILES = 25
 DEFAULT_MAX_BYTES = 256 * 1024
-_GIT_TIMEOUT_SECONDS = 30
+GIT_TIMEOUT_SECONDS = 30
+GIT_METADATA_OUTPUT_BYTES = 4096
 
 _SECRET_SUFFIXES = (
     ".pem",
@@ -52,17 +53,17 @@ class ScopedFile:
 
 def resolve_worktree(start: Path) -> Path:
     """start에서 git 최상위 디렉터리를 찾는다."""
-    result = subprocess.run(
-        [_git_executable(), "rev-parse", "--show-toplevel"],
-        cwd=start,
-        check=False,
-        capture_output=True,
-        text=True,
-        env=_git_env(),
-    )
-    if result.returncode != 0:
+    try:
+        root = run_bounded_git(
+            start,
+            ["rev-parse", "--show-toplevel"],
+            GIT_METADATA_OUTPUT_BYTES,
+        ).strip()
+    except (BudgetError, ScopeError) as exc:
+        raise ScopeError(message("not_worktree")) from exc
+    if not root or len(root.encode("utf-8")) > GIT_METADATA_OUTPUT_BYTES:
         raise ScopeError(message("not_worktree"))
-    return Path(result.stdout.strip()).resolve()
+    return Path(root).resolve()
 
 
 def is_vcs_path(path: Path) -> bool:
@@ -194,54 +195,57 @@ def _stop_process_group(proc: subprocess.Popen[bytes]) -> None:
         pass
 
 
-def _run_git(worktree: Path, extra: list[str], max_bytes: int) -> str:
+def run_bounded_git(worktree: Path, extra: list[str], max_bytes: int) -> str:
     """git stdout을 제한·timeout 아래에서 셸 없이 읽는다."""
     command = [_git_executable(), *extra]
-    proc = subprocess.Popen(
-        command,
-        cwd=worktree,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        env=_git_env(),
-        start_new_session=True,
-    )
-    if proc.stdout is None:
-        _stop_process_group(proc)
-        raise ScopeError(message("git_output_failed"))
-    os.set_blocking(proc.stdout.fileno(), False)
-    deadline = time.monotonic() + _GIT_TIMEOUT_SECONDS
-    chunks: list[bytes] = []
-    total = 0
-    while True:
-        remaining_time = deadline - time.monotonic()
-        if remaining_time <= 0:
-            _stop_process_group(proc)
-            raise ScopeError(message("git_timeout"))
-        ready, _, _ = select.select([proc.stdout], [], [], min(0.1, remaining_time))
-        if not ready:
-            continue
-        try:
-            chunk = os.read(proc.stdout.fileno(), min(65536, max_bytes - total + 1))
-        except BlockingIOError:
-            continue
-        if not chunk:
-            break
-        chunks.append(chunk)
-        total += len(chunk)
-        if total > max_bytes:
-            _stop_process_group(proc)
-            raise BudgetError(message("max_bytes", limit=max_bytes))
     try:
-        returncode = proc.wait(timeout=1)
-    except subprocess.TimeoutExpired:
+        proc = subprocess.Popen(
+            command,
+            cwd=worktree,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=_git_env(),
+            start_new_session=True,
+        )
+    except OSError as exc:
+        raise ScopeError(message("git_failed")) from exc
+    try:
+        if proc.stdout is None:
+            raise ScopeError(message("git_output_failed"))
+        os.set_blocking(proc.stdout.fileno(), False)
+        deadline = time.monotonic() + GIT_TIMEOUT_SECONDS
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            remaining_time = deadline - time.monotonic()
+            if remaining_time <= 0:
+                raise ScopeError(message("git_timeout"))
+            ready, _, _ = select.select([proc.stdout], [], [], min(0.1, remaining_time))
+            if not ready:
+                continue
+            try:
+                chunk = os.read(proc.stdout.fileno(), min(65536, max_bytes - total + 1))
+            except BlockingIOError:
+                continue
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > max_bytes:
+                raise BudgetError(message("max_bytes", limit=max_bytes))
+        try:
+            returncode = proc.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            raise ScopeError(message("git_exit_timeout")) from None
+        if returncode != 0:
+            raise ScopeError(message("git_failed"))
+        text = b"".join(chunks).decode("utf-8", errors="replace")
+        _reject_oversized_diff(text, max_bytes)
+        return text
+    except BaseException:
         _stop_process_group(proc)
-        raise ScopeError(message("git_exit_timeout")) from None
-    if returncode != 0:
-        raise ScopeError(message("git_failed"))
-    text = b"".join(chunks).decode("utf-8", errors="replace")
-    _reject_oversized_diff(text, max_bytes)
-    return text
+        raise
 
 
 def _diff_guard_args() -> list[str]:
@@ -263,7 +267,7 @@ def _diff_guard_args() -> list[str]:
 
 def _name_status_paths(worktree: Path, range_args: list[str], max_bytes: int) -> list[str]:
     """NUL 구분 name-status 로 원본·대상 경로를 모두 모은다."""
-    raw = _run_git(
+    raw = run_bounded_git(
         worktree,
         [*_diff_guard_args(), "--name-status", "-z", *range_args],
         max_bytes,
@@ -320,7 +324,7 @@ def collect_git_diff(
     paths = _name_status_paths(worktree, range_args, max_bytes)
     if len(set(paths)) > max_files:
         raise BudgetError(message("max_files", limit=max_files))
-    text = _run_git(worktree, [*_diff_guard_args(), *range_args], max_bytes)
+    text = run_bounded_git(worktree, [*_diff_guard_args(), *range_args], max_bytes)
     if not text.strip():
         raise ScopeError(message("empty_diff"))
     if not paths:

@@ -7,15 +7,19 @@ import json
 import os
 import shutil
 import stat
-import subprocess
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from packet_ask.errors import BudgetError, RedactionFailed
-from packet_ask.paths import git_subprocess_env, resolve_trusted_executable
-from packet_ask.redact import RedactionError, RedactionReport, scrub_text, verify_scrubbed
-from packet_ask.scope import ScopedFile
+from packet_ask.errors import BudgetError, RedactionFailed, ScopeError
+from packet_ask.redact import (
+    RedactionError,
+    RedactionReport,
+    public_redaction_counts,
+    scrub_text,
+    verify_scrubbed,
+)
+from packet_ask.scope import GIT_METADATA_OUTPUT_BYTES, ScopedFile, run_bounded_git
 from packet_ask.text import language, message
 
 _TASK_CONTRACT_EN = """
@@ -43,10 +47,34 @@ class Packet:
 
     root: Path
     report: RedactionReport
+    _packet_text: str | None = field(default=None, repr=False)
+    _packet_bytes: bytes | None = field(default=None, repr=False)
+    _packet_digest: str | None = field(default=None, repr=False)
 
     def destroy(self) -> None:
         """패킷 트리를 삭제한다. APFS에서 물리적 소거는 아니다."""
         shutil.rmtree(self.root, ignore_errors=False)
+
+    def payload_text(self) -> str:
+        """렌더링 payload 문자열을 한 번만 읽어 재사용한다."""
+        if self._packet_text is None:
+            self._packet_text = (self.root / "packet.md").read_text(encoding="utf-8")
+        return self._packet_text
+
+    def payload_bytes(self) -> bytes:
+        """렌더링 payload 바이트를 한 번만 읽어 재사용한다."""
+        if self._packet_bytes is None:
+            if self._packet_text is not None:
+                self._packet_bytes = self._packet_text.encode("utf-8")
+            else:
+                self._packet_bytes = (self.root / "packet.md").read_bytes()
+        return self._packet_bytes
+
+    def payload_digest(self) -> str:
+        """packet.md SHA-256을 한 번만 계산한다."""
+        if self._packet_digest is None:
+            self._packet_digest = hashlib.sha256(self.payload_bytes()).hexdigest()
+        return self._packet_digest
 
 
 def _scrub_or_raise(text: str) -> tuple[str, RedactionReport]:
@@ -65,23 +93,16 @@ def _assert_packet_relative(relative: Path) -> None:
         raise RedactionFailed(message("packet_relative"))
 
 
-def _git_executable() -> str:
-    """신뢰 경로의 git 만 쓴다."""
-    found = resolve_trusted_executable("git")
-    if found is None:
-        raise RedactionFailed(message("missing_git"))
-    return str(found)
-
-
 def _init_git_boundary(root: Path) -> None:
     """상위 CLAUDE.md 탐색을 막기 위한 로컬 git 경계만 만든다."""
-    subprocess.run(
-        [_git_executable(), "init"],
-        cwd=root,
-        check=True,
-        capture_output=True,
-        env=git_subprocess_env(),
-    )
+    try:
+        run_bounded_git(
+            root,
+            ["init"],
+            GIT_METADATA_OUTPUT_BYTES,
+        )
+    except (BudgetError, ScopeError) as exc:
+        raise RedactionFailed(message("packet_git_failed")) from exc
 
 
 def _merge_reports(parts: list[RedactionReport]) -> RedactionReport:
@@ -142,6 +163,7 @@ def build_packet(
             rendered.append(f"## Diff\n\n```\n{diff_body}\n```\n")
         packet_text = "\n".join(rendered)
         packet_bytes = packet_text.encode("utf-8")
+        packet_digest = hashlib.sha256(packet_bytes).hexdigest()
         if max_bytes is not None and len(packet_bytes) > max_bytes:
             raise BudgetError(f"total packet exceeds {max_bytes} bytes")
         _write_private(root / "packet.md", packet_text)
@@ -153,15 +175,19 @@ def build_packet(
         manifest = {
             "mode": mode,
             "file_count": len(files) + (1 if diff_text else 0),
-            "redaction": merged.__dict__,
-            "sha256_packet_md": hashlib.sha256(
-                (root / "packet.md").read_bytes()
-            ).hexdigest(),
+            "redaction": public_redaction_counts(merged),
+            "sha256_packet_md": packet_digest,
         }
         _write_private(root / "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
         _init_git_boundary(root)
-        return Packet(root=root, report=merged)
-    except Exception:
+        return Packet(
+            root=root,
+            report=merged,
+            _packet_text=packet_text,
+            _packet_bytes=packet_bytes,
+            _packet_digest=packet_digest,
+        )
+    except BaseException:
         if root is not None:
             shutil.rmtree(root, ignore_errors=True)
         raise

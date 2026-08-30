@@ -114,6 +114,13 @@ On success, stderr prints a receipt before launch (`packet-ask receipt …`) and
 
 Packet temp dirs live in the OS cache, not the git worktree. cwd is not a sandbox. A `PACKET_ASK_CACHE_DIR` inside the worktree is rejected. `.gitignore` entries for `.packet-ask-tmp/` and `packet.md` only stop leftover files from being committed.
 
+Every Git subprocess uses the same bounded process-group runner. Worktree
+discovery, diff collection, and packet-local `git init` share a deadline and
+byte limits, and Ctrl+C terminates spawned Git/provider groups. Successful
+stdout is emitted only after packet cleanup succeeds. Packet payload bytes and
+digest, plus unchanged user provider overlays, are reused in-process to avoid
+repeated reads, hashes, and TOML parses.
+
 User config `~/.config/packet-ask/providers.toml` adds **paste aliases only**. It does not accept executables, argv, or env.
 
 The implementation/incident question gate is a conservative lexical check, not
@@ -156,6 +163,7 @@ uv run pytest
 ```
 
 The current confinement hardening rationale is in [docs/hardening.md](docs/hardening.md).
+Runtime/process and hot-path decisions are in [docs/runtime-hardening.md](docs/runtime-hardening.md).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 

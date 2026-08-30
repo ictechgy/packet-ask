@@ -44,6 +44,27 @@ def test_kimi_isolated_print_needs_agent_file_and_workdir() -> None:
     assert kimi_supports_isolated_print("-p\n--agent-file\n--work-dir\n") is False
 
 
+def test_failed_help_probe_is_not_cached(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """일시적 timeout 결과를 프로세스 수명 동안 missing으로 박제하지 않는다."""
+    binary = tmp_path / "claude"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(0o700)
+    calls = 0
+
+    def failed(_path: Path) -> None:
+        nonlocal calls
+        calls += 1
+        return None
+
+    monkeypatch.setattr("packet_ask.doctor.resolve_trusted_executable", lambda _name: binary)
+    monkeypatch.setattr("packet_ask.doctor._run_help", failed)
+    assert doctor._help_text("claude") is None
+    assert doctor._help_text("claude") is None
+    assert calls == 2
+
+
 def test_kimi_print_flag_not_confused_with_permission() -> None:
     """-p 부분문자열은 --permission-mode 에 오탐하지 않는다."""
     from packet_ask.doctor import kimi_supports_print
