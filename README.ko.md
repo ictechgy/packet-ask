@@ -61,6 +61,10 @@ uv run packet-ask doctor
 
 `research` 는 로컬 파일·diff를 기본으로 넣지 않습니다. 예외는 `--include-files` 뿐입니다. `--diff` / `--staged` 는 거절합니다.
 
+`--max-files`는 명시 파일과 diff 경로 모두에 적용됩니다. `--max-bytes`는
+프레이밍과 경로 라벨을 포함한 최종 UTF-8 `packet.md`에 적용됩니다. 입력은
+설정한 한도에서 읽기를 멈추며, 명시한 바이너리 또는 비 UTF-8 파일은 거절합니다.
+
 ## 사용
 
 ```bash
@@ -95,11 +99,14 @@ Kimi는 공식 `kimi --quiet` 원샷입니다. 대화형 세션을 열지 않습
 
 GLM은 공식 `claude` 바이너리를 쓰되, **부모 셸의 `ANTHROPIC_BASE_URL` 은 바꾸지 않습니다.** 자식 환경에만 [Z.ai Claude Code 연동](https://docs.z.ai/scenario-example/develop-tools/claude) 엔드포인트와 `PACKET_ASK_GLM_KEY` 를 넣습니다. GLM과 Claude 자식 환경에는 `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_ERROR_REPORTING` 도 넣습니다. 로컬 세션 잔여를 줄이기 위한 것이며, 벤더가 아무것도 저장하지 않음을 증명하지 않습니다.
 
-성공하면 stderr에 런치 전 영수증(`packet-ask receipt …`)과 완료 후 밀리초 구간(`packet-ask timing …`)을 씁니다. `--json` 에는 `timing` 객체가 들어갑니다. 두 줄 모두 키 값을 넣지 않습니다.
+성공하면 stderr에 런치 전 영수증(`packet-ask receipt …`)과 완료 후 밀리초 구간(`packet-ask timing …`)을 씁니다. `--json` 에는 `timing` 객체가 들어갑니다. 두 줄 모두 키 값을 넣지 않습니다. 영수증 경로는 JSON 이스케이프하며, 불신뢰 프로바이더 출력의 터미널 제어 시퀀스는 출력 전에 제거합니다.
 
 패킷 임시 디렉터리는 git 워크트리가 아니라 OS 캐시에 만듭니다. cwd는 샌드박스가 아닙니다. `PACKET_ASK_CACHE_DIR` 을 워크트리 안으로 두면 거절합니다. `.gitignore` 의 `.packet-ask-tmp/` 와 `packet.md` 는 예전 산출물이나 실수로 만든 파일을 커밋하지 않기 위한 방어입니다.
 
 사용자 설정 `~/.config/packet-ask/providers.toml` 은 **paste 별명만** 추가합니다. 실행 파일·argv·env 는 받지 않습니다.
+
+구현·장애 질문 게이트는 보수적인 어휘 검사이며 의도를 증명하지는 않습니다.
+새로운 표현이 통과하더라도 런치 어댑터는 도구를 끄고 자식을 패킷에 가둡니다.
 
 ```toml
 version = 1
@@ -135,6 +142,8 @@ label = "Gemini CLI"
 uv sync --group dev
 uv run pytest
 ```
+
+현재 confinement 보강의 근거는 [docs/hardening.md](docs/hardening.md)에 있습니다.
 
 기여는 [CONTRIBUTING.md](CONTRIBUTING.md)를 따릅니다.
 

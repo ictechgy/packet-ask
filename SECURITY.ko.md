@@ -18,6 +18,10 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 - `doctor`는 `--help`에 필요 플래그 이름이 있는지 확인합니다. 실제 무도구·OS 샌드박스를 증명하지 않습니다. 런치는 고른 바이너리만 프로브합니다. `doctor`는 카탈로그 전체를 돌되 `--help` 를 경로·mtime·크기로 프로세스 동안 캐시합니다.
 - GLM과 Claude 자식 환경에는 `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `DISABLE_ERROR_REPORTING=1` 을 넣습니다. 벤더가 플래그를 무시할 수 있습니다. 이 CLI는 `~/.claude/projects/` 를 지우지 않습니다.
 - 벤더 stdout에 전용 키 값이 있거나 출력이 너무 크면 폐기하고 종료 코드 22를 반환합니다.
+- 벤더 stdin·stdout·stderr는 하나의 bounded nonblocking deadline을 공유합니다. 명시 파일, stdin 질문, git diff 수집도 설정한 한도에서 읽기를 멈춥니다.
+- 원본 조각뿐 아니라 최종 렌더링한 `packet.md`가 `--max-bytes` 안에 들어야 합니다. 바이너리와 비 UTF-8 명시 파일은 거절합니다.
+- 벤더 출력의 ANSI CSI/OSC/DCS 및 안전하지 않은 제어문자를 제거하고, 영수증 경로는 JSON 이스케이프합니다.
+- 도구 소유 프로바이더 프로필 디렉터리는 최종 경로 심링크를 거절합니다. Kimi 세션 정리 실패는 숨기지 않고 보고합니다.
 
 ## 이 도구가 하지 않는 일
 
@@ -26,6 +30,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 - 구현·패치 적용·운영 장애 대응을 서브로 보내지 않습니다.
 - 사용자 zsh 함수/`PATH` 앞쪽 래퍼를 실행하지 않습니다. 기본 allowlist는 `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`, `/bin`, `~/.local/bin` 과 `PACKET_ASK_*_BIN` 입니다.
 - Claude 오토메모리가 꺼졌음을 증명하지 않습니다. 자식 env 플래그는 벤더가 존중할 수도 있는 스위치일 뿐입니다.
+- 구현·장애 문구 게이트는 어휘 기반 최선 노력 검사이며 의미적 의도를 증명하지 않습니다.
 
 ## 키와 프로필
 
