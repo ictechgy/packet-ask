@@ -33,11 +33,14 @@ from packet_ask.policy import assert_allowed_task
 from packet_ask.errors import BudgetError
 from packet_ask.paths import packet_cache_dir
 from packet_ask.receipt import (
+    build_packet_summary,
     build_receipt,
+    format_packet_summary_line,
     format_receipt_line,
     format_timing_line,
     json_envelope,
     json_error_envelope,
+    json_summary_envelope,
 )
 from packet_ask.scope import (
     DEFAULT_MAX_BYTES,
@@ -76,6 +79,10 @@ def _parser() -> argparse.ArgumentParser:
     _add_task_parser(sub, "research", "Question required; files only via --include-files")
     _add_task_parser(sub, "brainstorm", "Brainstorm from a scrubbed question")
     _add_task_parser(sub, "paste", "Print a packet without launching a vendor")
+    inspect_cmd = sub.add_parser("inspect", help="Summarize a scrubbed packet without a provider")
+    inspect_sub = inspect_cmd.add_subparsers(dest="inspect_mode", required=True)
+    _add_inspect_parser(inspect_sub, "review", "Inspect an explicit review scope")
+    _add_inspect_parser(inspect_sub, "research", "Inspect research files or a question-only packet")
     sub.add_parser("doctor", help="Check official CLI one-shot flags")
     providers_cmd = sub.add_parser("providers", help="List sub providers")
     providers_cmd.add_argument("--json", action="store_true")
@@ -144,6 +151,26 @@ def _add_task_parser(sub: argparse._SubParsersAction, name: str, help_text: str)
     item.add_argument("--json", action="store_true")
 
 
+def _add_inspect_parser(
+    sub: argparse._SubParsersAction,
+    name: str,
+    help_text: str,
+) -> None:
+    """provider·credential·timeout 없이 review/research packet 인자를 붙인다."""
+    item = sub.add_parser(name, help=help_text)
+    item.add_argument("--question", default="")
+    item.add_argument("--question-stdin", action="store_true")
+    item.add_argument("--files", nargs="*", default=[], type=Path)
+    item.add_argument("--include-files", nargs="*", default=[], type=Path)
+    item.add_argument("--diff")
+    item.add_argument("--staged", action="store_true")
+    if name == "review":
+        item.add_argument("--unstaged", action="store_true")
+    item.add_argument("--max-files", type=_positive_int, default=DEFAULT_MAX_FILES)
+    item.add_argument("--max-bytes", type=_positive_int, default=DEFAULT_MAX_BYTES)
+    item.add_argument("--json", action="store_true")
+
+
 def _read_question(args: argparse.Namespace) -> str:
     """질문 텍스트를 모은다."""
     if args.question_stdin:
@@ -161,13 +188,18 @@ def _read_question(args: argparse.Namespace) -> str:
     return args.question
 
 
-def _collect_scope(args: argparse.Namespace, worktree: Path) -> tuple[list, str | None]:
+def _collect_scope(
+    args: argparse.Namespace,
+    worktree: Path,
+    mode: str | None = None,
+) -> tuple[list, str | None]:
     """모드에 맞는 파일과 diff를 모은다."""
-    if args.command == "research" and args.files:
+    active_mode = mode or args.command
+    if active_mode == "research" and args.files:
         raise PacketAskError(message("research_files"), codes.USAGE)
-    if args.command == "review" and args.include_files:
+    if active_mode == "review" and args.include_files:
         raise PacketAskError(message("review_include_files"), codes.USAGE)
-    files_arg = list(args.include_files or []) if args.command == "research" else list(args.files or [])
+    files_arg = list(args.include_files or []) if active_mode == "research" else list(args.files or [])
     scoped_files = []
     if files_arg:
         scoped_files = collect_files(
@@ -218,9 +250,12 @@ def _review_selectors(args: argparse.Namespace) -> list[str]:
     return names
 
 
-def _require_explicit_review_scope(args: argparse.Namespace) -> None:
+def _require_explicit_review_scope(
+    args: argparse.Namespace,
+    mode: str | None = None,
+) -> None:
     """review 는 스코프 플래그를 정확히 하나만 받는다."""
-    if args.command != "review":
+    if (mode or args.command) != "review":
         return
     if len(_review_selectors(args)) == 1:
         return
@@ -357,6 +392,73 @@ def _run_task(args: argparse.Namespace) -> int:
     """패킷을 만들고 프로바이더 또는 paste로 보낸다."""
     with task_signal_handlers() as managed_signals:
         return _run_task_guarded(args, managed_signals)
+
+
+def _run_inspect(args: argparse.Namespace) -> int:
+    """provider 없이 실제 scrubbed packet의 공개 metadata만 출력한다."""
+    with task_signal_handlers() as managed_signals:
+        return _run_inspect_guarded(args, managed_signals)
+
+
+def _run_inspect_guarded(
+    args: argparse.Namespace,
+    managed_signals: tuple[signal.Signals, ...],
+) -> int:
+    """검증·cleanup이 끝난 inspect summary만 공개한다."""
+    mode = args.inspect_mode
+    packet: Packet | None = None
+    parent: Path | None = None
+    try:
+        question = _read_question(args)
+        if mode == "research" and not question.strip():
+            raise PacketAskError(message("research_question"), codes.USAGE)
+        if not question.strip():
+            question = message("default_question")
+        files_flag, has_diff = _selector_flags(args)
+        assert_allowed_task(mode, question, files_flag, has_diff=has_diff)
+        _require_explicit_review_scope(args, mode)
+        worktree = resolve_worktree(Path.cwd())
+        scoped_files, diff_text = _collect_scope(args, worktree, mode)
+        if mode == "review" and not scoped_files and not diff_text:
+            raise PacketAskError(message("review_scope"), codes.SCOPE)
+        _assert_packet_budget(question, scoped_files, diff_text, args.max_bytes)
+        parent = packet_cache_dir(worktree)
+        reap_stale_packets(parent)
+        with deferred_task_signals():
+            packet = build_packet(
+                mode=mode,
+                question=question,
+                files=scoped_files,
+                diff_text=diff_text,
+                parent=parent,
+                max_bytes=args.max_bytes,
+            )
+        selector = _review_selectors(args)[0] if _review_selectors(args) else files_flag or "none"
+        summary = build_packet_summary(
+            mode,
+            selector,
+            scoped_files,
+            diff_text,
+            packet,
+        )
+    except BaseException:
+        if packet is not None and parent is not None:
+            try:
+                with blocked_signals(managed_signals):
+                    _cleanup_packet(packet, parent)
+            except OSError:
+                print(message("packet_cleanup_warning"), file=sys.stderr)
+        raise
+    try:
+        with blocked_signals(managed_signals):
+            _cleanup_packet(packet, parent)
+    except OSError as exc:
+        raise PacketAskError(message("packet_cleanup_failed"), codes.INTERNAL) from exc
+    if args.json:
+        sys.stdout.write(json_summary_envelope(summary))
+    else:
+        print(format_packet_summary_line(summary))
+    return codes.SUCCESS
 
 
 def _run_task_guarded(
@@ -522,6 +624,8 @@ def main(argv: list[str] | None = None) -> int:
             return _run_providers(args.json)
         if args.command == "credentials":
             return _run_credentials(args)
+        if args.command == "inspect":
+            return _run_inspect(args)
         return _run_task(args)
     except PacketAskError as exc:
         if json_requested:

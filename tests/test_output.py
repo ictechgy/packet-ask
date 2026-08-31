@@ -12,7 +12,11 @@ from packet_ask.output import (
     sanitize_provider_output,
     wrap_untrusted,
 )
-from packet_ask.receipt import format_receipt_line, json_error_envelope
+from packet_ask.receipt import (
+    format_packet_summary_line,
+    format_receipt_line,
+    json_error_envelope,
+)
 
 
 def test_wraps_body() -> None:
@@ -125,3 +129,20 @@ def test_json_error_envelope_has_only_stable_public_fields(code: int) -> None:
     assert data["error"]["code"] == code
     assert isinstance(data["error"]["kind"], str)
     assert isinstance(data["error"]["message"], str)
+
+
+def test_inspect_summary_escapes_control_characters_in_paths() -> None:
+    """inspect human line도 조작된 상대경로를 새 줄이나 ANSI로 출력하지 않는다."""
+    summary = {
+        "mode": "review",
+        "selector": "files",
+        "paths": ["src/bad\n\x1b[2J.py"],
+        "file_count": 1,
+        "bytes": 10,
+        "redaction": {"emails": 0},
+        "sha256_packet_md": "a" * 64,
+    }
+    line = format_packet_summary_line(summary)
+    assert "\n" not in line
+    assert "\x1b" not in line
+    assert r"\n" in line

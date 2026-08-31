@@ -37,9 +37,7 @@ def build_receipt(
     timeout_applies: bool,
 ) -> dict[str, Any]:
     """비밀 값 없이 보낸 범위를 요약한다."""
-    paths = [item.relative for item in files]
-    if diff_text:
-        paths.append("changes.patch")
+    paths = _packet_paths(files, diff_text)
     payload = packet.payload_bytes()
     redaction = public_redaction_counts(packet.report)
     return {
@@ -53,6 +51,34 @@ def build_receipt(
         "timeout_source": timeout_source,
         "timeout_applies": timeout_applies,
     }
+
+
+def build_packet_summary(
+    mode: str,
+    selector: str,
+    files: list[ScopedFile],
+    diff_text: str | None,
+    packet: Packet,
+) -> dict[str, Any]:
+    """본문·질문·임시 경로 없이 검증된 packet metadata만 만든다."""
+    paths = _packet_paths(files, diff_text)
+    return {
+        "mode": mode,
+        "selector": selector,
+        "paths": paths,
+        "file_count": len(paths),
+        "bytes": len(packet.payload_bytes()),
+        "redaction": public_redaction_counts(packet.report),
+        "sha256_packet_md": packet.payload_digest(),
+    }
+
+
+def _packet_paths(files: list[ScopedFile], diff_text: str | None) -> list[str]:
+    """receipt와 inspect가 공유하는 packet 상대경로 목록."""
+    paths = [item.relative for item in files]
+    if diff_text:
+        paths.append("changes.patch")
+    return paths
 
 
 def format_receipt_line(receipt: dict[str, Any]) -> str:
@@ -74,6 +100,27 @@ def format_receipt_line(receipt: dict[str, Any]) -> str:
         f"packet-ask receipt provider={receipt['provider']} "
         f"selector={receipt['selector']} paths={paths} "
         f"bytes={receipt['bytes']} sha256={digest}{timeout}"
+    )
+
+
+def format_packet_summary_line(summary: dict[str, Any]) -> str:
+    """터미널 제어문자를 만들지 않는 inspect 단일 행."""
+    paths = json.dumps(
+        [str(path) for path in summary["paths"]],
+        ensure_ascii=True,
+        separators=(",", ":"),
+    )
+    redaction = json.dumps(
+        summary["redaction"],
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    digest = str(summary["sha256_packet_md"])[:12]
+    return (
+        f"packet-ask inspect mode={summary['mode']} selector={summary['selector']} "
+        f"paths={paths} file_count={summary['file_count']} bytes={summary['bytes']} "
+        f"sha256={digest} redaction={redaction}"
     )
 
 
@@ -124,5 +171,15 @@ def json_error_envelope(code: int) -> str:
             "kind": kind,
             "message": message_text,
         },
+    }
+    return json.dumps(body, ensure_ascii=False, indent=2) + "\n"
+
+
+def json_summary_envelope(summary: dict[str, Any]) -> str:
+    """inspect 성공 metadata만 담는 versioned JSON."""
+    body = {
+        "schema": SCHEMA,
+        "ok": True,
+        "summary": summary,
     }
     return json.dumps(body, ensure_ascii=False, indent=2) + "\n"
