@@ -19,6 +19,7 @@ from packet_ask.errors import PacketAskError
 from packet_ask.output import MAX_OUTPUT_BYTES, sanitize_provider_output
 from packet_ask.packet import Packet
 from packet_ask.paths import minimal_child_env, resolve_trusted_executable
+from packet_ask.signals import deferred_task_signals
 from packet_ask.text import message
 
 GLM_ENDPOINT = "https://api.z.ai/api/anthropic"
@@ -95,13 +96,21 @@ def run_isolated_command(
     timeout: int,
 ) -> str:
     """stdin으로 패킷을 넣고 stdout만 돌려받는다. timeout 시 프로세스 그룹을 죽인다."""
-    try:
-        proc = _spawn_isolated(executable, argv, cwd, env)
-    except OSError as exc:
-        raise PacketAskError(message("provider_failed"), codes.PROVIDER_FAILED) from exc
+    proc: subprocess.Popen[str] | None = None
     pgid: int | None = None
     try:
-        pgid = proc.pid
+        with deferred_task_signals():
+            proc = _spawn_isolated(executable, argv, cwd, env)
+            pgid = proc.pid
+    except OSError as exc:
+        if proc is not None:
+            _kill_process_group(proc, pgid)
+        raise PacketAskError(message("provider_failed"), codes.PROVIDER_FAILED) from exc
+    except BaseException:
+        if proc is not None:
+            _kill_process_group(proc, pgid)
+        raise
+    try:
         stdout, stderr = _communicate_bounded(proc, stdin_text, timeout, pgid)
         proc.wait(timeout=1)
     except subprocess.TimeoutExpired as exc:

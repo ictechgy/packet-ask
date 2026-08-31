@@ -128,7 +128,8 @@ Packet temp dirs live in the OS cache, not the git worktree. cwd is not a sandbo
 
 Every Git subprocess uses the same bounded process-group runner. Worktree
 discovery, diff collection, and packet-local `git init` share a deadline and
-byte limits, and Ctrl+C terminates spawned Git/provider groups. Successful
+byte limits. Ctrl+C, SIGTERM, and SIGHUP terminate registered Git/provider
+groups and run packet cleanup before propagating. Successful
 stdout is emitted only after packet cleanup succeeds. Packet payload bytes and
 digest, plus unchanged user provider overlays, are reused in-process to avoid
 repeated reads, hashes, and TOML parses.
@@ -151,7 +152,8 @@ label = "Gemini CLI"
 
 ## Exit codes
 
-`10`–`14` mean the vendor process was never started.
+`10`–`14` mean the vendor process was never started. Task termination preserves
+the conventional signal exit status: SIGHUP is 129 and SIGTERM is 143.
 
 | Code | Meaning |
 |---:|---|
