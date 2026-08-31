@@ -99,3 +99,13 @@ scope, or task authority.
   the question, packet body, temporary root, or provider-derived data.
 - The public summary is limited to mode, selector, escaped relative paths, file
   count, final bytes, allowlisted redaction counts, and packet SHA-256.
+
+## Shared packet pipeline
+
+- Task and inspect commands resolve question/policy into the same `PacketInputs`
+  shape before provider lookup or filesystem access.
+- One context owns worktree resolution, scope collection, packet budget, stale
+  GC, packet construction, signal-safe cleanup, and success-output gating.
+- Provider lookup remains after policy but before explicit review-scope failure,
+  preserving existing error precedence. Paste/research/brainstorm remain
+  question-only; only review requires an explicit scope.
