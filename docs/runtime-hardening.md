@@ -42,10 +42,15 @@ scope, or task authority.
 - Provider `--help` stdout and stderr share one byte cap and deadline. Timeout,
   output excess, and interrupts terminate the probe process group.
 
-## Deferred
+## Builtin adapter registry
 
-A provider-adapter registry needs separate compatibility design. It is not
-bundled into this change.
+- An immutable code mapping binds each builtin ID to its current CLI launcher
+  name and doctor probe kind. Dispatch resolves the current module callable at
+  invocation time so existing test and embedding seams remain intact.
+- Catalog mode and adapter identity are revalidated at the shared dispatch and
+  doctor boundary. Inconsistent state fails with the confinement exit code.
+- User aliases have no adapter ID and cannot configure executables, argv, env,
+  launchers, doctor kinds, or registration hooks; they remain paste-only.
 
 ## Stale packet leases
 

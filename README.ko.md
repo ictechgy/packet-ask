@@ -148,7 +148,7 @@ packet cleanup 뒤 전파됩니다. packet cleanup이
 않은 사용자 provider overlay는 프로세스 안에서 재사용해 반복 read/hash/TOML
 parse를 피합니다.
 
-사용자 설정 `~/.config/packet-ask/providers.toml` 은 **paste 별명만** 추가합니다. 실행 파일·argv·env 는 받지 않습니다.
+사용자 설정 `~/.config/packet-ask/providers.toml` 은 **paste 별명만** 추가합니다. 실행 파일·argv·env·adapter ID·launcher·probe·registration hook은 받지 않습니다. builtin launch dispatch와 doctor probe 종류는 immutable code registry에서만 정합니다.
 
 구현·장애 질문 게이트는 보수적인 어휘 검사이며 의도를 증명하지는 않습니다.
 런치 어댑터는 벤더 도구를 끄고 패킷을 자식 cwd로 사용하지만, 이는 OS 수준

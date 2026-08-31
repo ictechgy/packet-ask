@@ -149,7 +149,7 @@ stdout is emitted only after packet cleanup succeeds. Packet payload bytes and
 digest, plus unchanged user provider overlays, are reused in-process to avoid
 repeated reads, hashes, and TOML parses.
 
-User config `~/.config/packet-ask/providers.toml` adds **paste aliases only**. It does not accept executables, argv, or env.
+User config `~/.config/packet-ask/providers.toml` adds **paste aliases only**. It does not accept executables, argv, env, adapter IDs, launchers, probes, or registration hooks. Builtin launch dispatch and doctor probe kinds come from an immutable code registry.
 
 The implementation/incident question gate is a conservative lexical check, not
 a proof of intent. Launch adapters disable vendor tools and use the packet as

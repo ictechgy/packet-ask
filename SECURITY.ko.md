@@ -20,6 +20,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 - Keychain은 shell 없이 고정 `/usr/bin/security` argv와 최소 환경으로 접근합니다. status는 password를 읽지 않고 존재만 보며, `credentials set`은 `security -w`가 직접 물어 key를 argv·shell history에 넣지 않습니다.
 - Keychain `--access command`는 background agent 사용을 위해 `/usr/bin/security`를 신뢰하며 key의 at-rest 보호만 제공합니다. 같은 사용자 권한의 다른 프로세스에 대한 경계는 아닙니다. `--access prompt`는 어떤 앱도 신뢰하지 않아 headless session에서 쓸 수 없을 수 있습니다.
 - `doctor`는 `--help`에 필요 플래그 이름이 있는지 확인합니다. 실제 무도구·OS 샌드박스를 증명하지 않습니다. help 프로브에는 하나의 deadline, 합산 출력 상한, 프로세스 그룹 종료를 적용합니다. 런치는 고른 바이너리만 프로브합니다. `doctor`는 카탈로그 전체를 돌되 성공한 `--help`를 경로·mtime·크기로 프로세스 동안 캐시합니다.
+- builtin launcher와 doctor probe 종류는 immutable code registry에서만 고릅니다. 사용자 alias에는 adapter ID가 없으며 executable·argv·env·launcher·probe·hook을 등록하거나 선택할 수 없습니다.
 - GLM과 Claude 자식 환경에는 `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `DISABLE_ERROR_REPORTING=1` 을 넣습니다. 벤더가 플래그를 무시할 수 있습니다. 이 CLI는 `~/.claude/projects/` 를 지우지 않습니다.
 - 벤더 stdout에 전용 키 값이 있거나 출력이 너무 크면 폐기하고 종료 코드 22를 반환합니다.
 - 벤더 stdin·stdout·stderr는 하나의 bounded nonblocking deadline을 공유합니다. 명시 파일, stdin 질문, git diff 수집도 설정한 한도에서 읽기를 멈춥니다.

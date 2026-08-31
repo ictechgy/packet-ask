@@ -6,12 +6,33 @@ import os
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
+from typing import Mapping
 
 from packet_ask import codes
 from packet_ask.errors import PacketAskError
 from packet_ask.text import language, message
 
-BUILTIN_IDS = frozenset({"paste", "glm", "kimi", "claude", "grok", "agy"})
+
+@dataclass(frozen=True)
+class BuiltinAdapter:
+    """코드에 고정된 launch 함수와 doctor 판정 종류."""
+
+    launcher_name: str | None
+    doctor_kind: str | None
+
+
+BUILTIN_ADAPTERS: Mapping[str, BuiltinAdapter] = MappingProxyType(
+    {
+        "paste": BuiltinAdapter(None, None),
+        "glm": BuiltinAdapter("launch_glm", "claude"),
+        "kimi": BuiltinAdapter("launch_kimi", "kimi"),
+        "claude": BuiltinAdapter("launch_claude", "claude"),
+        "grok": BuiltinAdapter(None, None),
+        "agy": BuiltinAdapter(None, None),
+    }
+)
+BUILTIN_IDS = frozenset(BUILTIN_ADAPTERS)
 _FORBIDDEN_TOML_KEYS = frozenset(
     {
         "executable",
@@ -24,6 +45,11 @@ _FORBIDDEN_TOML_KEYS = frozenset(
         "api_key",
         "args",
         "shell",
+        "adapter",
+        "adapter_id",
+        "launcher",
+        "doctor",
+        "registration",
     }
 )
 _ID_CHARS = set("abcdefghijklmnopqrstuvwxyz0123456789-")
@@ -40,6 +66,7 @@ class ProviderSpec:
     binary: str | None
     key_env: str | None
     note: str
+    adapter_id: str | None = None
 
 
 def default_user_providers_file() -> Path:
@@ -61,6 +88,7 @@ def builtin_providers() -> list[ProviderSpec]:
             None,
             None,
             message("provider_paste_note"),
+            "paste",
         ),
         ProviderSpec(
             "glm",
@@ -70,6 +98,7 @@ def builtin_providers() -> list[ProviderSpec]:
             "claude",
             "PACKET_ASK_GLM_KEY",
             message("provider_glm_note"),
+            "glm",
         ),
         ProviderSpec(
             "kimi",
@@ -79,6 +108,7 @@ def builtin_providers() -> list[ProviderSpec]:
             "kimi",
             "PACKET_ASK_KIMI_KEY",
             message("provider_kimi_note"),
+            "kimi",
         ),
         ProviderSpec(
             "claude",
@@ -88,6 +118,7 @@ def builtin_providers() -> list[ProviderSpec]:
             "claude",
             "PACKET_ASK_CLAUDE_KEY",
             message("provider_claude_note"),
+            "claude",
         ),
         ProviderSpec(
             "grok",
@@ -97,6 +128,7 @@ def builtin_providers() -> list[ProviderSpec]:
             "grok",
             None,
             message("provider_grok_note"),
+            "grok",
         ),
         ProviderSpec(
             "agy",
@@ -106,6 +138,7 @@ def builtin_providers() -> list[ProviderSpec]:
             "agy",
             None,
             message("provider_agy_note"),
+            "agy",
         ),
     ]
 
@@ -141,6 +174,30 @@ def lookup_provider(provider_id: str, catalog: list[ProviderSpec] | None = None)
         if item.provider_id == provider_id:
             return item
     raise PacketAskError(message("unknown_provider", provider_id=provider_id), codes.USAGE)
+
+
+def resolve_provider_adapter(spec: ProviderSpec) -> BuiltinAdapter | None:
+    """builtin registry 또는 검증된 user paste alias만 반환한다."""
+    if spec.source == "user":
+        if (
+            spec.mode != "paste"
+            or spec.binary is not None
+            or spec.key_env is not None
+            or spec.adapter_id is not None
+        ):
+            raise PacketAskError(message("provider_adapter_invalid"), codes.CONFINEMENT)
+        return None
+    if spec.source != "builtin" or spec.adapter_id != spec.provider_id:
+        raise PacketAskError(message("provider_adapter_invalid"), codes.CONFINEMENT)
+    adapter = BUILTIN_ADAPTERS.get(spec.adapter_id)
+    expected_mode = "launch" if adapter and adapter.launcher_name else "paste"
+    if adapter is None or spec.mode != expected_mode:
+        raise PacketAskError(message("provider_adapter_invalid"), codes.CONFINEMENT)
+    if expected_mode == "launch" and adapter.doctor_kind not in {"claude", "kimi"}:
+        raise PacketAskError(message("provider_adapter_invalid"), codes.CONFINEMENT)
+    if expected_mode == "paste" and adapter.doctor_kind is not None:
+        raise PacketAskError(message("provider_adapter_invalid"), codes.CONFINEMENT)
+    return adapter
 
 
 def _load_user_aliases(path: Path) -> list[ProviderSpec]:

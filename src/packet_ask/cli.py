@@ -26,7 +26,7 @@ from packet_ask.errors import PacketAskError
 from packet_ask.install_skills import install_skills
 from packet_ask.launch import launch_claude, launch_glm, launch_kimi
 from packet_ask.lifecycle import reap_stale_packets
-from packet_ask.providers import lookup_provider, load_catalog
+from packet_ask.providers import lookup_provider, load_catalog, resolve_provider_adapter
 from packet_ask.output import wrap_untrusted
 from packet_ask.packet import Packet, build_packet
 from packet_ask.policy import assert_allowed_task
@@ -360,15 +360,18 @@ def _execute_provider(
 ) -> str:
     """카탈로그에 있는 프로바이더만 실행한다. paste 모드는 벤더를 띄우지 않는다."""
     spec = lookup_provider(provider)
-    if spec.mode == "paste":
+    adapter = resolve_provider_adapter(spec)
+    if adapter is None or adapter.launcher_name is None:
         return packet.payload_text()
-    if spec.provider_id == "glm":
-        return launch_glm(packet, timeout, credential_source)
-    if spec.provider_id == "kimi":
-        return launch_kimi(packet, timeout, credential_source)
-    if spec.provider_id == "claude":
-        return launch_claude(packet, timeout, credential_source)
-    raise PacketAskError(message("no_adapter"), codes.CONFINEMENT)
+    launchers = {
+        "launch_glm": launch_glm,
+        "launch_kimi": launch_kimi,
+        "launch_claude": launch_claude,
+    }
+    launcher = launchers.get(adapter.launcher_name)
+    if launcher is None:
+        raise PacketAskError(message("no_adapter"), codes.CONFINEMENT)
+    return launcher(packet, timeout, credential_source)
 
 
 def _ms_since(started: float) -> int:
