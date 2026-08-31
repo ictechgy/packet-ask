@@ -130,6 +130,11 @@ Kimi session cleanup이 성공하기 전에는 성공 output을 반환하지 않
 provider·output-guard·signal 실패가 이미 있으면 동시에 발생한 session cleanup
 실패는 고정 비민감 warning으로만 보고하고 원래 예외·exit status를 보존합니다.
 
+격리 `KIMI_CODE_HOME`을 공유하는 Kimi 실행은 private non-inheritable advisory
+lock으로 config 생성부터 provider 실행·session cleanup까지 직렬화합니다. 두 번째
+실행이 30초 안에 lock을 얻지 못하면 shared profile이나 vendor를 건드리기 전에
+실패합니다.
+
 GLM은 공식 `claude` 바이너리를 쓰되, **부모 셸의 `ANTHROPIC_BASE_URL` 은 바꾸지 않습니다.** 자식 환경에만 [Z.ai Claude Code 연동](https://docs.z.ai/scenario-example/develop-tools/claude) 엔드포인트와 resolve한 전용 GLM credential을 넣습니다. GLM과 Claude 자식 환경에는 `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_ERROR_REPORTING` 도 넣습니다. 로컬 세션 잔여를 줄이기 위한 것이며, 벤더가 아무것도 저장하지 않음을 증명하지 않습니다.
 
 task 명령의 기본값은 `--credential-source auto`입니다. 전용 환경변수가

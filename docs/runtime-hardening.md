@@ -22,6 +22,10 @@ scope, or task authority.
 - Kimi session cleanup follows the same precedence: success still requires
   cleanup, while an existing provider/output/signal exception is preserved and
   a simultaneous cleanup failure becomes a fixed warning.
+- A private run lock serializes the shared Kimi config/session lifecycle. It is
+  acquired before profile mutation, held through cleanup, bounded to 30 seconds,
+  and never inherited by the provider child. Body errors are not reclassified as
+  lock failures.
 - Removing the shared cache parent tolerates `ENOENT` and `ENOTEMPTY`, which are
   expected under concurrent packet-ask processes.
 
