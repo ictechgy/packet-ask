@@ -86,6 +86,21 @@ def test_packet_rejects_obfuscated_international_email(tmp_path: Path) -> None:
     assert list(tmp_path.glob("packet-ask-*")) == []
 
 
+def test_packet_rejects_format_obfuscated_secret_family(tmp_path: Path) -> None:
+    """Cf로 끊은 token family도 최종 packet/provider 전에 fail-closed한다."""
+    source = "eyJ" + "A" * 8 + "." + "B" * 8 + "." + "C" * 8
+    obfuscated = source[:2] + chr(0x200B) + source[2:]
+    with pytest.raises(RedactionFailed, match="secret"):
+        build_packet(
+            mode="review",
+            question="review",
+            files=[],
+            diff_text="+" + obfuscated + "\n",
+            parent=tmp_path,
+        )
+    assert list(tmp_path.glob("packet-ask-*")) == []
+
+
 def test_packet_contract_uses_selected_language(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """패킷 내부 계약도 기본 영어와 명시 한글을 구분한다."""
     monkeypatch.setenv("PACKET_ASK_LANG", "en")

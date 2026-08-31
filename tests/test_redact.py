@@ -245,6 +245,152 @@ def test_unicode_phone_shadow_fails_closed(source: str) -> None:
         verify_scrubbed(scrubbed)
 
 
+def _secret_family_samples() -> list[str]:
+    """self-review source에 완성 token을 두지 않고 scrub family를 조립한다."""
+    return [
+        "sk-proj-" + "A" * 20,
+        "sk-" + "B" * 20,
+        "ghp_" + "C" * 20,
+        "github_pat_" + "D" * 20,
+        "xoxb-" + "E" * 10,
+        "AKIA" + "F" * 16,
+        "npm_" + "G" * 20,
+        "sk_live_" + "H" * 16,
+        "AIza" + "I" * 20,
+        "eyJ" + "J" * 8 + "." + "K" * 8 + "." + "L" * 8,
+        "Bearer " + "M" * 12,
+        "Basic " + "N" * 12,
+    ]
+
+
+@pytest.mark.parametrize("source", _secret_family_samples())
+def test_secret_family_canonical_values_still_scrub(source: str) -> None:
+    """known family cleartext는 기존 primary scrub/count 경로를 유지한다."""
+    scrubbed, report = scrub_text(source)
+    assert source not in scrubbed
+    assert report.secret_values >= 1
+    verify_scrubbed(scrubbed)
+
+
+@pytest.mark.parametrize("source", _secret_family_samples())
+def test_secret_family_format_obfuscation_fails_closed(source: str) -> None:
+    """family 내부 Cf로 primary regex를 끊어도 shadow verifier가 provider 전에 막는다."""
+    obfuscated = source[:2] + chr(0x200B) + source[2:]
+    scrubbed, report = scrub_text(obfuscated)
+    assert scrubbed == obfuscated
+    assert report.secret_values == 0
+    with pytest.raises(RedactionError, match="secret"):
+        verify_scrubbed(scrubbed)
+
+
+def test_secret_family_nfkc_compatibility_form_fails_closed() -> None:
+    """fullwidth compatibility token도 detection-only shadow에서 canonicalize한다."""
+    source = "sk-proj-" + "P" * 20
+    fullwidth = "".join(
+        chr(ord(char) + 0xFEE0) if 0x21 <= ord(char) <= 0x7E else char
+        for char in source
+    )
+    scrubbed, report = scrub_text(fullwidth)
+    assert scrubbed == fullwidth
+    assert report.secret_values == 0
+    with pytest.raises(RedactionError, match="secret"):
+        verify_scrubbed(scrubbed)
+
+
+@pytest.mark.parametrize("codepoint", [0xFE0F, 0x3164, 0x115F, 0x2800])
+def test_secret_family_visual_ignorable_fails_closed(codepoint: int) -> None:
+    """Cf 밖 variation selector·filler·blank도 token family를 숨기지 못한다."""
+    source = "sk-proj-" + "Q" * 20
+    obfuscated = source[:2] + chr(codepoint) + source[2:]
+    scrubbed, report = scrub_text(obfuscated)
+    assert scrubbed == obfuscated
+    assert report.secret_values == 0
+    with pytest.raises(RedactionError, match="secret"):
+        verify_scrubbed(scrubbed)
+
+
+def test_shadow_applies_to_secret_literal_and_private_key_header() -> None:
+    """family 외 literal key와 PEM header도 같은 shadow에서 재검증한다."""
+    literal = "api" + chr(0xFE0F) + '_key = "plain-secret-value"'
+    scrubbed, report = scrub_text(literal)
+    assert scrubbed == literal
+    assert report.secret_lines == 0
+    with pytest.raises(RedactionError, match="secret_literal"):
+        verify_scrubbed(scrubbed)
+
+    header = "-----BEGIN PRI" + chr(0x3164) + "VATE KEY-----"
+    unchanged, header_report = scrub_text(header)
+    assert unchanged == header
+    assert header_report.private_key_blocks == 0
+    with pytest.raises(RedactionError, match="secret"):
+        verify_scrubbed(unchanged)
+
+
+def test_dotted_korean_phone_redacts_but_version_like_number_passes() -> None:
+    """010 dotted phone만 scrub하고 bare 10 버전형 숫자는 보존한다."""
+    phone = ".".join(("010", "1234", "5678"))
+    scrubbed, report = scrub_text(phone)
+    assert phone not in scrubbed
+    assert report.phones == 1
+    verify_scrubbed(scrubbed)
+
+    version_like = ".".join(("10", "1234", "5678"))
+    unchanged, version_report = scrub_text(version_like)
+    assert unchanged == version_like
+    assert version_report.phones == 0
+    verify_scrubbed(unchanged)
+
+    legacy = ".".join(("011", "1234", "5678"))
+    legacy_scrubbed, legacy_report = scrub_text(legacy)
+    assert legacy not in legacy_scrubbed
+    assert legacy_report.phones == 1
+    verify_scrubbed(legacy_scrubbed)
+
+    sentence = "call " + phone + ". next"
+    sentence_scrubbed, sentence_report = scrub_text(sentence)
+    assert phone not in sentence_scrubbed
+    assert sentence_report.phones == 1
+
+    oid_like = ".".join(("1", "2", "010", "1234", "5678", "9012"))
+    oid_unchanged, oid_report = scrub_text(oid_like)
+    assert oid_unchanged == oid_like
+    assert oid_report.phones == 0
+    verify_scrubbed(oid_unchanged)
+
+
+@pytest.mark.parametrize(
+    "parts",
+    [
+        ("010-1234", ".", "5678"),
+        ("010 1234", ".", "5678"),
+        ("010 . 1234", ".", "5678"),
+        ("+82 10", ".", "1234.5678"),
+    ],
+)
+def test_mixed_dotted_phone_fails_closed(parts: tuple[str, str, str]) -> None:
+    """dot과 dash/space를 섞어 primary scrub을 피한 phone도 verifier가 막는다."""
+    source = "".join(parts)
+    scrubbed, report = scrub_text(source)
+    assert scrubbed == source
+    assert report.phones == 0
+    with pytest.raises(RedactionError, match="phone"):
+        verify_scrubbed(scrubbed)
+
+
+def test_fullwidth_dotted_phone_fails_closed() -> None:
+    """primary scrub이 못 보는 fullwidth dotted phone은 shadow verifier가 막는다."""
+    source = ".".join(("010", "1234", "5678"))
+    fullwidth = "".join(
+        chr(ord(char) + 0xFEE0) if 0x21 <= ord(char) <= 0x7E else char
+        for char in source
+    )
+    scrubbed, report = scrub_text(fullwidth)
+    assert scrubbed == fullwidth
+    assert report.phones == 0
+    with pytest.raises(RedactionError, match="phone"):
+        verify_scrubbed(scrubbed)
+
+
 def test_verify_fails_when_home_path_remains() -> None:
     """재검증은 홈 경로가 남으면 실패한다."""
     home = str(Path.home())
