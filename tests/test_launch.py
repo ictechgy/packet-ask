@@ -1,7 +1,9 @@
 """격리 실행기와 Kimi 기본 거절."""
 
 import os
+import stat
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -10,7 +12,9 @@ import pytest
 from packet_ask import codes
 from packet_ask.errors import PacketAskError
 from packet_ask.launch import (
+    _acquire_kimi_run_lock,
     _cleanup_kimi_sessions,
+    _kimi_run_lock,
     ensure_kimi_config,
     isolated_env,
     launch_kimi,
@@ -350,6 +354,95 @@ def test_kimi_config_rejects_symlink_file(tmp_path: Path) -> None:
         ensure_kimi_config(kimi_home)
     assert exc.value.code == codes.CONFINEMENT
     assert victim.read_text(encoding="utf-8") == "keep"
+
+
+def test_kimi_run_lock_is_private_non_inheritable_and_reusable(tmp_path: Path) -> None:
+    """Kimi run lock은 0600/non-inheritable이며 release 뒤 다시 얻을 수 있다."""
+    descriptor = _acquire_kimi_run_lock(tmp_path)
+    try:
+        lock = tmp_path / "run.lock"
+        assert stat.S_IMODE(lock.stat().st_mode) == 0o600
+        assert os.get_inheritable(descriptor) is False
+    finally:
+        os.close(descriptor)
+    with _kimi_run_lock(tmp_path):
+        pass
+
+
+def test_kimi_run_lock_does_not_reclassify_body_oserror(tmp_path: Path) -> None:
+    """lock 획득 뒤 본문 OSError는 confinement 오류로 변환하지 않는다."""
+    with pytest.raises(OSError, match="body failure"):
+        with _kimi_run_lock(tmp_path):
+            raise OSError("body failure")
+
+
+def test_kimi_run_lock_rejects_symlink(tmp_path: Path) -> None:
+    """run.lock symlink를 따라 외부 파일을 lock/chmod하지 않는다."""
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep", encoding="utf-8")
+    (tmp_path / "run.lock").symlink_to(victim)
+    with pytest.raises(PacketAskError) as exc:
+        with _kimi_run_lock(tmp_path):
+            pass
+    assert exc.value.code == codes.CONFINEMENT
+    assert victim.read_text(encoding="utf-8") == "keep"
+
+
+def test_concurrent_kimi_run_fails_before_shared_profile_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """한 Kimi 실행이 config/session lifecycle을 소유하면 두 번째는 launch하지 않는다."""
+    home = tmp_path / "provider-home"
+    home.mkdir()
+    first_root = tmp_path / "first-packet"
+    second_root = tmp_path / "second-packet"
+    first_root.mkdir()
+    second_root.mkdir()
+    first = Packet(root=first_root, report=RedactionReport(), _packet_text="first")
+    second = Packet(root=second_root, report=RedactionReport(), _packet_text="second")
+    monkeypatch.setenv("PACKET_ASK_KIMI_KEY", "kimi-concurrency-key")
+    monkeypatch.setattr("packet_ask.launch.require_launchable", lambda _name: None)
+    monkeypatch.setattr(
+        "packet_ask.launch.resolve_trusted_executable",
+        lambda name: Path("/usr/bin/true") if name == "kimi" else None,
+    )
+    monkeypatch.setattr("packet_ask.launch.provider_home", lambda _name: home)
+    monkeypatch.setattr("packet_ask.launch.KIMI_RUN_LOCK_TIMEOUT_SECONDS", 0.1)
+    entered = threading.Event()
+    release = threading.Event()
+    calls: list[str] = []
+
+    def hold_first(*_args: object, **_kwargs: object) -> str:
+        calls.append("launch")
+        entered.set()
+        assert release.wait(timeout=5)
+        return "ok"
+
+    monkeypatch.setattr("packet_ask.launch.run_isolated_command", hold_first)
+    first_result: list[str] = []
+    first_error: list[BaseException] = []
+
+    def run_first() -> None:
+        try:
+            first_result.append(launch_kimi(first, 5))
+        except BaseException as exc:  # pragma: no cover - assertion reports details
+            first_error.append(exc)
+
+    worker = threading.Thread(target=run_first)
+    worker.start()
+    assert entered.wait(timeout=5)
+    try:
+        with pytest.raises(PacketAskError) as exc:
+            launch_kimi(second, 5)
+        assert exc.value.code == codes.CONFINEMENT
+        assert calls == ["launch"]
+    finally:
+        release.set()
+        worker.join(timeout=5)
+    assert not worker.is_alive()
+    assert first_error == []
+    assert first_result == ["ok"]
 
 
 def test_kimi_cleanup_failure_is_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
