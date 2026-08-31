@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from packet_ask.paths import minimal_child_env, resolve_trusted_executable
-from packet_ask.providers import ProviderSpec, load_catalog
+from packet_ask.providers import ProviderSpec, load_catalog, resolve_provider_adapter
 from packet_ask.signals import deferred_task_signals
 from packet_ask.text import message
 
@@ -188,13 +188,14 @@ def inspect_providers() -> list[ProviderStatus]:
 
 def _status_for(spec: ProviderSpec) -> ProviderStatus:
     """스펙 한 줄의 설치·실행 가능 여부를 본다."""
-    if spec.mode == "paste":
+    adapter = resolve_provider_adapter(spec)
+    if adapter is None or adapter.launcher_name is None:
         installed = spec.binary is None or resolve_trusted_executable(spec.binary) is not None
         return ProviderStatus(spec.provider_id, installed, True, spec.note, spec.source, spec.mode)
-    return _launch_status(spec)
+    return _launch_status(spec, adapter.doctor_kind)
 
 
-def _launch_status(spec: ProviderSpec) -> ProviderStatus:
+def _launch_status(spec: ProviderSpec, doctor_kind: str | None) -> ProviderStatus:
     """실행형 내장의 help 플래그를 검사한다."""
     binary = spec.binary or spec.provider_id
     help_text = _help_text(binary)
@@ -207,11 +208,14 @@ def _launch_status(spec: ProviderSpec) -> ProviderStatus:
             spec.source,
             spec.mode,
         )
-    if binary == "claude" and claude_supports_isolated_print(help_text):
+    checks = {
+        "claude": claude_supports_isolated_print,
+        "kimi": kimi_supports_isolated_print,
+    }
+    checker = checks.get(doctor_kind or "")
+    if checker is not None and checker(help_text):
         return ProviderStatus(spec.provider_id, True, True, spec.note, spec.source, spec.mode)
-    if binary == "kimi" and kimi_supports_isolated_print(help_text):
-        return ProviderStatus(spec.provider_id, True, True, spec.note, spec.source, spec.mode)
-    if binary == "kimi" and kimi_supports_print(help_text):
+    if doctor_kind == "kimi" and kimi_supports_print(help_text):
         return ProviderStatus(
             spec.provider_id,
             True,

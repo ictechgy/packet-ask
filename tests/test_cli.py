@@ -938,3 +938,70 @@ def test_explicit_timeout_reaches_launch_without_clamp(
     )
     assert code == codes.SUCCESS
     assert captured["timeout"] == 300
+
+
+@pytest.mark.parametrize(
+    ("provider", "launcher_name"),
+    [
+        ("glm", "launch_glm"),
+        ("kimi", "launch_kimi"),
+        ("claude", "launch_claude"),
+    ],
+)
+def test_builtin_registry_dispatches_each_launch_adapter(
+    provider: str,
+    launcher_name: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """registry가 고른 현재 CLI launcher에 timeout과 credential source를 전달한다."""
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    called: list[tuple[int, str]] = []
+
+    def fake_launch(_packet, timeout: int, credential_source: str) -> str:  # noqa: ANN001
+        called.append((timeout, credential_source))
+        return "reviewed"
+
+    monkeypatch.setattr(cli, launcher_name, fake_launch)
+    code = main(
+        [
+            "review",
+            "--provider",
+            provider,
+            "--credential-source",
+            "prompt",
+            "--timeout",
+            "321",
+            "--files",
+            "src/app.py",
+            "--question",
+            "review",
+        ]
+    )
+    assert code == codes.SUCCESS
+    assert called == [(321, "prompt")]
+
+
+def test_user_alias_cannot_reach_builtin_launcher(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """user alias는 registry id가 없고 packet payload만 반환한다."""
+    providers_file = tmp_path / "providers.toml"
+    providers_file.write_text(
+        'version = 1\n[providers.gemini]\nlabel = "Gemini"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PACKET_ASK_PROVIDERS_FILE", str(providers_file))
+
+    def fail_launch(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("user alias must remain paste-only")
+
+    monkeypatch.setattr(cli, "launch_glm", fail_launch)
+    monkeypatch.setattr(cli, "launch_kimi", fail_launch)
+    monkeypatch.setattr(cli, "launch_claude", fail_launch)
+    packet = build_packet("review", "review", [], None, tmp_path / "packets")
+    try:
+        assert "# Task" in cli._execute_provider("gemini", packet, 1, "auto")
+    finally:
+        packet.destroy()

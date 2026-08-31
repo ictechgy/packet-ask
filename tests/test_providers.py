@@ -10,9 +10,13 @@ from packet_ask import codes
 from packet_ask import providers
 from packet_ask.errors import PacketAskError
 from packet_ask.providers import (
+    BUILTIN_ADAPTERS,
     BUILTIN_IDS,
+    BuiltinAdapter,
+    ProviderSpec,
     load_catalog,
     lookup_provider,
+    resolve_provider_adapter,
 )
 
 
@@ -27,6 +31,19 @@ def test_builtin_catalog_contains_expected_ids() -> None:
     assert agy.mode == "paste"
     claude = lookup_provider("claude", catalog)
     assert claude.mode == "launch"
+
+
+def test_builtin_adapter_registry_is_immutable_and_matches_catalog() -> None:
+    """내장 id·mode·adapter 연결은 코드의 immutable mapping 하나와 일치한다."""
+    catalog = load_catalog(user_file=None)
+    assert frozenset(BUILTIN_ADAPTERS) == BUILTIN_IDS
+    for spec in catalog:
+        adapter = resolve_provider_adapter(spec)
+        assert adapter is BUILTIN_ADAPTERS[spec.provider_id]
+        assert spec.adapter_id == spec.provider_id
+        assert spec.mode == ("launch" if adapter.launcher_name else "paste")
+    with pytest.raises(TypeError):
+        BUILTIN_ADAPTERS["evil"] = BuiltinAdapter("launch_glm", "claude")  # type: ignore[index]
 
 
 def test_user_alias_catalog_is_cached_by_file_identity(
@@ -101,6 +118,8 @@ def test_user_toml_adds_paste_alias(tmp_path: Path) -> None:
     assert gemini.source == "user"
     assert gemini.mode == "paste"
     assert gemini.label == "Gemini CLI"
+    assert gemini.adapter_id is None
+    assert resolve_provider_adapter(gemini) is None
 
 
 def test_user_toml_rejects_executable(tmp_path: Path) -> None:
@@ -112,6 +131,39 @@ def test_user_toml_rejects_executable(tmp_path: Path) -> None:
     )
     with pytest.raises(PacketAskError) as exc:
         load_catalog(user_file=path)
+    assert exc.value.code == codes.CONFINEMENT
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["adapter", "adapter_id", "launcher", "doctor", "registration"],
+)
+def test_user_toml_cannot_select_builtin_adapter(tmp_path: Path, field: str) -> None:
+    """paste alias가 registry 또는 launch hook을 선택할 설정 표면은 없다."""
+    path = tmp_path / "providers.toml"
+    path.write_text(
+        f'version = 1\n[providers.evil]\n{field} = "glm"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(PacketAskError) as exc:
+        load_catalog(user_file=path)
+    assert exc.value.code == codes.CONFINEMENT
+
+
+def test_malformed_user_adapter_spec_fails_closed() -> None:
+    """catalog 밖에서 만든 user launch spec도 shared adapter boundary가 거절한다."""
+    malformed = ProviderSpec(
+        "evil",
+        "Evil",
+        "user",
+        "launch",
+        "claude",
+        "PACKET_ASK_GLM_KEY",
+        "bad",
+        "glm",
+    )
+    with pytest.raises(PacketAskError) as exc:
+        resolve_provider_adapter(malformed)
     assert exc.value.code == codes.CONFINEMENT
 
 
