@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import errno
+import io
 import json
 import signal
 import sys
@@ -30,7 +32,13 @@ from packet_ask.packet import Packet, build_packet
 from packet_ask.policy import assert_allowed_task
 from packet_ask.errors import BudgetError
 from packet_ask.paths import packet_cache_dir
-from packet_ask.receipt import build_receipt, format_receipt_line, format_timing_line, json_envelope
+from packet_ask.receipt import (
+    build_receipt,
+    format_receipt_line,
+    format_timing_line,
+    json_envelope,
+    json_error_envelope,
+)
 from packet_ask.scope import (
     DEFAULT_MAX_BYTES,
     DEFAULT_MAX_FILES,
@@ -491,8 +499,20 @@ def _emit_task_result(
 
 def main(argv: list[str] | None = None) -> int:
     """CLI 메인. 예외는 종료 코드로 바꾼다."""
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    json_requested = "--json" in raw_argv
     parser = _parser()
-    args = parser.parse_args(argv)
+    if json_requested and not any(item in {"-h", "--help"} for item in raw_argv):
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                args = parser.parse_args(raw_argv)
+        except SystemExit as exc:
+            if exc.code == 0:
+                raise
+            sys.stdout.write(json_error_envelope(codes.USAGE))
+            return codes.USAGE
+    else:
+        args = parser.parse_args(raw_argv)
     try:
         if args.command == "doctor":
             return _run_doctor()
@@ -504,5 +524,13 @@ def main(argv: list[str] | None = None) -> int:
             return _run_credentials(args)
         return _run_task(args)
     except PacketAskError as exc:
-        print(str(exc), file=sys.stderr)
+        if json_requested:
+            sys.stdout.write(json_error_envelope(exc.code))
+        else:
+            print(str(exc), file=sys.stderr)
         return exc.code
+    except Exception:
+        if not json_requested:
+            raise
+        sys.stdout.write(json_error_envelope(codes.INTERNAL))
+        return codes.INTERNAL

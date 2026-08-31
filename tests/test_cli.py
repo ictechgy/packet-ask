@@ -1,6 +1,7 @@
 """CLI 종료 코드와 paste 출력."""
 
 import argparse
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -510,6 +511,134 @@ def test_review_json_envelope(
     assert data["receipt"]["timeout_seconds"] == 1200
     assert data["receipt"]["timeout_source"] == "auto"
     assert data["receipt"]["timeout_applies"] is False
+
+
+def test_json_parse_error_is_single_generic_envelope(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """argparse 오류는 raw argv/usage 없이 stdout JSON 하나로 반환한다."""
+    code = main(["review", "--provider", "paste", "--json", "--max-bytes", "bad"])
+    captured = capsys.readouterr()
+    assert code == codes.USAGE
+    assert captured.err == ""
+    data = json.loads(captured.out)
+    assert data == {
+        "schema": "packet-ask.v1",
+        "ok": False,
+        "error": {
+            "code": codes.USAGE,
+            "kind": "usage",
+            "message": "Invalid command-line arguments.",
+        },
+    }
+
+
+def test_json_parse_error_never_reflects_unknown_argument(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """unknown option 뒤 민감해 보이는 원문을 JSON·stderr 어디에도 반사하지 않는다."""
+    value = "sk-proj-sensitive-value-that-must-not-appear"
+    code = main(["review", "--json", "--unknown-option", value])
+    captured = capsys.readouterr()
+    assert code == codes.USAGE
+    assert value not in captured.out
+    assert value not in captured.err
+    assert json.loads(captured.out)["error"]["kind"] == "usage"
+
+
+def test_json_runtime_error_does_not_include_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """scope 예외의 사용자 경로는 실패 envelope에 들어가지 않는다."""
+    repo = _init_repo(tmp_path / "repo")
+    outside = tmp_path / "private-customer-name.py"
+    outside.write_text("print(1)\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+    code = main(
+        [
+            "review",
+            "--provider",
+            "paste",
+            "--files",
+            str(outside),
+            "--json",
+            "--question",
+            "review",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == codes.SCOPE
+    assert str(outside) not in captured.out
+    assert str(outside) not in captured.err
+    data = json.loads(captured.out)
+    assert data["error"]["kind"] == "scope"
+
+
+def test_json_provider_error_is_generic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """provider 예외 원문은 숨기되 안정된 code와 kind를 보존한다."""
+    repo = _init_repo(tmp_path / "repo")
+    sensitive = "provider failed at /private/customer/path"
+    monkeypatch.chdir(repo)
+    monkeypatch.setattr(
+        cli,
+        "_execute_provider",
+        lambda *_args: (_ for _ in ()).throw(
+            PacketAskError(sensitive, codes.PROVIDER_FAILED)
+        ),
+    )
+    code = main(
+        [
+            "review",
+            "--provider",
+            "paste",
+            "--files",
+            "src/app.py",
+            "--json",
+            "--question",
+            "review",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == codes.PROVIDER_FAILED
+    assert sensitive not in captured.out
+    assert sensitive not in captured.err
+    data = json.loads(captured.out)
+    assert data["error"]["kind"] == "provider_failed"
+
+
+def test_non_json_parse_and_runtime_errors_keep_existing_behavior(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--json이 없으면 argparse와 PacketAskError의 기존 text 계약을 유지한다."""
+    with pytest.raises(SystemExit) as parse_exit:
+        main(["review", "--max-bytes", "bad"])
+    assert parse_exit.value.code == codes.USAGE
+    assert "usage:" in capsys.readouterr().err
+
+    repo = _init_repo(tmp_path / "repo")
+    monkeypatch.chdir(repo)
+    code = main(["review", "--provider", "paste", "--files", "missing.py"])
+    captured = capsys.readouterr()
+    assert code == codes.SCOPE
+    assert "missing.py" in captured.err
+    assert captured.out == ""
+
+
+def test_unexpected_json_failure_has_no_traceback(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """예상하지 못한 Exception도 JSON 모드에서는 generic internal 오류로 닫는다."""
+    sensitive = "unexpected private detail"
+    monkeypatch.setattr(cli, "_run_providers", lambda _json: (_ for _ in ()).throw(RuntimeError(sensitive)))
+    code = main(["providers", "--json"])
+    captured = capsys.readouterr()
+    assert code == codes.INTERNAL
+    assert sensitive not in captured.out
+    assert sensitive not in captured.err
+    assert "Traceback" not in captured.err
+    assert json.loads(captured.out)["error"]["kind"] == "internal"
 
 
 def test_review_paste_uses_cache_dir_not_repo(

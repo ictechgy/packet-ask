@@ -1,5 +1,7 @@
 """불신뢰 출력 봉투."""
 
+import json
+
 import pytest
 
 from packet_ask import codes
@@ -10,7 +12,7 @@ from packet_ask.output import (
     sanitize_provider_output,
     wrap_untrusted,
 )
-from packet_ask.receipt import format_receipt_line
+from packet_ask.receipt import format_receipt_line, json_error_envelope
 
 
 def test_wraps_body() -> None:
@@ -97,3 +99,29 @@ def test_receipt_escapes_control_characters_in_paths() -> None:
     assert line.count("\n") == 0
     assert "\x1b" not in line
     assert r"\n" in line
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        codes.INTERNAL,
+        codes.USAGE,
+        codes.POLICY,
+        codes.SCOPE,
+        codes.REDACTION,
+        codes.CONFINEMENT,
+        codes.BUDGET,
+        codes.PROVIDER_MISSING,
+        codes.PROVIDER_FAILED,
+        codes.OUTPUT_GUARD,
+    ],
+)
+def test_json_error_envelope_has_only_stable_public_fields(code: int) -> None:
+    """모든 공개 exit code는 같은 최소 실패 schema를 사용한다."""
+    data = json.loads(json_error_envelope(code))
+    assert data["schema"] == "packet-ask.v1"
+    assert data["ok"] is False
+    assert set(data["error"]) == {"code", "kind", "message"}
+    assert data["error"]["code"] == code
+    assert isinstance(data["error"]["kind"], str)
+    assert isinstance(data["error"]["message"], str)
