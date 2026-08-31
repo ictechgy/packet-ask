@@ -5,6 +5,8 @@ import io
 import json
 import os
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -567,6 +569,86 @@ def test_review_prints_timing_on_stderr(
     )
     assert "glm-secret-must-not-leak" not in captured.err
     assert "glm-secret-must-not-leak" not in captured.out
+
+
+def test_explicit_progress_emits_non_sensitive_heartbeat_and_stops(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """긴 launch에서만 fixed heartbeat를 내고 task 종료 뒤 thread를 남기지 않는다."""
+    repo = _init_repo(tmp_path)
+    secret = "progress-secret-must-not-leak"
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("PACKET_ASK_GLM_KEY", secret)
+    monkeypatch.setattr(cli, "PROGRESS_INTERVAL_SECONDS", 0.005)
+
+    def slow_provider(*_args: object, **_kwargs: object) -> str:
+        time.sleep(0.05)
+        return "reviewed"
+
+    monkeypatch.setattr(cli, "_execute_provider", slow_provider)
+    code = main(
+        [
+            "review",
+            "--provider",
+            "paste",
+            "--files",
+            "src/app.py",
+            "--question",
+            "review",
+            "--progress",
+            "--json",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == codes.SUCCESS
+    progress = [
+        line for line in captured.err.splitlines() if line.startswith("packet-ask progress")
+    ]
+    assert progress
+    assert all("phase=launch elapsed_ms=" in line for line in progress)
+    assert secret not in captured.err
+    assert secret not in captured.out
+    assert not any(item.name == "packet-ask-progress" for item in threading.enumerate())
+
+
+def test_progress_is_opt_in(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """--progress가 없으면 기존 stderr contract에 heartbeat를 추가하지 않는다."""
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    monkeypatch.setattr(cli, "_execute_provider", lambda *_args: "reviewed")
+    assert main(
+        [
+            "review",
+            "--provider",
+            "paste",
+            "--files",
+            "src/app.py",
+            "--question",
+            "review",
+        ]
+    ) == codes.SUCCESS
+    assert "packet-ask progress" not in capsys.readouterr().err
+
+
+def test_progress_thread_start_failure_does_not_fail_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """optional observability thread를 못 만들면 provider body는 그대로 실행한다."""
+    monkeypatch.setattr(
+        threading.Thread,
+        "start",
+        lambda _thread: (_ for _ in ()).throw(RuntimeError("unavailable")),
+    )
+    reached: list[bool] = []
+    with cli._launch_progress(True, time.monotonic()):
+        reached.append(True)
+    assert reached == [True]
 
 
 def test_review_json_includes_timing(

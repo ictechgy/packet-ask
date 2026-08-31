@@ -65,6 +65,9 @@ uv run packet-ask doctor
 뒤 cleanup이 성공하면 metadata만 출력합니다. provider를 읽거나 credential을
 확인하거나 provider timeout을 계산하거나 vendor를 실행하지 않습니다. human
 출력은 이스케이프한 한 줄이고 `--json`은 고정 packet summary 필드만 반환합니다.
+`--breakdown`은 scrubbed question byte, framing byte, 파일/diff별 scrubbed byte와
+allowlisted redaction count를 additive로 보여 줍니다. 질문·항목 본문은 반환하지
+않습니다.
 
 `--max-files`는 명시 파일과 diff 경로 모두에 적용됩니다. `--max-bytes`는
 프레이밍과 경로 라벨을 포함한 최종 UTF-8 `packet.md`에 적용됩니다. 입력은
@@ -108,12 +111,16 @@ packet-ask review --provider paste --files src/app.py --json --question "이 코
 # packet 본문·provider·credential 접근 없이 metadata만 확인
 packet-ask inspect review --files src/app.py --question "경쟁 상태를 찾아줘"
 packet-ask inspect review --diff HEAD --json --question "이 변경을 리뷰해줘"
+packet-ask inspect review --diff HEAD --breakdown --json --question "packet 크기를 봐줘"
 
 # 로컬 stdin/Git preflight budget만 확대. provider timeout과는 별개
 packet-ask inspect review --diff HEAD --preflight-timeout 60 --question "이 변경을 리뷰해줘"
 
 # GLM. auto는 전용 env를 먼저 보고 macOS Keychain packet-ask-glm을 봅니다
 packet-ask review --provider glm --credential-source auto --diff HEAD --question "이 변경을 리뷰해줘"
+
+# provider launch 중 30초마다 비민감 heartbeat를 명시적으로 출력
+packet-ask review --provider glm --diff HEAD --progress --question "이 변경을 리뷰해줘"
 
 # 워킹 트리 미커밋 diff. 플래그 없이 review 하면 보내지 않습니다
 packet-ask review --provider paste --unstaged --question "이 변경을 리뷰해줘"
@@ -157,6 +164,9 @@ source 선택은 immutable builtin backend registry를 사용하며 `auto`에는
 key file, 타사 설정 adapter는 없습니다.
 
 성공하면 stderr에 런치 전 영수증(`packet-ask receipt …`)과 완료 후 밀리초 구간(`packet-ask timing …`)을 씁니다. `--json` 에는 `timing` 객체가 들어갑니다. 두 줄 모두 키 값을 넣지 않습니다. 영수증 경로는 JSON 이스케이프하며, 불신뢰 프로바이더 출력의 터미널 제어 시퀀스는 출력 전에 제거합니다.
+명시한 `--progress`는 provider 호출 동안 30초마다 stderr에
+`packet-ask progress phase=launch elapsed_ms=…`만 추가합니다. 기본은 off이며
+provider/path/key/body를 넣지 않고 최종 timing·성공 output 전에 멈춥니다.
 
 `--json`을 쓰면 argparse·runtime 실패도 stdout에 `ok: false`인
 `packet-ask.v1` 객체 하나를 반환합니다. `error.code`, `error.kind`, 일반화된

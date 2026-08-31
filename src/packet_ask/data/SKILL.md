@@ -29,6 +29,7 @@ packet-ask doctor
 packet-ask credentials status
 packet-ask inspect review --files <paths> --question "<question>"
 packet-ask inspect review --unstaged --json --question "<question>"
+packet-ask inspect review --unstaged --breakdown --json --question "<question>"
 packet-ask review --provider <id> --files <paths> --question "<question>"
 packet-ask review --provider <id> --unstaged --question "<question>"
 packet-ask research --provider <id> --question "<public question>"
@@ -40,6 +41,7 @@ User `~/.config/packet-ask/providers.toml` may add paste aliases only.
 
 - Credential source defaults to `auto`: dedicated env, then packet-ask-owned macOS Keychain. It never reads another app's settings.
 - Provider timeout defaults to a generous final-packet-size tier (1200/1500/1800 seconds). An explicit `--timeout` is used exactly.
+- `--progress` is opt-in and emits only a fixed launch phase and elapsed milliseconds every 30 seconds.
 - Real-fd question stdin and Git preflight share a 30-second default `--preflight-timeout`; this is separate from the provider timeout.
 - GLM: `PACKET_ASK_GLM_KEY` or Keychain service `packet-ask-glm`
 - Kimi: `PACKET_ASK_KIMI_KEY` or Keychain service `packet-ask-kimi`

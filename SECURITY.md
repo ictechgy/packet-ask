@@ -10,6 +10,7 @@ How personal Kimi Code or GLM Coding Plan subscriptions handle data is defined b
 
 - It reads only the files or diff you select from the worktree.
 - `inspect review|research` runs the same scope, redaction, packet verification, and cleanup without loading a provider or credential and outputs only fixed public metadata.
+- Explicit inspect `--breakdown` adds only scrubbed byte counts, framing bytes, relative paths, and allowlisted per-item redaction counts. It never returns question or item content.
 - It redacts secret, home-path, email, and phone patterns, then checks again with different patterns. If the re-check fails, the vendor is not started. The list is a denylist and does not catch every secret.
 - The re-check uses a detection-only Unicode shadow for NFKC compatibility forms, format controls, equivalent dots/dashes, Unicode decimal digits, international mailbox labels, and phone candidates. The packet is never rewritten from the shadow; suspicious leftovers fail closed. Ambiguous Unicode matrix syntax with an unknown ASCII attribute-like suffix is allowed to limit source-code false positives.
 - Known token families are checked symmetrically in primary scrub and shadow verification. Secret literals, URL userinfo, and PEM headers also use the shadow. Canonical dotted Korean mobile numbers are scrubbed; mixed dot/dash/space forms fail closed. This does not claim general E.164 coverage.
@@ -37,6 +38,7 @@ How personal Kimi Code or GLM Coding Plan subscriptions handle data is defined b
 - Kimi config, execution, and session cleanup share a 0600 non-inheritable advisory run lock. Lock acquisition is bounded to 30 seconds; a competing run fails before mutating `KIMI_CODE_HOME` or launching Kimi.
 - Worktree discovery, diff collection, and packet-local Git initialization use one bounded runner with process-group termination on timeout, output excess, and interrupts. Task-scoped SIGTERM/SIGHUP handlers defer signal delivery until a spawned process group or built packet is registered, then reuse the same child and packet cleanup paths.
 - Success output is withheld until the temporary packet is removed. Cleanup failure cannot replace an existing provider failure code.
+- Optional `--progress` emits only a fixed launch phase and non-negative elapsed milliseconds. It is off by default, uses nonblocking stderr writes where a real fd exists, and stops before final timing/output.
 - Receipt and manifest redaction metadata use an exact allowlist of non-negative integer counters; internal report fields are never serialized.
 - JSON failures use fixed code/kind/message mappings. They never serialize raw argv, exception text, paths, credentials, provider stderr, or tracebacks.
 

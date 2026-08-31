@@ -65,6 +65,9 @@ uv run packet-ask doctor
 but print metadata only after cleanup. They do not load a provider, inspect a
 credential, calculate a provider timeout, or launch a vendor. Human output is
 one escaped line; `--json` returns only the fixed packet summary fields.
+`--breakdown` additively reports scrubbed question bytes, framing bytes, and
+per-file/diff scrubbed bytes plus allowlisted redaction counts. It never returns
+the question or item body.
 
 `--max-files` applies to explicit files and diff paths. `--max-bytes` applies to
 the final UTF-8 `packet.md`, including framing and path labels. Reads stop at
@@ -111,12 +114,16 @@ packet-ask review --provider paste --files src/app.py --json --question "Find ra
 # Metadata only; no packet body, provider, or credential access
 packet-ask inspect review --files src/app.py --question "Find race conditions"
 packet-ask inspect review --diff HEAD --json --question "Review this change"
+packet-ask inspect review --diff HEAD --breakdown --json --question "Size this packet"
 
 # Increase only the local stdin/Git preflight budget; provider timeout is separate
 packet-ask inspect review --diff HEAD --preflight-timeout 60 --question "Review this change"
 
 # GLM. auto = dedicated env first, then packet-ask-glm in macOS Keychain
 packet-ask review --provider glm --credential-source auto --diff HEAD --question "Review this change"
+
+# Optional non-sensitive heartbeat every 30 seconds during provider launch
+packet-ask review --provider glm --diff HEAD --progress --question "Review this change"
 
 # Uncommitted working-tree diff. review without a scope flag is rejected
 packet-ask review --provider paste --unstaged --question "Review this change"
@@ -161,6 +168,10 @@ These sources are selected through an immutable builtin backend registry;
 registration, arbitrary command, key-file, or third-party settings adapter.
 
 On success, stderr prints a receipt before launch (`packet-ask receipt …`) and millisecond phase times after (`packet-ask timing …`). `--json` adds a `timing` object. Neither line contains keys. Receipt paths are JSON escaped, and terminal control sequences are removed from untrusted provider output before it is printed.
+Explicit `--progress` adds only `packet-ask progress phase=launch elapsed_ms=…`
+to stderr every 30 seconds while the provider call is active. It is off by
+default, contains no provider/path/key/body data, and stops before final timing
+or success output.
 
 With `--json`, argparse and runtime failures also return one `packet-ask.v1`
 stdout object with `ok: false` and stable `error.code`, `error.kind`, and a
