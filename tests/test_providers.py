@@ -17,6 +17,7 @@ from packet_ask.providers import (
     load_catalog,
     lookup_provider,
     resolve_provider_adapter,
+    _parse_user_alias,
 )
 
 
@@ -120,6 +121,33 @@ def test_user_toml_adds_paste_alias(tmp_path: Path) -> None:
     assert gemini.label == "Gemini CLI"
     assert gemini.adapter_id is None
     assert resolve_provider_adapter(gemini) is None
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "bad\nline",
+        "bad\x1b]52;c;clipboard\x07",
+        "bad\u202ereversed",
+        "bad\u2028line",
+        "bad\u2029paragraph",
+        "x" * 81,
+    ],
+)
+def test_user_alias_rejects_unsafe_label(value: str) -> None:
+    """human doctor 출력에 newline·terminal/bidi control·장문을 넣지 못한다."""
+    with pytest.raises(PacketAskError) as exc:
+        _parse_user_alias("safe", {"label": value})
+    assert exc.value.code == codes.CONFINEMENT
+
+
+def test_user_alias_allows_bounded_unicode_display() -> None:
+    """정상 한글 label/note는 paste alias metadata로 유지한다."""
+    label = "안전한 별명 " + "می\u200cخواهم"
+    note = "가족 " + "👨\u200d👩\u200d👧"
+    spec = _parse_user_alias("safe", {"label": label, "notes": note})
+    assert spec.label == label
+    assert spec.note == note
 
 
 def test_user_toml_rejects_executable(tmp_path: Path) -> None:

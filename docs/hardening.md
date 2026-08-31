@@ -25,6 +25,10 @@ broaden the tasks that a SUB may perform.
   Kimi session cleanup failures are reported instead of silently ignored.
 - Skill installation rejects symlinks in every destination component below the
   selected harness home.
+- User alias display metadata is bounded and rejects terminal/bidi/record
+  controls before doctor or JSON output. ZWNJ/ZWJ shaping remains allowed.
+- Packet-cache preparation maps filesystem OSError values to a stable,
+  non-sensitive confinement failure rather than a human-mode traceback.
 
 ## Policy and redaction
 

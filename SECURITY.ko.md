@@ -14,6 +14,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 - 재검증은 NFKC compatibility 형식, format control, 동등 dot/dash, Unicode decimal digit, international mailbox label과 phone 후보를 detection-only Unicode shadow에서 봅니다. shadow로 packet을 다시 쓰지 않으며 의심 값은 fail-closed합니다. 소스 코드 오탐을 줄이기 위해 알려지지 않은 ASCII attribute형 suffix의 모호한 Unicode 행렬곱 문법은 허용합니다.
 - known token family는 primary scrub과 shadow verify에서 대칭으로 확인합니다. secret literal·URL userinfo·PEM header도 shadow를 사용합니다. canonical dotted 국내 mobile 번호는 scrub하고 dot/dash/space 혼합형은 fail-closed합니다. 일반 E.164 coverage를 주장하지 않습니다.
 - 패킷은 원본 레포가 아니라 OS 캐시 전용 디렉터리에 만들고, 정상 종료 시 지웁니다. 새 패킷은 private directory advisory lock과 0600 lease marker를 만듭니다. 이후 실행은 현재 사용자 소유 0700 패킷 디렉터리의 lock을 얻을 수 있고 marker가 24시간 이상 됐을 때만 데이터를 지우며 active·fresh·symlink·비공개 권한 위반·marker가 없는 예전 디렉터리는 건너뜁니다. 따라서 강제 종료 뒤 데이터가 최소 24시간, 그리고 이후 정리 실행 전까지 남을 수 있습니다. 삭제는 일반 파일 삭제이며 안전한 소거가 아닙니다.
+- packet cache mkdir/stat/chmod 실패는 경로나 traceback을 노출하지 않는 고정 confinement 오류로 변환합니다.
 - allowlist 디렉터리에서 `claude`/`kimi` 실행 파일을 찾습니다. 사용자 소유이고 그룹·기타에 쓸 수 없어야 합니다. **배포 출처·서명은 확인하지 않습니다.**
 - 부모 셸의 `ANTHROPIC_BASE_URL` / `ANTHROPIC_API_KEY` 는 복사하지 않습니다.
 - GLM은 [Z.ai Claude Code 연동](https://docs.z.ai/scenario-example/develop-tools/claude)처럼 자식 환경에만 엔드포인트와 resolve한 전용 GLM credential을 넣습니다.
@@ -24,6 +25,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 - Keychain `--access command`는 background agent 사용을 위해 `/usr/bin/security`를 신뢰하며 key의 at-rest 보호만 제공합니다. 같은 사용자 권한의 다른 프로세스에 대한 경계는 아닙니다. `--access prompt`는 어떤 앱도 신뢰하지 않아 headless session에서 쓸 수 없을 수 있습니다.
 - `doctor`는 `--help`에 필요 플래그 이름이 있는지 확인합니다. 실제 무도구·OS 샌드박스를 증명하지 않습니다. help 프로브에는 하나의 deadline, 합산 출력 상한, 프로세스 그룹 종료를 적용합니다. 런치는 고른 바이너리만 프로브합니다. `doctor`는 카탈로그 전체를 돌되 성공한 `--help`를 경로·mtime·크기로 프로세스 동안 캐시합니다.
 - builtin launcher와 doctor probe 종류는 immutable code registry에서만 고릅니다. 사용자 alias에는 adapter ID가 없으며 executable·argv·env·launcher·probe·hook을 등록하거나 선택할 수 없습니다.
+- 사용자 alias label/notes는 길이를 제한하고 출력 전에 terminal·bidi·line·paragraph control을 거절합니다. 정상 언어·emoji shaping의 ZWNJ/ZWJ는 허용합니다.
 - GLM과 Claude 자식 환경에는 `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `DISABLE_ERROR_REPORTING=1` 을 넣습니다. 벤더가 플래그를 무시할 수 있습니다. 이 CLI는 `~/.claude/projects/` 를 지우지 않습니다.
 - 벤더 stdout에 전용 키 값이 있거나 출력이 너무 크면 폐기하고 종료 코드 22를 반환합니다.
 - 벤더 stdin·stdout·stderr는 하나의 bounded nonblocking deadline을 공유합니다. 명시 파일, stdin 질문, git diff 수집도 설정한 한도에서 읽기를 멈춥니다.

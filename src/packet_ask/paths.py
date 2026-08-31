@@ -56,15 +56,20 @@ def _is_under(path: Path, parent: Path) -> bool:
 
 def _ensure_private_dir(path: Path) -> None:
     """전용 디렉터리만 만들고 0700 으로 잠근다. 심링크는 거절한다."""
-    if path.exists() and path.is_symlink():
-        raise PacketAskError(message("cache_symlink"), codes.CONFINEMENT)
-    path.mkdir(parents=True, exist_ok=True)
-    if path.is_symlink():
-        raise PacketAskError(message("cache_symlink"), codes.CONFINEMENT)
-    info = path.stat()
-    if info.st_uid not in {0, os.getuid()}:
-        raise PacketAskError(message("cache_owner"), codes.CONFINEMENT)
-    path.chmod(stat.S_IRWXU)
+    try:
+        if path.exists() and path.is_symlink():
+            raise PacketAskError(message("cache_symlink"), codes.CONFINEMENT)
+        path.mkdir(parents=True, exist_ok=True)
+        if path.is_symlink():
+            raise PacketAskError(message("cache_symlink"), codes.CONFINEMENT)
+        info = path.stat()
+        if info.st_uid not in {0, os.getuid()}:
+            raise PacketAskError(message("cache_owner"), codes.CONFINEMENT)
+        path.chmod(stat.S_IRWXU)
+    except PacketAskError:
+        raise
+    except OSError as exc:
+        raise PacketAskError(message("cache_invalid"), codes.CONFINEMENT) from exc
 
 
 def _default_cache_dir() -> Path:
