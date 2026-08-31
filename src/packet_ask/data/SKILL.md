@@ -37,6 +37,7 @@ Launch builtins: `glm`, `kimi`, `claude`. Paste-only builtins: `paste`, `grok`, 
 User `~/.config/packet-ask/providers.toml` may add paste aliases only.
 
 - Credential source defaults to `auto`: dedicated env, then packet-ask-owned macOS Keychain. It never reads another app's settings.
+- Provider timeout defaults to a generous final-packet-size tier (1200/1500/1800 seconds). An explicit `--timeout` is used exactly.
 - GLM: `PACKET_ASK_GLM_KEY` or Keychain service `packet-ask-glm`
 - Kimi: `PACKET_ASK_KIMI_KEY` or Keychain service `packet-ask-kimi`
 - Claude SUB: `PACKET_ASK_CLAUDE_KEY` or Keychain service `packet-ask-claude` (never a global Anthropic key)

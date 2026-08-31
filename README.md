@@ -65,6 +65,14 @@ uv run packet-ask doctor
 the final UTF-8 `packet.md`, including framing and path labels. Reads stop at
 the configured bound, and explicit binary or non-UTF-8 files are rejected.
 
+If `--timeout` is omitted, launch providers use the final packet size: up to
+64 KiB gets 1200 seconds, up to 128 KiB gets 1500 seconds, and larger packets
+get 1800 seconds. A supplied `--timeout` is used exactly without clamping. The
+larger defaults do not delay successful calls; they only postpone failure for a
+real hang, which can still be interrupted with Ctrl+C. CI and unattended runs
+should set an explicit timeout. Paste and dry-run receipts show the resolved
+value as informational, but no provider deadline is applied.
+
 ## Usage
 
 ```bash
@@ -111,6 +119,10 @@ checks Keychain item existence without retrieving its password. Resolved keys
 from every source are included in raw and terminal-normalized output guards.
 
 On success, stderr prints a receipt before launch (`packet-ask receipt …`) and millisecond phase times after (`packet-ask timing …`). `--json` adds a `timing` object. Neither line contains keys. Receipt paths are JSON escaped, and terminal control sequences are removed from untrusted provider output before it is printed.
+
+Receipt JSON adds `timeout_seconds`, `timeout_source` (`auto` or `explicit`),
+and `timeout_applies`. The `packet-ask.v1` schema is additive; consumers should
+ignore unknown receipt keys. The four-key millisecond `timing` object is unchanged.
 
 Packet temp dirs live in the OS cache, not the git worktree. cwd is not a sandbox. A `PACKET_ASK_CACHE_DIR` inside the worktree is rejected. `.gitignore` entries for `.packet-ask-tmp/` and `packet.md` only stop leftover files from being committed.
 

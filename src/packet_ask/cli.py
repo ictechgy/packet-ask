@@ -39,6 +39,12 @@ from packet_ask.scope import (
 )
 from packet_ask.text import message
 
+AUTO_TIMEOUT_SMALL_BYTES = 64 * 1024
+AUTO_TIMEOUT_MEDIUM_BYTES = 128 * 1024
+AUTO_TIMEOUT_SMALL_SECONDS = 1200
+AUTO_TIMEOUT_MEDIUM_SECONDS = 1500
+AUTO_TIMEOUT_LARGE_SECONDS = 1800
+
 
 @dataclass(frozen=True)
 class TaskResult:
@@ -110,7 +116,12 @@ def _add_task_parser(sub: argparse._SubParsersAction, name: str, help_text: str)
     item.add_argument("--staged", action="store_true")
     if name == "review":
         item.add_argument("--unstaged", action="store_true")
-    item.add_argument("--timeout", type=_positive_int, default=300)
+    item.add_argument(
+        "--timeout",
+        type=_positive_int,
+        default=None,
+        help="provider timeout in seconds; default is auto by final packet bytes",
+    )
     item.add_argument("--max-files", type=_positive_int, default=DEFAULT_MAX_FILES)
     item.add_argument("--max-bytes", type=_positive_int, default=DEFAULT_MAX_BYTES)
     item.add_argument(
@@ -213,6 +224,17 @@ def _payload_bytes(question: str, files: list[ScopedFile], diff_text: str | None
     if diff_text:
         total += len(diff_text.encode("utf-8"))
     return total
+
+
+def _resolve_timeout(requested: int | None, packet_bytes: int) -> tuple[int, str]:
+    """명시값을 존중하고, 생략 시 넉넉한 packet-size tier를 고른다."""
+    if requested is not None:
+        return requested, "explicit"
+    if packet_bytes <= AUTO_TIMEOUT_SMALL_BYTES:
+        return AUTO_TIMEOUT_SMALL_SECONDS, "auto"
+    if packet_bytes <= AUTO_TIMEOUT_MEDIUM_BYTES:
+        return AUTO_TIMEOUT_MEDIUM_SECONDS, "auto"
+    return AUTO_TIMEOUT_LARGE_SECONDS, "auto"
 
 
 def _assert_packet_budget(question: str, files: list[ScopedFile], diff_text: str | None, max_bytes: int) -> None:
@@ -326,7 +348,7 @@ def _run_task(args: argparse.Namespace) -> int:
     provider, question, files_flag, has_diff = _task_inputs(args)
     mode = args.command if args.command != "paste" else "review"
     assert_allowed_task(mode, question, files_flag, has_diff=has_diff)
-    lookup_provider(provider)
+    spec = lookup_provider(provider)
     _require_explicit_review_scope(args)
     worktree = resolve_worktree(Path.cwd())
     scoped_files, diff_text = _collect_scope(args, worktree)
@@ -344,12 +366,33 @@ def _run_task(args: argparse.Namespace) -> int:
         parent=parent,
         max_bytes=args.max_bytes,
     )
+    timeout_seconds, timeout_source = _resolve_timeout(
+        args.timeout,
+        len(packet.payload_bytes()),
+    )
     selector = _review_selectors(args)[0] if _review_selectors(args) else files_flag or "none"
-    receipt = build_receipt(provider, selector, scoped_files, diff_text, packet)
+    receipt = build_receipt(
+        provider,
+        selector,
+        scoped_files,
+        diff_text,
+        packet,
+        timeout_seconds=timeout_seconds,
+        timeout_source=timeout_source,
+        timeout_applies=spec.mode == "launch",
+    )
     packet_ms = _ms_since(packet_started)
     print(format_receipt_line(receipt), file=sys.stderr)
     try:
-        result = _finish_task(args, provider, packet, started, preflight_ms, packet_ms)
+        result = _finish_task(
+            args,
+            provider,
+            packet,
+            timeout_seconds,
+            started,
+            preflight_ms,
+            packet_ms,
+        )
     except BaseException:
         try:
             _cleanup_packet(packet, parent)
@@ -395,6 +438,7 @@ def _finish_task(
     args: argparse.Namespace,
     provider: str,
     packet: Packet,
+    timeout_seconds: int,
     started: float,
     preflight_ms: int,
     packet_ms: int,
@@ -404,7 +448,7 @@ def _finish_task(
     raw = _execute_provider(
         provider,
         packet,
-        args.timeout,
+        timeout_seconds,
         args.credential_source,
     )
     wrapped = wrap_untrusted(raw)

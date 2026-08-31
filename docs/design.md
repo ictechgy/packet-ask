@@ -36,6 +36,8 @@ paste 전용 내장: `grok`, `agy` (무도구 원샷 계약 확인 전).
 20. provider 성공 stdout과 timing은 packet cleanup 뒤에만 공개한다. 기존 실패가 있으면 cleanup 경고가 원래 종료 코드를 가리지 않는다.
 21. 공개 redaction metadata는 허용된 음이 아닌 정수 count만 직렬화한다.
 22. `Packet`은 렌더링 text/bytes/digest를 소유하고 receipt·launch가 재사용한다. user provider overlay는 path·mtime·size·언어로 캐시한다.
+23. `--timeout` 생략 시 최종 packet bytes로 64KiB 이하 1200초, 128KiB 이하 1500초, 초과 1800초를 고른다. 명시값은 clamp하지 않는다.
+24. receipt에 `timeout_seconds`/`timeout_source`/`timeout_applies`를 additive 공개하고 기존 `timing` 4-key 계약은 유지한다.
 
 ## 금지
 

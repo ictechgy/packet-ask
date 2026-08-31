@@ -66,6 +66,30 @@ def test_research_requires_question() -> None:
 
 
 @pytest.mark.parametrize(
+    ("packet_bytes", "expected"),
+    [
+        (1, 1200),
+        (64 * 1024, 1200),
+        (64 * 1024 + 1, 1500),
+        (128 * 1024, 1500),
+        (128 * 1024 + 1, 1800),
+        (256 * 1024, 1800),
+    ],
+)
+def test_auto_timeout_uses_generous_packet_size_tiers(
+    packet_bytes: int, expected: int
+) -> None:
+    """크기 tier 경계는 결정적이고 관측 최대보다 넉넉하다."""
+    assert cli._resolve_timeout(None, packet_bytes) == (expected, "auto")
+
+
+@pytest.mark.parametrize("requested", [1, 300, 3600])
+def test_explicit_timeout_is_never_clamped(requested: int) -> None:
+    """명시 timeout은 packet 크기와 무관하게 정확히 존중한다."""
+    assert cli._resolve_timeout(requested, 256 * 1024) == (requested, "explicit")
+
+
+@pytest.mark.parametrize(
     ("command", "files", "include_files"),
     [
         ("research", [Path("a.py")], []),
@@ -480,6 +504,9 @@ def test_review_json_envelope(
     assert "src/app.py" in data["receipt"]["paths"]
     assert "untrusted_output" in data
     assert "print(1)" in data["untrusted_output"]
+    assert data["receipt"]["timeout_seconds"] == 1200
+    assert data["receipt"]["timeout_source"] == "auto"
+    assert data["receipt"]["timeout_applies"] is False
 
 
 def test_review_paste_uses_cache_dir_not_repo(
@@ -634,6 +661,7 @@ def test_review_passes_explicit_credential_source_to_launch(
 
     def fake_launch(packet, timeout, credential_source):  # noqa: ANN001
         captured["source"] = credential_source
+        captured["timeout"] = timeout
         return "reviewed"
 
     monkeypatch.setattr("packet_ask.cli.launch_glm", fake_launch)
@@ -652,3 +680,99 @@ def test_review_passes_explicit_credential_source_to_launch(
     )
     assert code == codes.SUCCESS
     assert captured["source"] == "keychain"
+    assert captured["timeout"] == 1200
+
+
+def test_dry_run_marks_timeout_informational_and_never_launches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """launch provider dry-run은 paste로 전환되어 deadline을 적용하지 않는다."""
+    import json
+
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+
+    def fail_launch(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("dry-run must not launch a provider")
+
+    monkeypatch.setattr("packet_ask.cli.launch_glm", fail_launch)
+    code = main(
+        [
+            "review",
+            "--provider",
+            "glm",
+            "--dry-run",
+            "--json",
+            "--files",
+            "src/app.py",
+            "--question",
+            "review",
+        ]
+    )
+    data = json.loads(capsys.readouterr().out)
+    assert code == codes.SUCCESS
+    assert data["receipt"]["provider"] == "paste"
+    assert data["receipt"]["timeout_applies"] is False
+
+
+def test_medium_packet_auto_timeout_reaches_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """>64KiB 최종 packet의 1500초 tier가 adapter까지 전달된다."""
+    repo = _init_repo(tmp_path)
+    (repo / "src" / "app.py").write_text("x" * 70_000, encoding="utf-8")
+    monkeypatch.chdir(repo)
+    captured: dict[str, int] = {}
+
+    def fake_launch(packet, timeout, credential_source):  # noqa: ANN001
+        captured["timeout"] = timeout
+        return "reviewed"
+
+    monkeypatch.setattr("packet_ask.cli.launch_glm", fake_launch)
+    code = main(
+        [
+            "review",
+            "--provider",
+            "glm",
+            "--files",
+            "src/app.py",
+            "--max-bytes",
+            "100000",
+            "--question",
+            "review",
+        ]
+    )
+    assert code == codes.SUCCESS
+    assert captured["timeout"] == 1500
+
+
+def test_explicit_timeout_reaches_launch_without_clamp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """명시 timeout은 adapter 경계에서도 정확히 유지된다."""
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    captured: dict[str, int] = {}
+
+    def fake_launch(packet, timeout, credential_source):  # noqa: ANN001
+        captured["timeout"] = timeout
+        return "reviewed"
+
+    monkeypatch.setattr("packet_ask.cli.launch_glm", fake_launch)
+    code = main(
+        [
+            "review",
+            "--provider",
+            "glm",
+            "--timeout",
+            "300",
+            "--files",
+            "src/app.py",
+            "--question",
+            "review",
+        ]
+    )
+    assert code == codes.SUCCESS
+    assert captured["timeout"] == 300
