@@ -50,6 +50,7 @@ paste 전용 내장: `grok`, `agy` (무도구 원샷 계약 확인 전).
 34. 공유 KIMI_CODE_HOME의 config→launch→session cleanup 전체를 0600 non-inheritable advisory lock으로 직렬화한다. 획득은 30초 상한이며 lock 획득 오류만 confinement로 변환하고 with 본문 예외는 재분류하지 않는다.
 35. `--preflight-timeout`은 기본 30초 absolute monotonic Deadline을 만들고 real-fd question stdin·rev-parse·name-status·diff·packet git init이 공유한다. 각 Git 호출은 `min(shared, now+30s)`를 쓰며 file read/CPU 단계의 강제 preemption은 주장하지 않는다.
 36. user alias label/note는 길이·UTF-8 byte 상한과 Cc/Zl/Zp 및 bidi Cf 거절을 적용하되 ZWNJ/ZWJ는 허용한다. research diff selector는 policy와 scope collector 양쪽에서 거절하고 cache OSError는 path 없는 confinement로 변환한다.
+37. task와 inspect는 `PacketInputs`로 question/policy를 먼저 확정하고 공통 packet pipeline context가 worktree·scope·budget·cache/GC·build 및 success/failure cleanup을 소유한다. provider lookup과 공개 output은 context 밖/본문에서 기존 순서를 유지한다.
 
 ## 금지
 
