@@ -62,11 +62,17 @@ _EMAIL_RE = re.compile(
 _PHONE_RE = re.compile(
     r"(?<!\d)(?:\+82[-\s]?)?0?1[016789][-\s]?\d{3,4}[-\s]?\d{4}(?!\d)"
 )
+_DOTTED_PHONE_RE = re.compile(
+    r"(?<![\d.])(?:(?:\+82\.?1[016789])|(?:01[016789]))\.\d{3,4}\.\d{4}(?!\d|\.\d)"
+)
 # 재검증용. 스크럽 패턴과 완전히 같으면 놓친 형식을 같이 놓친다.
 _VERIFY_EMAIL_RE = re.compile(
     r"(?a:\b)[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"
 )
 _VERIFY_PHONE_RE = re.compile(r"(?:\+82|0)1[016789]\d{7,8}")
+_VERIFY_PHONE_DOT_CANDIDATE_RE = re.compile(
+    r"(?<![\d.])(?P<number>(?:\+82|0)1[016789][\d.]{7,10})(?!\d|\.\d)"
+)
 _VERIFY_KEY_RE = re.compile(r"\b(?:sk-|gh[pousr]_|AKIA|github_pat_)[A-Za-z0-9_-]{8,}")
 _VERIFY_PRIVATE_KEY_HEADER_RE = re.compile(
     r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----"
@@ -110,6 +116,7 @@ _LIKELY_ASCII_TLDS = frozenset(
         "xyz",
     }
 )
+_SHADOW_IGNORABLE_CODEPOINTS = frozenset({0x034F, 0x115F, 0x1160, 0x2800, 0x3164})
 
 
 class RedactionError(Exception):
@@ -272,6 +279,8 @@ def scrub_text(text: str, home: str | None = None) -> tuple[str, RedactionReport
             report.home_paths += count
     text, n = _EMAIL_RE.subn("[REDACTED EMAIL]", text)
     report.emails += n
+    text, n = _DOTTED_PHONE_RE.subn("[REDACTED PHONE]", text)
+    report.phones += n
     text, n = _PHONE_RE.subn("[REDACTED PHONE]", text)
     report.phones += n
     return text, report
@@ -283,7 +292,13 @@ def _detection_shadow(text: str) -> str:
     canonical: list[str] = []
     for char in normalized:
         category = unicodedata.category(char)
-        if category == "Cf":
+        codepoint = ord(char)
+        if (
+            category == "Cf"
+            or codepoint in _SHADOW_IGNORABLE_CODEPOINTS
+            or 0xFE00 <= codepoint <= 0xFE0F
+            or 0xE0100 <= codepoint <= 0xE01EF
+        ):
             continue
         if category == "Pd":
             canonical.append("-")
@@ -363,6 +378,18 @@ def _contains_unicode_email_candidate(text: str) -> bool:
     return False
 
 
+def _contains_mixed_dotted_phone(compact: str) -> bool:
+    """dash/space 제거 뒤 dot이 하나 이상 남은 Korean phone candidate만 본다."""
+    for match in _VERIFY_PHONE_DOT_CANDIDATE_RE.finditer(compact):
+        candidate = match.group("number")
+        if "." not in candidate:
+            continue
+        normalized = candidate.replace(".", "")
+        if re.fullmatch(r"(?:\+82|0)1[016789]\d{7,8}", normalized):
+            return True
+    return False
+
+
 def verify_scrubbed(text: str, home: str | None = None) -> None:
     """스크럽과 다른 패턴으로 다시 훑는다. 남으면 RedactionError."""
     home = home if home is not None else str(Path.home())
@@ -375,13 +402,18 @@ def verify_scrubbed(text: str, home: str | None = None) -> None:
     if _VERIFY_EMAIL_RE.search(shadow) or _contains_unicode_email_candidate(shadow):
         leftovers.append("email")
     compact = re.sub(r"[\s\-()]", "", shadow)
-    if _VERIFY_PHONE_RE.search(compact):
+    if _VERIFY_PHONE_RE.search(compact) or _contains_mixed_dotted_phone(compact):
         leftovers.append("phone")
-    if _VERIFY_KEY_RE.search(text) or _VERIFY_PRIVATE_KEY_HEADER_RE.search(text):
+    secret_family_left = any(pattern.search(shadow) for pattern in _SECRET_VALUE_PATTERNS)
+    if (
+        secret_family_left
+        or _VERIFY_KEY_RE.search(shadow)
+        or _VERIFY_PRIVATE_KEY_HEADER_RE.search(shadow)
+    ):
         leftovers.append("secret")
-    if _VERIFY_SECRET_LITERAL_RE.search(text):
+    if _VERIFY_SECRET_LITERAL_RE.search(shadow):
         leftovers.append("secret_literal")
-    if _VERIFY_URL_USERINFO_RE.search(text):
+    if _VERIFY_URL_USERINFO_RE.search(shadow):
         leftovers.append("secret")
     if leftovers:
         raise RedactionError(message("redaction_leftovers", kinds=", ".join(leftovers)))

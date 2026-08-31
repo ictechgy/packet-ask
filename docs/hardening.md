@@ -41,6 +41,12 @@ broaden the tasks that a SUB may perform.
 - Unicode mailbox candidates with an ASCII TLD use a conservative likely-TLD
   gate when either operand is non-ASCII. This preserves attribute-like Unicode
   matrix expressions while still rejecting common and IDNA email forms.
+- Known token-family regexes are shared by primary scrub and shadow verification
+  so Cf, variation-selector, filler, and compatibility forms cannot bypass both.
+  Secret literals, URL userinfo, and PEM headers use the shadow verifier too.
+- Dotted Korean mobile numbers are scrubbed when canonical and mixed separators
+  fail closed after bounded normalization. General E.164 matching remains out of
+  scope until its false-positive budget is measured.
 
 ## Delivery controls
 
