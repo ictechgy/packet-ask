@@ -18,6 +18,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 - GLM은 [Z.ai Claude Code 연동](https://docs.z.ai/scenario-example/develop-tools/claude)처럼 자식 환경에만 엔드포인트와 resolve한 전용 GLM credential을 넣습니다.
 - resolve한 Kimi credential은 자식 환경으로만 넘기고 `config.toml` 에 쓰지 않습니다.
 - credential source는 전용 환경변수, packet-ask 소유 macOS Keychain 항목, 일회성 no-echo prompt로 제한합니다. `auto`는 env 다음 canonical Keychain만 보고 자동 prompt하지 않습니다.
+- credential resolve는 immutable builtin backend registry만 사용합니다. `auto`는 env 다음 Keychain으로 고정되며 사용자는 backend·key command·key file·executable·타사 설정 adapter를 등록할 수 없습니다.
 - Keychain은 shell 없이 고정 `/usr/bin/security` argv와 최소 환경으로 접근합니다. status는 password를 읽지 않고 존재만 보며, `credentials set`은 `security -w`가 직접 물어 key를 argv·shell history에 넣지 않습니다.
 - Keychain `--access command`는 background agent 사용을 위해 `/usr/bin/security`를 신뢰하며 key의 at-rest 보호만 제공합니다. 같은 사용자 권한의 다른 프로세스에 대한 경계는 아닙니다. `--access prompt`는 어떤 앱도 신뢰하지 않아 headless session에서 쓸 수 없을 수 있습니다.
 - `doctor`는 `--help`에 필요 플래그 이름이 있는지 확인합니다. 실제 무도구·OS 샌드박스를 증명하지 않습니다. help 프로브에는 하나의 deadline, 합산 출력 상한, 프로세스 그룹 종료를 적용합니다. 런치는 고른 바이너리만 프로브합니다. `doctor`는 카탈로그 전체를 돌되 성공한 `--help`를 경로·mtime·크기로 프로세스 동안 캐시합니다.

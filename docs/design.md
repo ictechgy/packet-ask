@@ -44,6 +44,7 @@ paste 전용 내장: `grok`, `agy` (무도구 원샷 계약 확인 전).
 28. `inspect review|research`는 기존 scope·policy·redaction·budget·signal·cleanup 경계를 재사용하고 provider catalog/probe·credential·timeout·launch 없이 mode/selector/상대경로/count/bytes/digest만 공개한다.
 29. builtin provider ID는 immutable adapter registry와 일치해야 한다. registry는 launch 함수 이름과 doctor 판정 종류만 코드로 보유하고 user alias는 adapter ID 없이 paste만 가능하다.
 30. scrubbed 원문은 NFKC/Cf/dot/dash/decimal detection shadow에서 Unicode mailbox·phone을 추가 검사하되 shadow로 packet을 변형하지 않는다. 위치 mapping 없이 generic kind로 fail-close하고 Unicode 코드 operand+미인식 ASCII suffix는 오탐 완화를 위해 허용한다.
+31. credential source는 immutable builtin backend registry의 env/keychain/prompt만 허용한다. auto 순서는 env→keychain으로 별도 고정하고 prompt를 포함하지 않으며 explicit source는 다른 backend로 fallback하지 않는다.
 
 ## 금지
 
