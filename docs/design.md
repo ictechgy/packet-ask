@@ -42,6 +42,7 @@ paste 전용 내장: `grok`, `agy` (무도구 원샷 계약 확인 전).
 26. task 범위 SIGTERM/SIGHUP은 각각 143/129 `SystemExit`로 바꾼다. spawn과 packet assignment 동안만 전달을 미루고 등록 직후 기존 BaseException 경로가 child group과 packet을 정리한다.
 27. `--json` 실패는 같은 `packet-ask.v1`에 `ok: false`와 고정 code/kind/message만 넣는다. raw argv·예외 원문·경로·키·traceback은 넣지 않고 실제 exit code는 유지한다.
 28. `inspect review|research`는 기존 scope·policy·redaction·budget·signal·cleanup 경계를 재사용하고 provider catalog/probe·credential·timeout·launch 없이 mode/selector/상대경로/count/bytes/digest만 공개한다.
+29. builtin provider ID는 immutable adapter registry와 일치해야 한다. registry는 launch 함수 이름과 doctor 판정 종류만 코드로 보유하고 user alias는 adapter ID 없이 paste만 가능하다.
 
 ## 금지
 
