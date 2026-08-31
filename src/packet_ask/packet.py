@@ -141,9 +141,9 @@ def _logical_line_count(text: str) -> int:
 
 def _render_numbered_body(text: str) -> str:
     """LF 구조를 보존하며 각 payload 줄에 고정 폭 packet-local gutter를 붙인다."""
-    count = _logical_line_count(text)
-    if count == 0:
+    if not text:
         return ""
+    count = _logical_line_count(text)
     parts = text.split("\n")
     if text.endswith("\n"):
         parts.pop()
