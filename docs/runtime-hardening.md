@@ -44,8 +44,8 @@ scope, or task authority.
 
 ## Deferred
 
-JSON error envelopes and a provider-adapter registry need separate compatibility
-design. They are not bundled into this change.
+A provider-adapter registry needs separate compatibility design. It is not
+bundled into this change.
 
 ## Stale packet leases
 
@@ -66,3 +66,12 @@ design. They are not bundled into this change.
 - Packet removal blocks those signals only for the deletion critical section.
   Previous handlers and the calling thread's original mask are restored on all
   exits. Non-task commands do not install handlers.
+
+## JSON failures
+
+- `--json` parse and runtime failures emit one stdout `packet-ask.v1` object and
+  preserve the numeric process exit code.
+- Error fields come from a fixed code mapping. Raw argv, exception text, paths,
+  credentials, provider stderr, and tracebacks are never serialized.
+- Human parse usage and runtime stderr remain unchanged when `--json` is absent;
+  help remains human-readable even when `--json` is also present.

@@ -119,6 +119,12 @@ password를 읽지 않고 항목 존재만 확인합니다. 어느 source에서 
 
 성공하면 stderr에 런치 전 영수증(`packet-ask receipt …`)과 완료 후 밀리초 구간(`packet-ask timing …`)을 씁니다. `--json` 에는 `timing` 객체가 들어갑니다. 두 줄 모두 키 값을 넣지 않습니다. 영수증 경로는 JSON 이스케이프하며, 불신뢰 프로바이더 출력의 터미널 제어 시퀀스는 출력 전에 제거합니다.
 
+`--json`을 쓰면 argparse·runtime 실패도 stdout에 `ok: false`인
+`packet-ask.v1` 객체 하나를 반환합니다. `error.code`, `error.kind`, 일반화된
+영문 `error.message`만 공개하며 raw argv·예외 원문·경로·키·traceback은 넣지
+않습니다. process exit code는 유지합니다. `--json`이 없으면 기존 사람용
+stderr 동작을 그대로 유지합니다.
+
 receipt JSON에는 `timeout_seconds`, `timeout_source`(`auto`/`explicit`),
 `timeout_applies`가 추가됩니다. `packet-ask.v1`은 additive schema이므로 소비자는
 모르는 receipt key를 무시해야 합니다. 밀리초 `timing`의 기존 4개 key는 불변입니다.

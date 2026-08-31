@@ -120,6 +120,12 @@ from every source are included in raw and terminal-normalized output guards.
 
 On success, stderr prints a receipt before launch (`packet-ask receipt …`) and millisecond phase times after (`packet-ask timing …`). `--json` adds a `timing` object. Neither line contains keys. Receipt paths are JSON escaped, and terminal control sequences are removed from untrusted provider output before it is printed.
 
+With `--json`, argparse and runtime failures also return one `packet-ask.v1`
+stdout object with `ok: false` and stable `error.code`, `error.kind`, and a
+generic English `error.message`. Raw argv, exception text, paths, keys, and
+tracebacks are excluded. The process exit code is unchanged. Without `--json`,
+the existing human stderr behavior remains unchanged.
+
 Receipt JSON adds `timeout_seconds`, `timeout_source` (`auto` or `explicit`),
 and `timeout_applies`. The `packet-ask.v1` schema is additive; consumers should
 ignore unknown receipt keys. The four-key millisecond `timing` object is unchanged.
