@@ -7,6 +7,9 @@ scope, or task authority.
 
 - Worktree discovery and packet-local `git init` receive explicit deadlines and
   stable packet-ask errors. Small metadata output is capped before parsing.
+- Task and inspect commands create one configurable preflight deadline. Real-fd
+  question stdin and rev-parse/name-status/diff/packet-init Git calls reuse the
+  same object, while each Git process retains its individual 30-second cap.
 - A `KeyboardInterrupt` or other `BaseException` after process creation always
   terminates the vendor or Git process group before propagating.
 - Spawn failures remain normal packet-ask failures and never expose a traceback.

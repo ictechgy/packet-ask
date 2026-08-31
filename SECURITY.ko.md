@@ -27,6 +27,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 - GLM과 Claude 자식 환경에는 `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `DISABLE_ERROR_REPORTING=1` 을 넣습니다. 벤더가 플래그를 무시할 수 있습니다. 이 CLI는 `~/.claude/projects/` 를 지우지 않습니다.
 - 벤더 stdout에 전용 키 값이 있거나 출력이 너무 크면 폐기하고 종료 코드 22를 반환합니다.
 - 벤더 stdin·stdout·stderr는 하나의 bounded nonblocking deadline을 공유합니다. 명시 파일, stdin 질문, git diff 수집도 설정한 한도에서 읽기를 멈춥니다.
+- 실제 fd 질문 stdin과 모든 Git preflight 호출은 설정 가능한 monotonic deadline 하나를 공유합니다(기본 30초). 각 Git 호출의 개별 30초 상한도 유지합니다. 일반 파일 read와 CPU redaction은 size-bounded지만 이 deadline이 강제 중단하지는 않습니다.
 - 원본 조각뿐 아니라 최종 렌더링한 `packet.md`가 `--max-bytes` 안에 들어야 합니다. 바이너리와 비 UTF-8 명시 파일은 거절합니다.
 - 벤더 출력의 ANSI CSI/OSC/DCS 및 안전하지 않은 제어문자를 제거하고, 영수증 경로는 JSON 이스케이프합니다.
 - 도구 소유 프로바이더 프로필 디렉터리는 최종 경로 심링크를 거절합니다. Kimi 세션 정리 실패는 숨기지 않고 보고합니다.

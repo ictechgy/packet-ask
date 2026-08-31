@@ -70,6 +70,12 @@ uv run packet-ask doctor
 프레이밍과 경로 라벨을 포함한 최종 UTF-8 `packet.md`에 적용됩니다. 입력은
 설정한 한도에서 읽기를 멈추며, 명시한 바이너리 또는 비 UTF-8 파일은 거절합니다.
 
+`--preflight-timeout` 기본값은 30초입니다. 실제 fd 질문 stdin, worktree 탐색,
+diff name-status, diff 본문, packet-local `git init`이 하나의 monotonic absolute
+deadline을 공유하며 각 Git 호출의 기존 30초 상한도 유지합니다. 명시한 양수는
+그대로 사용합니다. 일반 파일 read와 CPU redaction은 size로 제한하지만 이
+timer가 강제 중단하지는 않습니다.
+
 일반 redaction 뒤에는 detection-only Unicode shadow도 검사합니다. NFKC
 compatibility 문자, format control, 동등한 dot·dash, Unicode decimal digit으로
 난독화한 international email·phone 후보를 찾습니다. shadow로 packet 원문을
@@ -102,6 +108,9 @@ packet-ask review --provider paste --files src/app.py --json --question "이 코
 # packet 본문·provider·credential 접근 없이 metadata만 확인
 packet-ask inspect review --files src/app.py --question "경쟁 상태를 찾아줘"
 packet-ask inspect review --diff HEAD --json --question "이 변경을 리뷰해줘"
+
+# 로컬 stdin/Git preflight budget만 확대. provider timeout과는 별개
+packet-ask inspect review --diff HEAD --preflight-timeout 60 --question "이 변경을 리뷰해줘"
 
 # GLM. auto는 전용 env를 먼저 보고 macOS Keychain packet-ask-glm을 봅니다
 packet-ask review --provider glm --credential-source auto --diff HEAD --question "이 변경을 리뷰해줘"

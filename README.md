@@ -70,6 +70,12 @@ one escaped line; `--json` returns only the fixed packet summary fields.
 the final UTF-8 `packet.md`, including framing and path labels. Reads stop at
 the configured bound, and explicit binary or non-UTF-8 files are rejected.
 
+`--preflight-timeout` defaults to 30 seconds. One monotonic absolute deadline
+is shared by real-fd question stdin, worktree discovery, diff name-status, diff
+content, and packet-local `git init`; each Git call also keeps its existing
+30-second cap. A supplied positive value is used exactly. Regular file reads and
+CPU redaction are bounded by size but are not forcibly preempted by this timer.
+
 After normal redaction, verification also scans a detection-only Unicode
 shadow. NFKC-compatible characters, format controls, equivalent dots and
 dashes, and Unicode decimal digits can expose obfuscated international email or
@@ -105,6 +111,9 @@ packet-ask review --provider paste --files src/app.py --json --question "Find ra
 # Metadata only; no packet body, provider, or credential access
 packet-ask inspect review --files src/app.py --question "Find race conditions"
 packet-ask inspect review --diff HEAD --json --question "Review this change"
+
+# Increase only the local stdin/Git preflight budget; provider timeout is separate
+packet-ask inspect review --diff HEAD --preflight-timeout 60 --question "Review this change"
 
 # GLM. auto = dedicated env first, then packet-ask-glm in macOS Keychain
 packet-ask review --provider glm --credential-source auto --diff HEAD --question "Review this change"
