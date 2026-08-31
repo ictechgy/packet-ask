@@ -120,6 +120,41 @@ def test_research_requires_question() -> None:
 
 
 @pytest.mark.parametrize(
+    "argv",
+    [
+        ["paste", "--question", "review this question"],
+        ["research", "--provider", "paste", "--question", "research this question"],
+        ["brainstorm", "--provider", "paste", "--question", "brainstorm this question"],
+    ],
+)
+def test_non_review_modes_remain_question_only(
+    argv: list[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """shared pipeline으로 수렴해도 review 외 mode에 scope를 새로 강제하지 않는다."""
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    assert main(argv) == codes.SUCCESS
+
+
+def test_policy_rejects_before_provider_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """공통 input 단계는 금지 질문을 provider catalog보다 먼저 거절한다."""
+    monkeypatch.setattr(
+        cli,
+        "lookup_provider",
+        lambda _provider: (_ for _ in ()).throw(
+            AssertionError("provider lookup must not happen")
+        ),
+    )
+    assert main(
+        ["review", "--provider", "paste", "--question", "이 기능을 구현해줘"]
+    ) == codes.POLICY
+
+
+@pytest.mark.parametrize(
     ("packet_bytes", "expected"),
     [
         (1, 1200),
@@ -295,6 +330,7 @@ def test_unknown_provider_is_usage(
         ]
     )
     assert code == codes.USAGE
+    assert main(["review", "--provider", "nope", "--question", "review"]) == codes.USAGE
 
 
 def test_review_without_explicit_scope_is_rejected(

@@ -12,6 +12,7 @@ import select
 import signal
 import sys
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -70,6 +71,27 @@ class TaskResult:
 
     wrapped: str
     timing: dict[str, int]
+
+
+@dataclass(frozen=True)
+class PacketInputs:
+    """provider lookup 전에 확정하는 question·policy·selector 입력."""
+
+    question: str
+    files_flag: str | None
+    has_diff: bool
+
+
+@dataclass(frozen=True)
+class PreparedPacket:
+    """공통 pipeline이 cleanup 전 task/inspect body에 빌려주는 packet."""
+
+    packet: Packet
+    scoped_files: list[ScopedFile]
+    diff_text: str | None
+    selector: str
+    preflight_ms: int
+    packet_started: float
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -470,56 +492,25 @@ def _run_inspect_guarded(
 ) -> int:
     """검증·cleanup이 끝난 inspect summary만 공개한다."""
     mode = args.inspect_mode
-    packet: Packet | None = None
-    parent: Path | None = None
+    started = time.monotonic()
     deadline = Deadline.after(args.preflight_timeout)
-    try:
-        question = _read_question(args, deadline)
-        if mode == "research" and not question.strip():
-            raise PacketAskError(message("research_question"), codes.USAGE)
-        if not question.strip():
-            question = message("default_question")
-        files_flag, has_diff = _selector_flags(args)
-        assert_allowed_task(mode, question, files_flag, has_diff=has_diff)
-        _require_explicit_review_scope(args, mode)
-        worktree = resolve_worktree(Path.cwd(), deadline)
-        scoped_files, diff_text = _collect_scope(args, worktree, mode, deadline)
-        if mode == "review" and not scoped_files and not diff_text:
-            raise PacketAskError(message("review_scope"), codes.SCOPE)
-        _assert_packet_budget(question, scoped_files, diff_text, args.max_bytes)
-        parent = packet_cache_dir(worktree)
-        reap_stale_packets(parent)
-        with deferred_task_signals():
-            packet = build_packet(
-                mode=mode,
-                question=question,
-                files=scoped_files,
-                diff_text=diff_text,
-                parent=parent,
-                max_bytes=args.max_bytes,
-                deadline=deadline,
-            )
-        selector = _review_selectors(args)[0] if _review_selectors(args) else files_flag or "none"
+    inputs = _prepare_packet_inputs(args, mode, deadline, require_review_scope=mode == "review")
+    with _packet_pipeline(
+        args,
+        inputs,
+        packet_mode=mode,
+        managed_signals=managed_signals,
+        deadline=deadline,
+        started=started,
+        require_review_scope=mode == "review",
+    ) as prepared:
         summary = build_packet_summary(
             mode,
-            selector,
-            scoped_files,
-            diff_text,
-            packet,
+            prepared.selector,
+            prepared.scoped_files,
+            prepared.diff_text,
+            prepared.packet,
         )
-    except BaseException:
-        if packet is not None and parent is not None:
-            try:
-                with blocked_signals(managed_signals):
-                    _cleanup_packet(packet, parent)
-            except OSError:
-                print(message("packet_cleanup_warning"), file=sys.stderr)
-        raise
-    try:
-        with blocked_signals(managed_signals):
-            _cleanup_packet(packet, parent)
-    except OSError as exc:
-        raise PacketAskError(message("packet_cleanup_failed"), codes.INTERNAL) from exc
     if args.json:
         sys.stdout.write(json_summary_envelope(summary))
     else:
@@ -534,58 +525,124 @@ def _run_task_guarded(
     """종료 signal도 기존 process-group·packet cleanup 경로로 보낸다."""
     started = time.monotonic()
     deadline = Deadline.after(args.preflight_timeout)
+    mode = args.command if args.command != "paste" else "review"
+    require_review_scope = args.command == "review"
+    inputs = _prepare_packet_inputs(
+        args,
+        mode,
+        deadline,
+        require_review_scope=False,
+    )
+    provider = _task_provider(args)
+    spec = lookup_provider(provider)
+    if require_review_scope:
+        _require_explicit_review_scope(args)
+    with _packet_pipeline(
+        args,
+        inputs,
+        packet_mode=args.command,
+        managed_signals=managed_signals,
+        deadline=deadline,
+        started=started,
+        require_review_scope=require_review_scope,
+    ) as prepared:
+        timeout_seconds, timeout_source = _resolve_timeout(
+            args.timeout,
+            len(prepared.packet.payload_bytes()),
+        )
+        receipt = build_receipt(
+            provider,
+            prepared.selector,
+            prepared.scoped_files,
+            prepared.diff_text,
+            prepared.packet,
+            timeout_seconds=timeout_seconds,
+            timeout_source=timeout_source,
+            timeout_applies=spec.mode == "launch",
+        )
+        packet_ms = _ms_since(prepared.packet_started)
+        print(format_receipt_line(receipt), file=sys.stderr)
+        result = _finish_task(
+            args,
+            provider,
+            prepared.packet,
+            timeout_seconds,
+            started,
+            prepared.preflight_ms,
+            packet_ms,
+        )
+    result.timing["total_ms"] = _ms_since(started)
+    return _emit_task_result(args, receipt, result)
+
+
+def _prepare_packet_inputs(
+    args: argparse.Namespace,
+    mode: str,
+    deadline: Deadline,
+    *,
+    require_review_scope: bool,
+) -> PacketInputs:
+    """question과 policy를 provider lookup·filesystem 접근 전에 확정한다."""
+    question = _read_question(args, deadline)
+    if mode == "research" and not question.strip():
+        raise PacketAskError(message("research_question"), codes.USAGE)
+    if not question.strip():
+        question = message("default_question")
+    files_flag, has_diff = _selector_flags(args)
+    assert_allowed_task(mode, question, files_flag, has_diff=has_diff)
+    if require_review_scope:
+        _require_explicit_review_scope(args, "review")
+    return PacketInputs(question, files_flag, has_diff)
+
+
+@contextlib.contextmanager
+def _packet_pipeline(
+    args: argparse.Namespace,
+    inputs: PacketInputs,
+    *,
+    packet_mode: str,
+    managed_signals: tuple[signal.Signals, ...],
+    deadline: Deadline,
+    started: float,
+    require_review_scope: bool,
+) -> Iterator[PreparedPacket]:
+    """scope→packet 준비와 성공/실패 cleanup 순서를 한 경계에서 소유한다."""
     packet: Packet | None = None
     parent: Path | None = None
     try:
-        provider, question, files_flag, has_diff = _task_inputs(args, deadline)
-        mode = args.command if args.command != "paste" else "review"
-        assert_allowed_task(mode, question, files_flag, has_diff=has_diff)
-        spec = lookup_provider(provider)
-        _require_explicit_review_scope(args)
         worktree = resolve_worktree(Path.cwd(), deadline)
-        scoped_files, diff_text = _collect_scope(args, worktree, deadline=deadline)
-        if args.command == "review" and not scoped_files and not diff_text:
+        scoped_files, diff_text = _collect_scope(
+            args,
+            worktree,
+            packet_mode,
+            deadline,
+        )
+        if require_review_scope and not scoped_files and not diff_text:
             raise PacketAskError(message("review_scope"), codes.SCOPE)
-        _assert_packet_budget(question, scoped_files, diff_text, args.max_bytes)
+        _assert_packet_budget(inputs.question, scoped_files, diff_text, args.max_bytes)
         preflight_ms = _ms_since(started)
         packet_started = time.monotonic()
         parent = packet_cache_dir(worktree)
         reap_stale_packets(parent)
         with deferred_task_signals():
             packet = build_packet(
-                mode=args.command,
-                question=question,
+                mode=packet_mode,
+                question=inputs.question,
                 files=scoped_files,
                 diff_text=diff_text,
                 parent=parent,
                 max_bytes=args.max_bytes,
                 deadline=deadline,
             )
-        timeout_seconds, timeout_source = _resolve_timeout(
-            args.timeout,
-            len(packet.payload_bytes()),
-        )
-        selector = _review_selectors(args)[0] if _review_selectors(args) else files_flag or "none"
-        receipt = build_receipt(
-            provider,
-            selector,
+        selectors = _review_selectors(args)
+        selector = selectors[0] if selectors else inputs.files_flag or "none"
+        yield PreparedPacket(
+            packet,
             scoped_files,
             diff_text,
-            packet,
-            timeout_seconds=timeout_seconds,
-            timeout_source=timeout_source,
-            timeout_applies=spec.mode == "launch",
-        )
-        packet_ms = _ms_since(packet_started)
-        print(format_receipt_line(receipt), file=sys.stderr)
-        result = _finish_task(
-            args,
-            provider,
-            packet,
-            timeout_seconds,
-            started,
+            selector,
             preflight_ms,
-            packet_ms,
+            packet_started,
         )
     except BaseException:
         if packet is not None and parent is not None:
@@ -595,13 +652,12 @@ def _run_task_guarded(
             except OSError:
                 print(message("packet_cleanup_warning"), file=sys.stderr)
         raise
-    try:
-        with blocked_signals(managed_signals):
-            _cleanup_packet(packet, parent)
-    except OSError as exc:
-        raise PacketAskError(message("packet_cleanup_failed"), codes.INTERNAL) from exc
-    result.timing["total_ms"] = _ms_since(started)
-    return _emit_task_result(args, receipt, result)
+    else:
+        try:
+            with blocked_signals(managed_signals):
+                _cleanup_packet(packet, parent)
+        except OSError as exc:
+            raise PacketAskError(message("packet_cleanup_failed"), codes.INTERNAL) from exc
 
 
 def _cleanup_packet(packet: Packet, parent: Path) -> None:
@@ -617,21 +673,12 @@ def _cleanup_packet(packet: Packet, parent: Path) -> None:
         raise
 
 
-def _task_inputs(
-    args: argparse.Namespace,
-    deadline: Deadline,
-) -> tuple[str, str, str | None, bool]:
-    """프로바이더·질문·스코프 플래그를 모은다."""
+def _task_provider(args: argparse.Namespace) -> str:
+    """dry-run을 포함한 task provider만 고른다."""
     provider = "paste" if args.command == "paste" else (args.provider or "paste")
     if args.dry_run:
         provider = "paste"
-    question = _read_question(args, deadline)
-    if args.command == "research" and not question.strip():
-        raise PacketAskError(message("research_question"), codes.USAGE)
-    if not question.strip():
-        question = message("default_question")
-    files_flag, has_diff = _selector_flags(args)
-    return provider, question, files_flag, has_diff
+    return provider
 
 
 def _finish_task(
