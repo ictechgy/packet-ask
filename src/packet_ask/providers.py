@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import tomllib
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -53,6 +54,10 @@ _FORBIDDEN_TOML_KEYS = frozenset(
     }
 )
 _ID_CHARS = set("abcdefghijklmnopqrstuvwxyz0123456789-")
+_ALIAS_LABEL_MAX_CHARS = 80
+_ALIAS_NOTE_MAX_CHARS = 500
+_ALIAS_DISPLAY_MAX_BYTES = 4096
+_SAFE_ALIAS_FORMAT_CHARS = frozenset({"\u200c", "\u200d"})
 
 
 @dataclass(frozen=True)
@@ -253,9 +258,33 @@ def _parse_user_alias(raw_id: str, body: object) -> ProviderSpec:
     mode = str(body.get("mode", "paste"))
     if mode != "paste":
         raise PacketAskError(message("provider_alias_mode"), codes.CONFINEMENT)
-    label = str(body.get("label", raw_id))
-    note = str(body.get("notes", message("provider_alias_note")))
+    label = _safe_alias_display(
+        body.get("label", raw_id),
+        max_chars=_ALIAS_LABEL_MAX_CHARS,
+        allow_empty=False,
+    )
+    note = _safe_alias_display(
+        body.get("notes", message("provider_alias_note")),
+        max_chars=_ALIAS_NOTE_MAX_CHARS,
+        allow_empty=True,
+    )
     return ProviderSpec(raw_id, label, "user", "paste", None, None, note)
+
+
+def _safe_alias_display(value: object, *, max_chars: int, allow_empty: bool) -> str:
+    """human doctor 출력에 안전한 bounded label/note만 허용한다."""
+    rendered = str(value)
+    if (not allow_empty and not rendered.strip()) or len(rendered) > max_chars:
+        raise PacketAskError(message("provider_alias_display"), codes.CONFINEMENT)
+    if len(rendered.encode("utf-8")) > _ALIAS_DISPLAY_MAX_BYTES:
+        raise PacketAskError(message("provider_alias_display"), codes.CONFINEMENT)
+    for char in rendered:
+        category = unicodedata.category(char)
+        if category in {"Cc", "Zl", "Zp"} or (
+            category == "Cf" and char not in _SAFE_ALIAS_FORMAT_CHARS
+        ):
+            raise PacketAskError(message("provider_alias_display"), codes.CONFINEMENT)
+    return rendered
 
 
 def _assert_safe_id(raw_id: str) -> None:

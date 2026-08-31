@@ -53,6 +53,7 @@ _EN = {
     "cache_absolute": "PACKET_ASK_CACHE_DIR must be absolute.",
     "cache_symlink": "Symlinks are not allowed in the packet cache path.",
     "cache_owner": "The packet cache directory is not owned by the current user.",
+    "cache_invalid": "The packet cache directory could not be secured.",
     "provider_path_symlink": "Symlinks are not allowed in provider profile paths.",
     "provider_path_invalid": "The provider profile path is not a private user-owned directory.",
     "kimi_cleanup_failed": "Could not remove the isolated Kimi session data.",
@@ -83,6 +84,7 @@ _EN = {
     "provider_builtin_override": "Built-in provider IDs cannot be overridden.",
     "provider_invalid_id": "Invalid provider ID: {name}",
     "provider_adapter_invalid": "The provider adapter registry is inconsistent.",
+    "provider_alias_display": "Provider alias label or notes contain unsafe display text.",
     "credential_provider": "Provider does not have a credential: {provider}",
     "credential_invalid": "The {provider} credential is empty or invalid.",
     "credential_source": "Unknown credential source: {source}",
@@ -170,6 +172,7 @@ _KO = {
     "cache_absolute": "PACKET_ASK_CACHE_DIR은 절대경로여야 합니다.",
     "cache_symlink": "패킷 캐시 경로에 심링크는 허용하지 않습니다.",
     "cache_owner": "캐시 디렉터리 소유자가 현재 사용자가 아닙니다.",
+    "cache_invalid": "패킷 캐시 디렉터리를 안전하게 준비하지 못했습니다.",
     "provider_path_symlink": "프로바이더 프로필 경로에 심링크는 허용하지 않습니다.",
     "provider_path_invalid": (
         "프로바이더 프로필 경로가 현재 사용자 소유의 "
@@ -209,6 +212,7 @@ _KO = {
     "provider_builtin_override": "내장 프로바이더 ID는 덮어쓸 수 없습니다.",
     "provider_invalid_id": "잘못된 프로바이더 ID입니다: {name}",
     "provider_adapter_invalid": "프로바이더 adapter registry가 일관되지 않습니다.",
+    "provider_alias_display": "프로바이더 alias label 또는 notes에 안전하지 않은 표시 문자열이 있습니다.",
     "credential_provider": "credential이 없는 프로바이더입니다: {provider}",
     "credential_invalid": "{provider} credential이 비어 있거나 잘못되었습니다.",
     "credential_source": "알 수 없는 credential source입니다: {source}",

@@ -63,6 +63,26 @@ def test_packet_cache_dir_rejects_path_under_worktree(
     assert not (repo / "cache" / "packet-ask").exists()
 
 
+def test_packet_cache_oserror_is_stable_confinement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """mkdir/chmod 환경 오류는 traceback 대신 stable confinement가 된다."""
+    requested = tmp_path / "cache" / "packet-ask"
+    monkeypatch.setenv("PACKET_ASK_CACHE_DIR", str(requested))
+    real_mkdir = Path.mkdir
+
+    def fail_target(path: Path, *args: object, **kwargs: object) -> None:
+        if path == requested:
+            raise OSError("blocked")
+        real_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", fail_target)
+    with pytest.raises(PacketAskError) as exc:
+        packet_cache_dir()
+    assert exc.value.code == codes.CONFINEMENT
+    assert str(requested) not in str(exc.value)
+
+
 def test_trusted_executable_ignores_untrusted_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
