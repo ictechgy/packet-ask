@@ -38,7 +38,7 @@ How personal Kimi Code or GLM Coding Plan subscriptions handle data is defined b
 - Kimi config, execution, and session cleanup share a 0600 non-inheritable advisory run lock. Lock acquisition is bounded to 30 seconds; a competing run fails before mutating `KIMI_CODE_HOME` or launching Kimi.
 - Worktree discovery, diff collection, and packet-local Git initialization use one bounded runner with process-group termination on timeout, output excess, and interrupts. Task-scoped SIGTERM/SIGHUP handlers defer signal delivery until a spawned process group or built packet is registered, then reuse the same child and packet cleanup paths.
 - Success output is withheld until the temporary packet is removed. Cleanup failure cannot replace an existing provider failure code.
-- Optional `--progress` emits only a fixed launch phase and non-negative elapsed milliseconds. It is off by default, uses nonblocking stderr writes where a real fd exists, and stops before final timing/output.
+- Optional `--progress` emits only a fixed launch phase and non-negative elapsed milliseconds. It is off by default, performs a zero-time writable check before each small real-fd stderr write, and stops before final timing/output.
 - Receipt and manifest redaction metadata use an exact allowlist of non-negative integer counters; internal report fields are never serialized.
 - JSON failures use fixed code/kind/message mappings. They never serialize raw argv, exception text, paths, credentials, provider stderr, or tracebacks.
 
