@@ -21,7 +21,7 @@ MIT licensed. See [LICENSE](LICENSE).
 - Kimi runs: a `kimi` CLI on the allowlist path
 - `paste` / `grok` / `agy` print a packet and do not launch a vendor
 
-Credentials come from a dedicated environment variable, a packet-ask-owned macOS Keychain item, or an explicitly requested one-run prompt. **This tool does not read `.env`, ZCode, Claude Code, arbitrary key files, or key commands.** Never put key values on the command line; they land in shell history. Variable names are in [.env.example](.env.example), and the complete source contract is in [docs/key-sources.md](docs/key-sources.md). The executable allowlist is in [SECURITY.md](SECURITY.md). `doctor` only checks that help text mentions required flags. It does not prove a no-tools sandbox.
+Credentials come from a dedicated environment variable, a packet-ask-owned macOS Keychain item, or an explicitly requested one-run prompt. **This tool does not read `.env`, ZCode, Claude Code, arbitrary key files, or key commands.** Never put key values on the command line; they land in shell history. Variable names are in [.env.example](.env.example), and the complete source contract is in [docs/key-sources.md](docs/key-sources.md). The executable allowlist is in [SECURITY.md](SECURITY.md). `doctor` only checks that bounded help text mentions required flags. It does not prove a no-tools sandbox.
 
 ## Install
 
@@ -136,8 +136,8 @@ repeated reads, hashes, and TOML parses.
 User config `~/.config/packet-ask/providers.toml` adds **paste aliases only**. It does not accept executables, argv, or env.
 
 The implementation/incident question gate is a conservative lexical check, not
-a proof of intent. Launch adapters still disable tools and confine the child to
-the packet even if wording is novel.
+a proof of intent. Launch adapters disable vendor tools and use the packet as
+the child cwd, but this is not OS-level filesystem confinement.
 
 ```toml
 version = 1
@@ -147,7 +147,7 @@ label = "Gemini CLI"
 
 ## Skills
 
-`packet-ask install-skills` installs into harness homes. The skill only tells MAIN to call `packet-ask`. Isolation is enforced by the CLI.
+`packet-ask install-skills` installs into harness homes. The skill only tells MAIN to call `packet-ask`. Packet selection and vendor-tool disabling are enforced by the CLI; they are not an OS sandbox.
 
 ## Exit codes
 

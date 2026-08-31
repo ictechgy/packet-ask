@@ -22,7 +22,7 @@ paste 전용 내장: `grok`, `agy` (무도구 원샷 계약 확인 전).
 6. 플래그를 확인하지 못하면 paste만 한다.
 7. 사용자 개시, 한 건, 재시도 없음, 병렬 없음. review 는 --files/--diff/--staged/--unstaged 중 하나를 요구한다. research 는 로컬 diff 를 받지 않는다.
 8. 출력은 untrusted 봉투로 반환하고 패킷을 삭제한다.
-9. 런치는 고른 프로바이더만 `--help` 한다. `doctor`는 카탈로그 전체를 보되 같은 바이너리는 경로·mtime·크기로 캐시한다.
+9. 런치는 고른 프로바이더만 `--help` 한다. help stdout/stderr는 합산 상한과 하나의 deadline 아래 읽고 실패 시 프로세스 그룹을 끝낸다. `doctor`는 카탈로그 전체를 보되 성공한 같은 바이너리는 경로·mtime·크기로 캐시한다.
 10. GLM/Claude 자식에 오토메모리·부가 트래픽·에러 리포팅을 끈다. 벤더가 무시하면 잔여가 남을 수 있다.
 11. 성공 시 stderr에 영수증과 밀리초 구간을 쓰고, `--json` 에 `timing` 을 넣는다. 비밀 값은 넣지 않는다.
 12. 명시 파일·질문 stdin·git 출력은 예산까지만 읽는다. 최종 `packet.md` 전체가 `--max-bytes` 안에 있어야 한다.

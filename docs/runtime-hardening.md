@@ -39,6 +39,8 @@ scope, or task authority.
 - User paste aliases are cached by path, mtime, size, and selected language.
   Successful parses are cached; changed files invalidate the entry.
 - Failed provider `--help` probes are not cached for the process lifetime.
+- Provider `--help` stdout and stderr share one byte cap and deadline. Timeout,
+  output excess, and interrupts terminate the probe process group.
 
 ## Deferred
 
