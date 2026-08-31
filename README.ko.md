@@ -61,6 +61,11 @@ uv run packet-ask doctor
 
 `research` 는 로컬 파일·diff를 기본으로 넣지 않습니다. 예외는 `--include-files` 뿐입니다. `--diff` / `--staged` 는 거절합니다.
 
+`inspect review`와 `inspect research`는 같은 scrubbed packet을 만들고 검증한
+뒤 cleanup이 성공하면 metadata만 출력합니다. provider를 읽거나 credential을
+확인하거나 provider timeout을 계산하거나 vendor를 실행하지 않습니다. human
+출력은 이스케이프한 한 줄이고 `--json`은 고정 packet summary 필드만 반환합니다.
+
 `--max-files`는 명시 파일과 diff 경로 모두에 적용됩니다. `--max-bytes`는
 프레이밍과 경로 라벨을 포함한 최종 UTF-8 `packet.md`에 적용됩니다. 입력은
 설정한 한도에서 읽기를 멈추며, 명시한 바이너리 또는 비 UTF-8 파일은 거절합니다.
@@ -84,6 +89,10 @@ packet-ask credentials set glm --store macos-keychain --access command
 # 벤더를 실행하지 않고 패킷만 본다
 packet-ask review --provider paste --files src/app.py --question "이 코드의 경쟁 상태를 찾아줘"
 packet-ask review --provider paste --files src/app.py --json --question "이 코드의 경쟁 상태를 찾아줘"
+
+# packet 본문·provider·credential 접근 없이 metadata만 확인
+packet-ask inspect review --files src/app.py --question "경쟁 상태를 찾아줘"
+packet-ask inspect review --diff HEAD --json --question "이 변경을 리뷰해줘"
 
 # GLM. auto는 전용 env를 먼저 보고 macOS Keychain packet-ask-glm을 봅니다
 packet-ask review --provider glm --credential-source auto --diff HEAD --question "이 변경을 리뷰해줘"

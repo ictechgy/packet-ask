@@ -9,6 +9,7 @@ How personal Kimi Code or GLM Coding Plan subscriptions handle data is defined b
 ## What this tool does
 
 - It reads only the files or diff you select from the worktree.
+- `inspect review|research` runs the same scope, redaction, packet verification, and cleanup without loading a provider or credential and outputs only fixed public metadata.
 - It redacts secret, home-path, email, and phone patterns, then checks again with different patterns. If the re-check fails, the vendor is not started. The list is a denylist and does not catch every secret.
 - Packets are created in a dedicated OS cache directory, not the original repo, and deleted on a clean exit. New packets hold a private directory advisory lock and a 0600 lease marker. A later run removes data from current-user, 0700 packet directories only when their directory lock is available and marker is at least 24 hours old; active, fresh, symlinked, non-private, and legacy directories without a marker are skipped. A hard kill can therefore leave data for at least 24 hours and until a later run performs cleanup. Deletion is ordinary file removal, not secure wipe.
 - It finds `claude` / `kimi` executables in allowlist directories. They must be owned by the user and not group- or world-writable. **Publish origin and signatures are not verified.**

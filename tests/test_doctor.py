@@ -217,6 +217,7 @@ def test_help_probe_timeout_kills_descendant_after_leader_exits(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """리더가 끝나도 pipe를 잡은 descendant를 deadline 뒤 프로세스 그룹으로 끝낸다."""
+    import subprocess
     import sys
 
     pid_file = tmp_path / "descendant.pid"
@@ -240,7 +241,17 @@ def test_help_probe_timeout_kills_descendant_after_leader_exits(
         encoding="utf-8",
     )
     binary.chmod(0o700)
-    monkeypatch.setattr(doctor, "_HELP_TIMEOUT_SECONDS", 1.0)
+
+    def timeout_after_ready(*_args: object, **_kwargs: object):  # noqa: ANN202
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if pid_file.is_file() and ready_file.is_file():
+                raise subprocess.TimeoutExpired("help fixture", 1)
+            time.sleep(0.01)
+        pytest.fail("help descendant fixture did not become ready")
+
+    monkeypatch.setattr(doctor, "_HELP_TIMEOUT_SECONDS", 30)
+    monkeypatch.setattr(doctor.select, "select", timeout_after_ready)
     started = time.monotonic()
     assert doctor._run_help(binary) is None
     assert time.monotonic() - started < 3

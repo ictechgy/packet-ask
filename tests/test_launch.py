@@ -1,6 +1,7 @@
 """격리 실행기와 Kimi 기본 거절."""
 
 import os
+import subprocess
 import time
 from pathlib import Path
 
@@ -118,6 +119,19 @@ def _pid_is_alive(pid: int) -> bool:
     return True
 
 
+def _timeout_after_file(path: Path):  # noqa: ANN202
+    """fixture child가 준비된 뒤에만 provider timeout을 발생시킨다."""
+    def timeout(*_args: object, **_kwargs: object):  # noqa: ANN202
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and not path.is_file():
+            time.sleep(0.01)
+        if not path.is_file():
+            pytest.fail("provider fixture did not become ready")
+        raise subprocess.TimeoutExpired("provider fixture", 1)
+
+    return timeout
+
+
 def test_kimi_without_dedicated_key_does_not_launch(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -144,7 +158,9 @@ def test_kimi_without_dedicated_key_does_not_launch(
     assert called == []
 
 
-def test_timeout_kills_process_group(tmp_path: Path) -> None:
+def test_timeout_kills_process_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """timeout 시 자식의 손자까지 프로세스 그룹으로 죽인다."""
     pid_file = tmp_path / "child.pid"
     script = tmp_path / "spawn.sh"
@@ -156,6 +172,7 @@ def test_timeout_kills_process_group(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     script.chmod(0o700)
+    monkeypatch.setattr("packet_ask.launch.select.select", _timeout_after_file(pid_file))
     with pytest.raises(PacketAskError) as exc:
         run_isolated_command(
             script,
@@ -163,7 +180,7 @@ def test_timeout_kills_process_group(tmp_path: Path) -> None:
             "",
             tmp_path,
             isolated_env(tmp_path, {}),
-            timeout=1,
+            timeout=30,
         )
     assert exc.value.code == codes.PROVIDER_FAILED
     deadline = time.time() + 2
@@ -211,7 +228,9 @@ def test_interrupt_kills_provider_process_group(
     assert holder["proc"].poll() is not None
 
 
-def test_timeout_kills_sigterm_ignoring_descendant(tmp_path: Path) -> None:
+def test_timeout_kills_sigterm_ignoring_descendant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """세션 리더가 SIGTERM 에 죽어도 SIGTERM 을 무시한 손자는 SIGKILL 로 끝낸다."""
     import sys
 
@@ -220,13 +239,13 @@ def test_timeout_kills_sigterm_ignoring_descendant(tmp_path: Path) -> None:
     script.write_text(
         "#!/bin/sh\n"
         f"{sys.executable} -c "
-        "\"import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
-        "time.sleep(60)\" &\n"
-        f'echo $! > "{pid_file}"\n'
+        f"\"import os, pathlib, signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        f"pathlib.Path(r'{pid_file}').write_text(str(os.getpid())); time.sleep(60)\" &\n"
         "wait\n",
         encoding="utf-8",
     )
     script.chmod(0o700)
+    monkeypatch.setattr("packet_ask.launch.select.select", _timeout_after_file(pid_file))
     with pytest.raises(PacketAskError) as exc:
         run_isolated_command(
             script,
@@ -234,7 +253,7 @@ def test_timeout_kills_sigterm_ignoring_descendant(tmp_path: Path) -> None:
             "",
             tmp_path,
             isolated_env(tmp_path, {}),
-            timeout=1,
+            timeout=30,
         )
     assert exc.value.code == codes.PROVIDER_FAILED
     deadline = time.time() + 2
@@ -248,7 +267,9 @@ def test_timeout_kills_sigterm_ignoring_descendant(tmp_path: Path) -> None:
     assert _pid_is_alive(child_pid) is False
 
 
-def test_timeout_kills_descendant_after_leader_exits(tmp_path: Path) -> None:
+def test_timeout_kills_descendant_after_leader_exits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """리더가 먼저 끝나도 spawn 때 저장한 그룹에 SIGKILL 을 보낸다."""
     import sys
 
@@ -257,13 +278,13 @@ def test_timeout_kills_descendant_after_leader_exits(tmp_path: Path) -> None:
     script.write_text(
         "#!/bin/sh\n"
         f"{sys.executable} -c "
-        "\"import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
-        "time.sleep(60)\" &\n"
-        f'echo $! > "{pid_file}"\n'
+        f"\"import os, pathlib, signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        f"pathlib.Path(r'{pid_file}').write_text(str(os.getpid())); time.sleep(60)\" &\n"
         "exit 0\n",
         encoding="utf-8",
     )
     script.chmod(0o700)
+    monkeypatch.setattr("packet_ask.launch.select.select", _timeout_after_file(pid_file))
     with pytest.raises(PacketAskError) as exc:
         run_isolated_command(
             script,
@@ -271,7 +292,7 @@ def test_timeout_kills_descendant_after_leader_exits(tmp_path: Path) -> None:
             "",
             tmp_path,
             isolated_env(tmp_path, {}),
-            timeout=1,
+            timeout=30,
         )
     assert exc.value.code in {codes.PROVIDER_FAILED, codes.OUTPUT_GUARD}
     deadline = time.time() + 2

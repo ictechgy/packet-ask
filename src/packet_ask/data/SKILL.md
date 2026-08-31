@@ -27,6 +27,8 @@ MAIN is **the agent running this session**. SUB receives only the packet `packet
 packet-ask providers
 packet-ask doctor
 packet-ask credentials status
+packet-ask inspect review --files <paths> --question "<question>"
+packet-ask inspect review --unstaged --json --question "<question>"
 packet-ask review --provider <id> --files <paths> --question "<question>"
 packet-ask review --provider <id> --unstaged --question "<question>"
 packet-ask research --provider <id> --question "<public question>"

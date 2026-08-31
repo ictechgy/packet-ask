@@ -41,6 +41,7 @@ paste 전용 내장: `grok`, `agy` (무도구 원샷 계약 확인 전).
 25. 새 packet은 directory advisory lock과 0600 lease marker를 process 동안 보유한다. 다음 실행은 current-user 0700 direct child 중 lock을 얻을 수 있고 marker가 24시간 지난 packet만 fd-relative로 비우며 marker는 마지막에 지운다.
 26. task 범위 SIGTERM/SIGHUP은 각각 143/129 `SystemExit`로 바꾼다. spawn과 packet assignment 동안만 전달을 미루고 등록 직후 기존 BaseException 경로가 child group과 packet을 정리한다.
 27. `--json` 실패는 같은 `packet-ask.v1`에 `ok: false`와 고정 code/kind/message만 넣는다. raw argv·예외 원문·경로·키·traceback은 넣지 않고 실제 exit code는 유지한다.
+28. `inspect review|research`는 기존 scope·policy·redaction·budget·signal·cleanup 경계를 재사용하고 provider catalog/probe·credential·timeout·launch 없이 mode/selector/상대경로/count/bytes/digest만 공개한다.
 
 ## 금지
 
