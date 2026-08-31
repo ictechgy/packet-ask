@@ -134,6 +134,9 @@ variable wins, then the canonical macOS Keychain item is tried. `env`,
 `prompt` requires an interactive terminal and never persists the value. Status
 checks Keychain item existence without retrieving its password. Resolved keys
 from every source are included in raw and terminal-normalized output guards.
+These sources are selected through an immutable builtin backend registry;
+`auto` contains only `env` then `keychain`. There is no user backend
+registration, arbitrary command, key-file, or third-party settings adapter.
 
 On success, stderr prints a receipt before launch (`packet-ask receipt …`) and millisecond phase times after (`packet-ask timing …`). `--json` adds a `timing` object. Neither line contains keys. Receipt paths are JSON escaped, and terminal control sequences are removed from untrusted provider output before it is printed.
 

@@ -19,6 +19,13 @@ Canonical Keychain items use the current macOS account and service names
 read ZCode, Claude Code, shell-profile, `.env`, or password-manager storage.
 Those tools can still inject the dedicated environment variable explicitly.
 
+The implementation uses an immutable builtin backend registry for `env`,
+`keychain`, and `prompt`. The separate `auto` order is exactly `env` then
+`keychain`; it never includes `prompt`. The registry has no user extension API,
+and provider TOML cannot select a credential backend. Adding another platform
+store requires a reviewed code change that preserves the same read/status and
+no-fallback contracts.
+
 ## Commands
 
 ```text
@@ -59,3 +66,5 @@ session cannot show that approval, so runtime retrieval remains fail-closed.
 - Key values never enter receipts, timing, JSON metadata, errors, or config.
 - `--key`, `--key-file`, arbitrary key commands, and automatic third-party
   config discovery remain unsupported.
+- Backend registration through config, executable names, or dynamic import
+  remains unsupported.

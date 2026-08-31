@@ -132,6 +132,9 @@ task 명령의 기본값은 `--credential-source auto`입니다. 전용 환경�
 대화형 터미널에서만 동작하고 값을 저장하지 않습니다. status는 Keychain
 password를 읽지 않고 항목 존재만 확인합니다. 어느 source에서 고른 키든
 원문·터미널 정규화 출력의 반사 검사를 거칩니다.
+source 선택은 immutable builtin backend registry를 사용하며 `auto`에는
+`env` 다음 `keychain`만 들어갑니다. 사용자 backend registration, 임의 command,
+key file, 타사 설정 adapter는 없습니다.
 
 성공하면 stderr에 런치 전 영수증(`packet-ask receipt …`)과 완료 후 밀리초 구간(`packet-ask timing …`)을 씁니다. `--json` 에는 `timing` 객체가 들어갑니다. 두 줄 모두 키 값을 넣지 않습니다. 영수증 경로는 JSON 이스케이프하며, 불신뢰 프로바이더 출력의 터미널 제어 시퀀스는 출력 전에 제거합니다.
 

@@ -9,12 +9,13 @@ import sys
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
+from typing import Mapping, Protocol
 
 from packet_ask import codes
 from packet_ask.errors import PacketAskError
 from packet_ask.text import message
 
-CREDENTIAL_SOURCES = ("auto", "env", "keychain", "prompt")
 CREDENTIAL_PROVIDERS = ("glm", "kimi", "claude")
 MIN_CREDENTIAL_LENGTH = 8
 
@@ -32,6 +33,62 @@ _SECURITY_BIN = Path("/usr/bin/security")
 _KEYCHAIN_TIMEOUT_SECONDS = 30
 _KEYCHAIN_STORE_TIMEOUT_SECONDS = 60
 _MAX_KEY_CHARS = 4096
+
+
+class CredentialBackend(Protocol):
+    """코드에 고정된 credential source의 최소 read/status 계약."""
+
+    source: str
+
+    def resolve_optional(self, provider: str) -> str | None: ...
+
+    def available(self, provider: str) -> bool: ...
+
+
+@dataclass(frozen=True)
+class EnvironmentCredentialBackend:
+    source: str = "env"
+
+    def resolve_optional(self, provider: str) -> str | None:
+        value = os.environ.get(_provider_env(provider), "")
+        return _validate_key(value, provider) if value.strip() else None
+
+    def available(self, provider: str) -> bool:
+        return bool(os.environ.get(_provider_env(provider), "").strip())
+
+
+@dataclass(frozen=True)
+class MacOSKeychainCredentialBackend:
+    source: str = "keychain"
+
+    def resolve_optional(self, provider: str) -> str | None:
+        return _read_macos_keychain(provider)
+
+    def available(self, provider: str) -> bool:
+        return _keychain_item_exists(provider)
+
+
+@dataclass(frozen=True)
+class PromptCredentialBackend:
+    source: str = "prompt"
+
+    def resolve_optional(self, provider: str) -> str | None:
+        return _prompt_provider_key(provider)
+
+    def available(self, provider: str) -> bool:
+        _provider_env(provider)
+        return _interactive_terminal()
+
+
+CREDENTIAL_BACKENDS: Mapping[str, CredentialBackend] = MappingProxyType(
+    {
+        "env": EnvironmentCredentialBackend(),
+        "keychain": MacOSKeychainCredentialBackend(),
+        "prompt": PromptCredentialBackend(),
+    }
+)
+AUTO_CREDENTIAL_SOURCES = ("env", "keychain")
+CREDENTIAL_SOURCES = ("auto", *CREDENTIAL_BACKENDS)
 
 
 @dataclass(frozen=True)
@@ -188,41 +245,40 @@ def resolve_provider_key(provider: str, source: str = "auto") -> str:
     if source not in CREDENTIAL_SOURCES:
         raise PacketAskError(message("credential_source", source=source), codes.USAGE)
 
-    env_value = os.environ.get(env_name, "")
-    if source in {"auto", "env"} and env_value.strip():
-        return _validate_key(env_value, provider)
+    if source == "auto":
+        for backend_name in AUTO_CREDENTIAL_SOURCES:
+            value = CREDENTIAL_BACKENDS[backend_name].resolve_optional(provider)
+            if value is not None:
+                return value
+        raise PacketAskError(
+            message("credential_missing", provider=provider, env=env_name),
+            codes.PROVIDER_MISSING,
+        )
+
+    if source == "keychain" and not _macos_keychain_supported():
+        raise PacketAskError(message("keychain_unsupported"), codes.CONFINEMENT)
+    value = CREDENTIAL_BACKENDS[source].resolve_optional(provider)
+    if value is not None:
+        return value
     if source == "env":
         raise PacketAskError(message("missing_key", name=env_name), codes.PROVIDER_MISSING)
-
-    if source in {"auto", "keychain"}:
-        if source == "keychain" and not _macos_keychain_supported():
-            raise PacketAskError(message("keychain_unsupported"), codes.CONFINEMENT)
-        key = _read_macos_keychain(provider)
-        if key is not None:
-            return key
-        if source == "keychain":
-            raise PacketAskError(
-                message("keychain_unavailable", provider=provider),
-                codes.PROVIDER_MISSING,
-            )
-
-    if source == "prompt":
-        return _prompt_provider_key(provider)
-
-    raise PacketAskError(
-        message("credential_missing", provider=provider, env=env_name),
-        codes.PROVIDER_MISSING,
-    )
+    if source == "keychain":
+        raise PacketAskError(
+            message("keychain_unavailable", provider=provider),
+            codes.PROVIDER_MISSING,
+        )
+    raise PacketAskError(message("credential_prompt_failed"), codes.USAGE)
 
 
 def credential_status(provider: str) -> CredentialStatus:
     """키 값을 읽지 않고 env/Keychain 존재와 auto 결과를 요약한다."""
-    env_name = _provider_env(provider)
-    environment = "set" if os.environ.get(env_name, "").strip() else "unset"
+    environment = "set" if CREDENTIAL_BACKENDS["env"].available(provider) else "unset"
     if not _macos_keychain_supported():
         keychain_item = "unsupported"
     else:
-        keychain_item = "available" if _keychain_item_exists(provider) else "missing"
+        keychain_item = (
+            "available" if CREDENTIAL_BACKENDS["keychain"].available(provider) else "missing"
+        )
     if environment == "set":
         auto_candidate = "env"
     elif keychain_item == "available":

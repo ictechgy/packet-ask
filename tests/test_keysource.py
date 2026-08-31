@@ -8,6 +8,10 @@ import pytest
 
 from packet_ask import codes
 from packet_ask.keysource import (
+    AUTO_CREDENTIAL_SOURCES,
+    CREDENTIAL_BACKENDS,
+    CREDENTIAL_SOURCES,
+    EnvironmentCredentialBackend,
     credential_status,
     resolve_provider_key,
     store_macos_keychain,
@@ -28,6 +32,16 @@ def test_auto_prefers_dedicated_environment(
     assert resolve_provider_key("glm", "auto") == "env-only-secret"
 
 
+def test_credential_backend_registry_is_immutable_and_ordered() -> None:
+    """auto 순서와 CLI source 목록은 immutable builtin backend mapping에서 파생한다."""
+    assert tuple(CREDENTIAL_BACKENDS) == ("env", "keychain", "prompt")
+    assert AUTO_CREDENTIAL_SOURCES == ("env", "keychain")
+    assert CREDENTIAL_SOURCES == ("auto", "env", "keychain", "prompt")
+    assert CREDENTIAL_BACKENDS["env"].source == "env"
+    with pytest.raises(TypeError):
+        CREDENTIAL_BACKENDS["evil"] = EnvironmentCredentialBackend()  # type: ignore[index]
+
+
 def test_auto_uses_packet_ask_keychain_when_environment_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -38,6 +52,19 @@ def test_auto_uses_packet_ask_keychain_when_environment_is_missing(
         lambda _provider: "keychain-only-secret",
     )
     assert resolve_provider_key("glm", "auto") == "keychain-only-secret"
+
+
+def test_auto_never_falls_through_to_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    """auto registry 순서는 prompt를 포함하지 않아 headless 입력을 열지 않는다."""
+    monkeypatch.delenv("PACKET_ASK_GLM_KEY", raising=False)
+    monkeypatch.setattr("packet_ask.keysource._read_macos_keychain", lambda _provider: None)
+    monkeypatch.setattr(
+        "packet_ask.keysource._prompt_provider_key",
+        lambda _provider: (_ for _ in ()).throw(AssertionError("prompt must not run")),
+    )
+    with pytest.raises(PacketAskError) as exc:
+        resolve_provider_key("glm", "auto")
+    assert exc.value.code == codes.PROVIDER_MISSING
 
 
 def test_keychain_reader_uses_fixed_binary_and_minimal_environment(
@@ -78,6 +105,18 @@ def test_explicit_env_does_not_fallback_to_keychain(
     )
     with pytest.raises(PacketAskError) as exc:
         resolve_provider_key("glm", "env")
+    assert exc.value.code == codes.PROVIDER_MISSING
+
+
+def test_explicit_keychain_does_not_fallback_to_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """명시 keychain backend는 설정된 env를 읽지 않는다."""
+    monkeypatch.setenv("PACKET_ASK_GLM_KEY", "env-must-not-be-used")
+    monkeypatch.setattr("packet_ask.keysource._macos_keychain_supported", lambda: True)
+    monkeypatch.setattr("packet_ask.keysource._read_macos_keychain", lambda _provider: None)
+    with pytest.raises(PacketAskError) as exc:
+        resolve_provider_key("glm", "keychain")
     assert exc.value.code == codes.PROVIDER_MISSING
 
 
