@@ -107,6 +107,33 @@ def test_review_paste_prints_untrusted_packet(
     assert not leftover.exists()
 
 
+def test_review_line_numbers_reach_task_packet(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """task parser의 opt-in flag가 실제 provider payload 렌더까지 전달된다."""
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("PACKET_ASK_LANG", "en")
+    code = main(
+        [
+            "review",
+            "--provider",
+            "paste",
+            "--files",
+            "src/app.py",
+            "--line-numbers",
+            "--question",
+            "review this code",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == codes.SUCCESS
+    assert "Packet-local line numbers" in captured.out
+    assert "1 | print(1)" in captured.out
+
+
 def test_rejects_implementation_without_vendor(monkeypatch: pytest.MonkeyPatch) -> None:
     """구현 요청은 벤더 없이 거절한다."""
     code = main(

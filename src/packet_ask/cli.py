@@ -184,6 +184,7 @@ def _add_task_parser(sub: argparse._SubParsersAction, name: str, help_text: str)
     )
     item.add_argument("--dry-run", action="store_true")
     item.add_argument("--progress", action="store_true")
+    item.add_argument("--line-numbers", action="store_true")
     item.add_argument("--json", action="store_true")
 
 
@@ -212,6 +213,7 @@ def _add_inspect_parser(
     )
     item.add_argument("--json", action="store_true")
     item.add_argument("--breakdown", action="store_true")
+    item.add_argument("--line-numbers", action="store_true")
 
 
 def _read_question(args: argparse.Namespace, deadline: Deadline) -> str:
@@ -639,6 +641,7 @@ def _packet_pipeline(
                 parent=parent,
                 max_bytes=args.max_bytes,
                 deadline=deadline,
+                line_numbers=getattr(args, "line_numbers", False),
             )
         selectors = _review_selectors(args)
         selector = selectors[0] if selectors else inputs.files_flag or "none"
