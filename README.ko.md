@@ -84,6 +84,10 @@ deterministic tree로 추가합니다. 저장소를 다시 탐색하지 않고, 
 `--max-bytes`에 포함합니다. diff-only와 question-only packet은 범위를 조용히
 넓히거나 flag를 무시하지 않고 거절합니다.
 
+파일 section heading은 일반 Unicode 경로는 유지하지만 줄/제어/bidi, backtick,
+HTML delimiter 문자를 escape합니다. `files/` 아래 private artifact는 선택한 실제
+파일명을 그대로 유지합니다.
+
 `--max-files`는 명시 파일과 diff 경로 모두에 적용됩니다. `--max-bytes`는
 프레이밍과 경로 라벨을 포함한 최종 UTF-8 `packet.md`에 적용됩니다. 입력은
 설정한 한도에서 읽기를 멈추며, 명시한 바이너리 또는 비 UTF-8 파일은 거절합니다.

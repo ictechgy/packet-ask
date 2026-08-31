@@ -86,6 +86,10 @@ text block, and counts the tree against `--max-bytes`. Diff-only and
 question-only packets reject the flag instead of silently widening or ignoring
 its scope.
 
+File section headings preserve ordinary Unicode paths but escape line/control,
+bidi, backtick, and HTML-delimiter characters. The private artifact under
+`files/` keeps the exact selected filename.
+
 `--max-files` applies to explicit files and diff paths. `--max-bytes` applies to
 the final UTF-8 `packet.md`, including framing and path labels. Reads stop at
 the configured bound, and explicit binary or non-UTF-8 files are rejected.
