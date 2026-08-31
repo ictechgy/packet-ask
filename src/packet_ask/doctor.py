@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import re
+import select
 import shutil
+import signal
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,6 +18,7 @@ from packet_ask.providers import ProviderSpec, load_catalog
 from packet_ask.text import message
 
 _HELP_TIMEOUT_SECONDS = 10
+_HELP_OUTPUT_BYTES = 256 * 1024
 _HELP_CACHE: dict[tuple[str, int, int], str | None] = {}
 
 
@@ -75,25 +80,95 @@ def _help_text(executable: str) -> str | None:
 
 
 def _run_help(path: Path) -> str | None:
-    """신뢰 경로 바이너리의 --help 를 타임아웃과 최소 env 로 실행한다."""
+    """신뢰 경로 바이너리의 --help 를 bounded process group으로 실행한다."""
     probe = Path(tempfile.mkdtemp(prefix="packet-ask-probe-"))
     probe.chmod(0o700)
+    process: subprocess.Popen[bytes] | None = None
     try:
-        result = subprocess.run(
+        process = subprocess.Popen(
             [str(path), "--help"],
-            check=False,
-            capture_output=True,
-            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             cwd=probe,
             env=minimal_child_env(probe),
-            timeout=_HELP_TIMEOUT_SECONDS,
             stdin=subprocess.DEVNULL,
+            start_new_session=True,
         )
-        return (result.stdout or "") + (result.stderr or "")
-    except (OSError, subprocess.TimeoutExpired):
+        return _read_help_output(process)
+    except (_HelpProbeFailed, OSError, subprocess.TimeoutExpired):
+        if process is not None:
+            _stop_help_process_group(process)
         return None
+    except BaseException:
+        if process is not None:
+            _stop_help_process_group(process)
+        raise
     finally:
+        if process is not None:
+            _close_help_pipes(process)
         shutil.rmtree(probe, ignore_errors=True)
+
+
+class _HelpProbeFailed(Exception):
+    """help 출력이 허용된 자원 경계를 넘었다."""
+
+
+def _read_help_output(process: subprocess.Popen[bytes]) -> str:
+    """stdout/stderr 를 하나의 deadline과 합산 byte cap 아래에서 읽는다."""
+    streams = [stream for stream in (process.stdout, process.stderr) if stream is not None]
+    if not streams:
+        raise _HelpProbeFailed
+    for stream in streams:
+        os.set_blocking(stream.fileno(), False)
+    parts: dict[object, list[bytes]] = {stream: [] for stream in streams}
+    eof = {stream: False for stream in streams}
+    total = 0
+    deadline = time.monotonic() + _HELP_TIMEOUT_SECONDS
+    while not all(eof.values()):
+        remaining_time = deadline - time.monotonic()
+        if remaining_time <= 0:
+            raise subprocess.TimeoutExpired(process.args, _HELP_TIMEOUT_SECONDS)
+        readers = [stream for stream, done in eof.items() if not done]
+        ready, _, _ = select.select(readers, [], [], min(0.1, remaining_time))
+        for stream in ready:
+            try:
+                chunk = os.read(stream.fileno(), min(65536, _HELP_OUTPUT_BYTES - total + 1))
+            except BlockingIOError:
+                continue
+            if not chunk:
+                eof[stream] = True
+                continue
+            parts[stream].append(chunk)
+            total += len(chunk)
+            if total > _HELP_OUTPUT_BYTES:
+                raise _HelpProbeFailed
+    process.wait(timeout=1)
+    stdout = b"".join(parts.get(process.stdout, [])).decode("utf-8", errors="replace")
+    stderr = b"".join(parts.get(process.stderr, [])).decode("utf-8", errors="replace")
+    return stdout + stderr
+
+
+def _stop_help_process_group(process: subprocess.Popen[bytes]) -> None:
+    """help leader와 pipe를 물려받은 descendant를 같은 그룹에서 끝낸다."""
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(process.pid, sig)
+        except OSError:
+            pass
+        try:
+            process.wait(timeout=1)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+
+def _close_help_pipes(process: subprocess.Popen[bytes]) -> None:
+    """성공·실패 경로 모두에서 부모 pipe descriptor를 닫는다."""
+    for stream in (process.stdout, process.stderr):
+        if stream is not None:
+            try:
+                stream.close()
+            except OSError:
+                pass
 
 
 def inspect_provider(provider_id: str) -> ProviderStatus:

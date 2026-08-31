@@ -21,7 +21,7 @@ MIT 라이선스입니다. 전문은 [LICENSE](LICENSE)를 보세요.
 - Kimi 실행: allowlist 경로의 `kimi` CLI
 - `paste` / `grok` / `agy` 는 벤더를 띄우지 않고 패킷만 출력합니다
 
-credential은 전용 환경변수, packet-ask 소유 macOS Keychain 항목, 명시한 일회성 prompt 중 하나에서 받습니다. **`.env`, ZCode, Claude Code, 임의 key 파일이나 key command는 읽지 않습니다.** 키 값을 명령행에 직접 넣으면 셸 히스토리에 남으므로 금지합니다. 변수 이름만 [.env.example](.env.example)에 있고 전체 source 계약은 [docs/key-sources.md](docs/key-sources.md)에 있습니다. 실행 파일 allowlist는 [SECURITY.md](SECURITY.md)를 보세요. `doctor`는 help에 필요한 플래그 이름이 있는지만 보며 무도구 샌드박스를 증명하지 않습니다.
+credential은 전용 환경변수, packet-ask 소유 macOS Keychain 항목, 명시한 일회성 prompt 중 하나에서 받습니다. **`.env`, ZCode, Claude Code, 임의 key 파일이나 key command는 읽지 않습니다.** 키 값을 명령행에 직접 넣으면 셸 히스토리에 남으므로 금지합니다. 변수 이름만 [.env.example](.env.example)에 있고 전체 source 계약은 [docs/key-sources.md](docs/key-sources.md)에 있습니다. 실행 파일 allowlist는 [SECURITY.md](SECURITY.md)를 보세요. `doctor`는 제한된 help 출력에 필요한 플래그 이름이 있는지만 보며 무도구 샌드박스를 증명하지 않습니다.
 
 ## 설치
 
@@ -135,7 +135,8 @@ parse를 피합니다.
 사용자 설정 `~/.config/packet-ask/providers.toml` 은 **paste 별명만** 추가합니다. 실행 파일·argv·env 는 받지 않습니다.
 
 구현·장애 질문 게이트는 보수적인 어휘 검사이며 의도를 증명하지는 않습니다.
-새로운 표현이 통과하더라도 런치 어댑터는 도구를 끄고 자식을 패킷에 가둡니다.
+런치 어댑터는 벤더 도구를 끄고 패킷을 자식 cwd로 사용하지만, 이는 OS 수준
+파일시스템 격리가 아닙니다.
 
 ```toml
 version = 1
@@ -145,7 +146,9 @@ label = "Gemini CLI"
 
 ## 스킬
 
-`packet-ask install-skills` 가 하니스 홈에 설치합니다. 스킬은 `packet-ask`를 부르라고만 적습니다. 격리는 CLI가 강제합니다.
+`packet-ask install-skills` 가 하니스 홈에 설치합니다. 스킬은 `packet-ask`를
+부르라고만 적습니다. CLI가 패킷 선택과 벤더 도구 차단을 강제하지만 OS
+샌드박스는 아닙니다.
 
 ## 종료 코드
 
