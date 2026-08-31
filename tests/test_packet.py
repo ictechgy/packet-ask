@@ -1,12 +1,18 @@
 """패킷 디렉터리 생성과 스크럽 반영."""
 
+import os
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from packet_ask.errors import BudgetError, RedactionFailed, ScopeError
-from packet_ask.packet import _render_numbered_body, _render_selected_tree, build_packet
+from packet_ask.packet import (
+    _escape_file_header_path,
+    _render_numbered_body,
+    _render_selected_tree,
+    build_packet,
+)
 from packet_ask.scope import ScopedFile
 
 
@@ -51,6 +57,37 @@ def test_packet_md_contains_task_and_files(tmp_path: Path) -> None:
     assert "a.py" in blob
     assert "x = 1" in blob
     packet.destroy()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows forbids these filename characters")
+def test_file_header_path_escapes_structure_controls_but_keeps_artifact(
+    tmp_path: Path,
+) -> None:
+    """untrusted filename은 heading을 탈출하지 못하고 실제 packet 파일명은 유지한다."""
+    relative = "src/한글\n```<tag>\u202e.py"
+    packet = build_packet(
+        "review",
+        "review",
+        [ScopedFile(relative=relative, content="safe\n")],
+        None,
+        tmp_path,
+    )
+    try:
+        payload = packet.payload_text()
+        assert "## File: src/한글\\u000a\\u0060\\u0060\\u0060\\u003ctag\\u003e\\u202e.py" in payload
+        assert "\n```<tag>" not in payload
+        assert (packet.root / "files" / relative).read_text(encoding="utf-8") == "safe\n"
+    finally:
+        packet.destroy()
+
+
+def test_file_header_path_escape_is_injective_and_preserves_safe_unicode() -> None:
+    """escape 표기와 literal backslash filename이 충돌하지 않고 정상 문자는 읽기 쉽다."""
+    assert _escape_file_header_path("src/한글.py") == "src/한글.py"
+    assert _escape_file_header_path("line\n.py") == r"line\u000a.py"
+    assert _escape_file_header_path(r"line\u000a.py") == r"line\\u000a.py"
+    assert _escape_file_header_path("bad\udc80.py") == r"bad\udc80.py"
+    assert _escape_file_header_path("tag\U000e0001.py") == r"tag\U000e0001.py"
 
 
 def test_packet_line_numbers_are_opt_in_and_packet_local(
@@ -187,6 +224,8 @@ def test_selected_tree_escapes_control_and_markdown_segments() -> None:
     rendered = _render_selected_tree(["src/line\nbreak.py", "src/```danger.py"])
     assert rendered == "src/\n  \\u0060\\u0060\\u0060danger.py\n  line\\nbreak.py"
     assert rendered.count("\n") == 2
+    assert _render_selected_tree([r"src/\u0060.py"]) == "src/\n  \\\\u0060.py"
+    assert _render_selected_tree(["src/`.py"]) == "src/\n  \\u0060.py"
 
 
 @pytest.mark.parametrize(

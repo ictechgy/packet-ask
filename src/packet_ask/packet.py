@@ -7,6 +7,7 @@ import json
 import os
 import stat
 import tempfile
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -167,6 +168,22 @@ def _escape_tree_segment(segment: str) -> str:
     return escaped.replace("`", "\\u0060")
 
 
+def _escape_file_header_path(path: str) -> str:
+    """file heading에서 line/control/bidi/HTML 경계를 만들 수 있는 문자를 escape한다."""
+    escaped: list[str] = []
+    for char in path:
+        codepoint = ord(char)
+        category = unicodedata.category(char)
+        if char == "\\":
+            escaped.append("\\\\")
+        elif char == "`" or char in "<>&" or category in {"Cc", "Cf", "Cs", "Zl", "Zp"}:
+            prefix, width = ("u", 4) if codepoint <= 0xFFFF else ("U", 8)
+            escaped.append(f"\\{prefix}{codepoint:0{width}x}")
+        else:
+            escaped.append(char)
+    return "".join(escaped)
+
+
 def _render_selected_tree(paths: list[str]) -> str:
     """이미 선택된 상대경로만 deterministic tree로 만든다. 파일시스템은 보지 않는다."""
     tree: dict[str, dict] = {}
@@ -301,8 +318,9 @@ def build_packet(
             )
             rendered_body = _render_numbered_body(body) if line_numbers else body
             note = f"{_line_number_note()}\n\n" if line_numbers else ""
+            header_path = _escape_file_header_path(relative_text)
             rendered.append(
-                f"## File: {relative_text}\n\n{note}```\n{rendered_body}\n```\n"
+                f"## File: {header_path}\n\n{note}```\n{rendered_body}\n```\n"
             )
         if diff_text:
             diff_body, report = _scrub_or_raise(diff_text)
