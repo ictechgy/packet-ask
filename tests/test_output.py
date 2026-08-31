@@ -14,6 +14,7 @@ from packet_ask.output import (
 )
 from packet_ask.receipt import (
     format_packet_summary_line,
+    format_progress_line,
     format_receipt_line,
     json_error_envelope,
 )
@@ -146,3 +147,9 @@ def test_inspect_summary_escapes_control_characters_in_paths() -> None:
     assert "\n" not in line
     assert "\x1b" not in line
     assert r"\n" in line
+
+
+def test_progress_line_has_only_fixed_phase_and_nonnegative_elapsed() -> None:
+    """heartbeat는 provider/path/key 없이 fixed metadata만 가진다."""
+    assert format_progress_line(-1) == "packet-ask progress phase=launch elapsed_ms=0"
+    assert format_progress_line(123) == "packet-ask progress phase=launch elapsed_ms=123"

@@ -11,6 +11,7 @@ import os
 import select
 import signal
 import sys
+import threading
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -40,6 +41,7 @@ from packet_ask.receipt import (
     build_packet_summary,
     build_receipt,
     format_packet_summary_line,
+    format_progress_line,
     format_receipt_line,
     format_timing_line,
     json_envelope,
@@ -63,6 +65,7 @@ AUTO_TIMEOUT_SMALL_SECONDS = 1200
 AUTO_TIMEOUT_MEDIUM_SECONDS = 1500
 AUTO_TIMEOUT_LARGE_SECONDS = 1800
 DEFAULT_PREFLIGHT_TIMEOUT_SECONDS = 30
+PROGRESS_INTERVAL_SECONDS = 30
 
 
 @dataclass(frozen=True)
@@ -180,6 +183,7 @@ def _add_task_parser(sub: argparse._SubParsersAction, name: str, help_text: str)
         default="auto",
     )
     item.add_argument("--dry-run", action="store_true")
+    item.add_argument("--progress", action="store_true")
     item.add_argument("--json", action="store_true")
 
 
@@ -207,6 +211,7 @@ def _add_inspect_parser(
         help="shared stdin and Git preflight timeout in seconds",
     )
     item.add_argument("--json", action="store_true")
+    item.add_argument("--breakdown", action="store_true")
 
 
 def _read_question(args: argparse.Namespace, deadline: Deadline) -> str:
@@ -510,6 +515,7 @@ def _run_inspect_guarded(
             prepared.scoped_files,
             prepared.diff_text,
             prepared.packet,
+            include_breakdown=args.breakdown,
         )
     if args.json:
         sys.stdout.write(json_summary_envelope(summary))
@@ -692,15 +698,70 @@ def _finish_task(
 ) -> TaskResult:
     """벤더 실행 결과를 준비하되 cleanup 전에는 공개하지 않는다."""
     launch_started = time.monotonic()
-    raw = _execute_provider(
-        provider,
-        packet,
-        timeout_seconds,
-        args.credential_source,
-    )
+    with _launch_progress(args.progress, launch_started):
+        raw = _execute_provider(
+            provider,
+            packet,
+            timeout_seconds,
+            args.credential_source,
+        )
     wrapped = wrap_untrusted(raw)
     timing = _phase_timing(started, preflight_ms, packet_ms, launch_started)
     return TaskResult(wrapped=wrapped, timing=timing)
+
+
+@contextlib.contextmanager
+def _launch_progress(enabled: bool, started: float) -> Iterator[None]:
+    """명시한 task만 fixed non-sensitive launch heartbeat를 stderr에 쓴다."""
+    if not enabled:
+        yield
+        return
+    stopped = threading.Event()
+
+    def report() -> None:
+        while not stopped.wait(PROGRESS_INTERVAL_SECONDS):
+            if not _emit_progress(_ms_since(started)):
+                return
+
+    worker = threading.Thread(target=report, name="packet-ask-progress", daemon=True)
+    try:
+        worker.start()
+    except RuntimeError:
+        yield
+        return
+    try:
+        yield
+    finally:
+        stopped.set()
+        worker.join()
+
+
+def _emit_progress(elapsed_ms: int) -> bool:
+    """실제 stderr fd에는 writable일 때만 짧은 ASCII line을 atomic write한다."""
+    line = format_progress_line(elapsed_ms) + "\n"
+    fileno = getattr(sys.stderr, "fileno", None)
+    if fileno is None:
+        try:
+            print(line, file=sys.stderr, end="", flush=True)
+        except (OSError, ValueError):
+            return False
+        return True
+    try:
+        descriptor = fileno()
+    except (OSError, ValueError, io.UnsupportedOperation):
+        try:
+            print(line, file=sys.stderr, end="", flush=True)
+        except (OSError, ValueError):
+            return False
+        return True
+    try:
+        _, writable, _ = select.select([], [descriptor], [], 0)
+        if not writable:
+            return True
+        os.write(descriptor, line.encode("ascii"))
+    except (OSError, ValueError):
+        return False
+    return True
 
 
 def _emit_task_result(

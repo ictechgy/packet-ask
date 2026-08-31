@@ -59,10 +59,11 @@ def build_packet_summary(
     files: list[ScopedFile],
     diff_text: str | None,
     packet: Packet,
+    include_breakdown: bool = False,
 ) -> dict[str, Any]:
     """본문·질문·임시 경로 없이 검증된 packet metadata만 만든다."""
     paths = _packet_paths(files, diff_text)
-    return {
+    summary: dict[str, Any] = {
         "mode": mode,
         "selector": selector,
         "paths": paths,
@@ -71,6 +72,9 @@ def build_packet_summary(
         "redaction": public_redaction_counts(packet.report),
         "sha256_packet_md": packet.payload_digest(),
     }
+    if include_breakdown:
+        summary["breakdown"] = packet.inspection_breakdown()
+    return summary
 
 
 def _packet_paths(files: list[ScopedFile], diff_text: str | None) -> list[str]:
@@ -117,10 +121,18 @@ def format_packet_summary_line(summary: dict[str, Any]) -> str:
         separators=(",", ":"),
     )
     digest = str(summary["sha256_packet_md"])[:12]
+    breakdown = ""
+    if "breakdown" in summary:
+        breakdown = " breakdown=" + json.dumps(
+            summary["breakdown"],
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
     return (
         f"packet-ask inspect mode={summary['mode']} selector={summary['selector']} "
         f"paths={paths} file_count={summary['file_count']} bytes={summary['bytes']} "
-        f"sha256={digest} redaction={redaction}"
+        f"sha256={digest} redaction={redaction}{breakdown}"
     )
 
 
@@ -131,6 +143,11 @@ def format_timing_line(timing: dict[str, int]) -> str:
         f"packet_ms={timing['packet_ms']} launch_ms={timing['launch_ms']} "
         f"total_ms={timing['total_ms']}"
     )
+
+
+def format_progress_line(elapsed_ms: int) -> str:
+    """provider 내용·경로·키가 없는 launch heartbeat."""
+    return f"packet-ask progress phase=launch elapsed_ms={max(0, int(elapsed_ms))}"
 
 
 def _public_timing(timing: dict[str, int]) -> dict[str, int]:

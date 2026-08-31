@@ -115,6 +115,45 @@ def test_inspect_json_reports_public_redaction_counts(
     assert "owner@example.com" not in captured.out
 
 
+def test_inspect_breakdown_reports_per_item_bytes_without_content(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """명시 breakdown은 scrubbed byte/count만 더하고 기존 본문·질문은 숨긴다."""
+    repo = _init_repo(tmp_path / "repo", "owner@example.com\n")
+    monkeypatch.chdir(repo)
+    question = "private review question"
+    code = main(
+        [
+            "inspect",
+            "review",
+            "--files",
+            "src/app.py",
+            "--question",
+            question,
+            "--breakdown",
+            "--json",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == codes.SUCCESS
+    summary = json.loads(captured.out)["summary"]
+    breakdown = summary["breakdown"]
+    assert set(breakdown) == {"question_bytes", "framing_bytes", "items"}
+    assert breakdown["question_bytes"] == len(question.encode("utf-8"))
+    assert len(breakdown["items"]) == 1
+    item = breakdown["items"][0]
+    assert item["path"] == "src/app.py"
+    assert item["bytes"] > 0
+    assert item["redaction"]["emails"] == 1
+    assert summary["bytes"] == (
+        breakdown["question_bytes"] + breakdown["framing_bytes"] + item["bytes"]
+    )
+    assert question not in captured.out
+    assert "owner@example.com" not in captured.out
+
+
 def test_inspect_research_reuses_include_files_policy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

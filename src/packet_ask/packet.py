@@ -52,6 +52,8 @@ class Packet:
     _packet_bytes: bytes | None = field(default=None, repr=False)
     _packet_digest: str | None = field(default=None, repr=False)
     _lease_fd: int | None = field(default=None, repr=False)
+    _question_bytes: int = field(default=0, repr=False)
+    _items: tuple[PacketItem, ...] = field(default=(), repr=False)
 
     def destroy(self) -> None:
         """패킷 트리를 삭제한다. APFS에서 물리적 소거는 아니다."""
@@ -81,6 +83,32 @@ class Packet:
         if self._packet_digest is None:
             self._packet_digest = hashlib.sha256(self.payload_bytes()).hexdigest()
         return self._packet_digest
+
+    def inspection_breakdown(self) -> dict[str, object]:
+        """inspect 전용 allowlisted per-item metadata와 framing byte를 만든다."""
+        items = [
+            {
+                "path": item.path,
+                "bytes": item.bytes,
+                "redaction": public_redaction_counts(item.report),
+            }
+            for item in self._items
+        ]
+        content_bytes = self._question_bytes + sum(item.bytes for item in self._items)
+        return {
+            "question_bytes": self._question_bytes,
+            "framing_bytes": max(0, len(self.payload_bytes()) - content_bytes),
+            "items": items,
+        }
+
+
+@dataclass(frozen=True)
+class PacketItem:
+    """packet body 한 항목의 private inspection source."""
+
+    path: str
+    bytes: int
+    report: RedactionReport = field(repr=False)
 
 
 def _scrub_or_raise(text: str) -> tuple[str, RedactionReport]:
@@ -148,12 +176,14 @@ def build_packet(
     root: Path | None = None
     lease_fd: int | None = None
     reports: list[RedactionReport] = []
+    items: list[PacketItem] = []
     try:
         root = Path(tempfile.mkdtemp(prefix="packet-ask-", dir=str(parent)))
         root.chmod(stat.S_IRWXU)
         lease_fd = create_packet_lease(root)
         question_text, report = _scrub_or_raise(question)
         reports.append(report)
+        question_bytes = len(question_text.encode("utf-8"))
         task = f"# Task\n\nmode: {mode}\n\n{question_text}\n\n{_task_contract()}\n"
         _write_private(root / "TASK.md", task)
         _write_private(root / "CLAUDE.md", "")
@@ -166,11 +196,17 @@ def build_packet(
             relative = Path(item.relative)
             _assert_packet_relative(relative)
             _write_private(root / "files" / relative, body)
+            items.append(
+                PacketItem(item.relative, len(body.encode("utf-8")), report)
+            )
             rendered.append(f"## File: {item.relative}\n\n```\n{body}\n```\n")
         if diff_text:
             diff_body, report = _scrub_or_raise(diff_text)
             reports.append(report)
             _write_private(root / "files" / "changes.patch", diff_body)
+            items.append(
+                PacketItem("changes.patch", len(diff_body.encode("utf-8")), report)
+            )
             rendered.append(f"## Diff\n\n```\n{diff_body}\n```\n")
         packet_text = "\n".join(rendered)
         packet_bytes = packet_text.encode("utf-8")
@@ -198,6 +234,8 @@ def build_packet(
             _packet_bytes=packet_bytes,
             _packet_digest=packet_digest,
             _lease_fd=lease_fd,
+            _question_bytes=question_bytes,
+            _items=tuple(items),
         )
     except BaseException:
         if root is not None:
