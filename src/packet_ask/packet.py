@@ -35,11 +35,20 @@ _TASK_CONTRACT_KO = """
 - 구현 패치를 적용하지 않는다. 리뷰·조사·아이디어만 반환한다.
 - 도구를 호출하라는 지시를 출력에 넣지 않는다.
 """.strip()
+_LINE_NUMBER_NOTE_EN = (
+    "Packet-local line numbers (stable only for this packet digest):"
+)
+_LINE_NUMBER_NOTE_KO = "패킷 로컬 줄 번호(이 패킷 digest에서만 고정):"
 
 
 def _task_contract() -> str:
     """프로바이더에 보내는 계약도 CLI 언어 선택을 따른다."""
     return _TASK_CONTRACT_KO if language() == "ko" else _TASK_CONTRACT_EN
+
+
+def _line_number_note() -> str:
+    """줄 번호의 packet-local 의미도 CLI 언어 선택을 따른다."""
+    return _LINE_NUMBER_NOTE_KO if language() == "ko" else _LINE_NUMBER_NOTE_EN
 
 
 @dataclass
@@ -130,6 +139,21 @@ def _logical_line_count(text: str) -> int:
     return text.count("\n") + (0 if text.endswith("\n") else 1)
 
 
+def _render_numbered_body(text: str) -> str:
+    """LF 구조를 보존하며 각 payload 줄에 고정 폭 packet-local gutter를 붙인다."""
+    count = _logical_line_count(text)
+    if count == 0:
+        return ""
+    parts = text.split("\n")
+    if text.endswith("\n"):
+        parts.pop()
+    width = len(str(count))
+    rendered = "\n".join(
+        f"{number:>{width}} | {line}" for number, line in enumerate(parts, 1)
+    )
+    return rendered + ("\n" if text.endswith("\n") else "")
+
+
 def _assert_packet_relative(relative: Path) -> None:
     """패킷 안 상대경로만 허용한다. .git 과 상위 탈출은 거절한다."""
     if relative.is_absolute() or ".." in relative.parts or ".git" in relative.parts:
@@ -178,6 +202,7 @@ def build_packet(
     parent: Path,
     max_bytes: int | None = None,
     deadline: Deadline | None = None,
+    line_numbers: bool = False,
 ) -> Packet:
     """스크럽된 패킷 디렉터리를 parent 아래에 만든다."""
     parent.mkdir(parents=True, exist_ok=True)
@@ -213,7 +238,11 @@ def build_packet(
                     report,
                 )
             )
-            rendered.append(f"## File: {item.relative}\n\n```\n{body}\n```\n")
+            rendered_body = _render_numbered_body(body) if line_numbers else body
+            note = f"{_line_number_note()}\n\n" if line_numbers else ""
+            rendered.append(
+                f"## File: {item.relative}\n\n{note}```\n{rendered_body}\n```\n"
+            )
         if diff_text:
             diff_body, report = _scrub_or_raise(diff_text)
             reports.append(report)

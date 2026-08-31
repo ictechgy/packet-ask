@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from packet_ask.errors import BudgetError, RedactionFailed, ScopeError
-from packet_ask.packet import build_packet
+from packet_ask.packet import _render_numbered_body, build_packet
 from packet_ask.scope import ScopedFile
 
 
@@ -51,6 +51,103 @@ def test_packet_md_contains_task_and_files(tmp_path: Path) -> None:
     assert "a.py" in blob
     assert "x = 1" in blob
     packet.destroy()
+
+
+def test_packet_line_numbers_are_opt_in_and_packet_local(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """명시한 경우 scrubbed 파일 본문만 번호를 붙이고 저장 파일은 그대로 둔다."""
+    monkeypatch.setenv("PACKET_ASK_LANG", "en")
+    files = [ScopedFile(relative="a.py", content="first\nowner@example.com\n")]
+    plain = build_packet("review", "review", files, None, tmp_path / "plain")
+    numbered = build_packet(
+        "review",
+        "review",
+        files,
+        None,
+        tmp_path / "numbered",
+        line_numbers=True,
+    )
+    try:
+        assert "Packet-local line numbers" not in plain.payload_text()
+        assert "## File: a.py\n\n```\nfirst\n[REDACTED EMAIL]\n\n```" in plain.payload_text()
+        assert "1 | first\n2 | [REDACTED EMAIL]" in numbered.payload_text()
+        stored = (numbered.root / "files" / "a.py").read_text(encoding="utf-8")
+        assert stored == "first\n[REDACTED EMAIL]\n"
+        assert "2 |" not in stored
+        assert plain.payload_digest() != numbered.payload_digest()
+    finally:
+        plain.destroy()
+        numbered.destroy()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "",
+        "one",
+        "one\n",
+        "\n",
+        "one\n\n",
+        "one\r\ntwo\r\n",
+        "one\rtwo",
+        "one\ftwo",
+        "one\u2028two",
+        "7 | content that resembles a gutter",
+        "\n".join(str(number) for number in range(10)),
+    ],
+)
+def test_numbered_gutter_can_be_stripped_without_changing_body(body: str) -> None:
+    """gutter 제거는 LF, 빈 줄, 마지막 줄 종결을 포함해 원문을 복원한다."""
+    numbered = _render_numbered_body(body)
+    if body == "":
+        assert numbered == ""
+        return
+    parts = numbered.split("\n")
+    trailing_lf = numbered.endswith("\n")
+    if trailing_lf:
+        parts.pop()
+    restored = "\n".join(line.split(" | ", 1)[1] for line in parts)
+    if trailing_lf:
+        restored += "\n"
+    assert restored == body
+
+
+def test_packet_line_numbers_do_not_decorate_diff(tmp_path: Path) -> None:
+    """unified diff의 자체 old/new 줄 정보를 synthetic gutter로 덮지 않는다."""
+    diff = "@@ -1 +1 @@\n-old\n+new\n"
+    packet = build_packet(
+        "review",
+        "review",
+        [],
+        diff,
+        tmp_path,
+        line_numbers=True,
+    )
+    try:
+        assert "Packet-local line numbers" not in packet.payload_text()
+        assert diff in packet.payload_text()
+    finally:
+        packet.destroy()
+
+
+def test_packet_line_number_overhead_obeys_final_byte_cap(tmp_path: Path) -> None:
+    """번호 gutter와 설명문도 최종 packet byte budget 안에서 계산한다."""
+    files = [ScopedFile(relative="a.py", content="one\ntwo\n")]
+    plain = build_packet("review", "review", files, None, tmp_path / "plain")
+    limit = len(plain.payload_bytes())
+    plain.destroy()
+    with pytest.raises(BudgetError):
+        build_packet(
+            "review",
+            "review",
+            files,
+            None,
+            tmp_path / "numbered",
+            max_bytes=limit,
+            line_numbers=True,
+        )
 
 
 def test_packet_diff_does_not_retain_unicode_adjacent_email(tmp_path: Path) -> None:

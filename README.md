@@ -73,6 +73,12 @@ rendered diff, including headers and hunks—not just changed lines. This
 per-item shape metadata is disclosed by design; the question and item body are
 never returned.
 
+`--line-numbers` opt-in adds a fixed-width gutter to scrubbed full-file content
+inside `packet.md`, so a review can cite packet-local lines. It does not alter
+the scrubbed files under `files/`, never decorates unified diffs, and counts all
+gutter/note bytes against `--max-bytes`. The numbers are stable only for the
+receipt's packet digest. With the flag off, packet bytes remain unchanged.
+
 `--max-files` applies to explicit files and diff paths. `--max-bytes` applies to
 the final UTF-8 `packet.md`, including framing and path labels. Reads stop at
 the configured bound, and explicit binary or non-UTF-8 files are rejected.

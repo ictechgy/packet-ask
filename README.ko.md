@@ -72,6 +72,12 @@ diff는 변경 줄만이 아니라 header와 hunk를 포함한 전체 렌더링 
 이 항목별 shape metadata는 의도적으로 공개하지만 질문·항목 본문은 반환하지
 않습니다.
 
+`--line-numbers`를 명시하면 `packet.md` 안의 scrubbed 전체 파일 본문에 고정 폭
+gutter를 붙여 리뷰가 packet-local 줄을 인용할 수 있습니다. `files/` 아래 scrubbed
+파일은 바꾸지 않고 unified diff에는 적용하지 않으며 gutter/설명문 byte도 모두
+`--max-bytes`에 포함합니다. 번호는 receipt의 packet digest에서만 고정됩니다.
+플래그를 끄면 기존 packet byte가 그대로 유지됩니다.
+
 `--max-files`는 명시 파일과 diff 경로 모두에 적용됩니다. `--max-bytes`는
 프레이밍과 경로 라벨을 포함한 최종 UTF-8 `packet.md`에 적용됩니다. 입력은
 설정한 한도에서 읽기를 멈추며, 명시한 바이너리 또는 비 UTF-8 파일은 거절합니다.

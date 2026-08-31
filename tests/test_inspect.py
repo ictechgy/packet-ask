@@ -224,6 +224,38 @@ def test_inspect_breakdown_counts_entire_scrubbed_diff(
     assert item["lines"] == _logical_line_count(expected)
 
 
+def test_inspect_line_numbers_change_framing_not_item_shape(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """줄 번호는 render overhead이고 scrubbed item bytes/lines는 바꾸지 않는다."""
+    repo = _init_repo(tmp_path / "repo", "one\ntwo\n")
+    monkeypatch.chdir(repo)
+
+    def inspect(extra: list[str]) -> dict[str, object]:
+        code = main(
+            [
+                "inspect",
+                "review",
+                "--files",
+                "src/app.py",
+                "--breakdown",
+                "--json",
+                *extra,
+            ]
+        )
+        assert code == codes.SUCCESS
+        return json.loads(capsys.readouterr().out)["summary"]
+
+    plain = inspect([])
+    numbered = inspect(["--line-numbers"])
+    assert plain["breakdown"]["items"] == numbered["breakdown"]["items"]  # type: ignore[index]
+    assert numbered["breakdown"]["framing_bytes"] > plain["breakdown"]["framing_bytes"]  # type: ignore[index]
+    assert numbered["bytes"] > plain["bytes"]  # type: ignore[operator]
+    assert numbered["sha256_packet_md"] != plain["sha256_packet_md"]
+
+
 def test_inspect_research_reuses_include_files_policy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
