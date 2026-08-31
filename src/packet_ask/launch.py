@@ -9,6 +9,7 @@ import shutil
 import signal
 import stat
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -471,6 +472,14 @@ def _cleanup_kimi_sessions(kimi_home: Path) -> None:
         raise PacketAskError(message("kimi_cleanup_failed"), codes.INTERNAL) from exc
 
 
+def _cleanup_kimi_after_failure(kimi_home: Path) -> None:
+    """기존 provider/output/signal 실패가 있으면 cleanup 오류를 경고로만 남긴다."""
+    try:
+        _cleanup_kimi_sessions(kimi_home)
+    except PacketAskError:
+        print(message("kimi_cleanup_warning"), file=sys.stderr)
+
+
 def _kimi_child_env(home: Path, kimi_home: Path, api_key: str) -> dict[str, str]:
     """Kimi 키는 디스크가 아니라 자식 환경에만 넣는다."""
     extra = {
@@ -510,6 +519,9 @@ def launch_kimi(
             env,
             timeout,
         )
-        return sanitize_provider_output(output, protected_values=(api_key,))
-    finally:
-        _cleanup_kimi_sessions(kimi_home)
+        sanitized = sanitize_provider_output(output, protected_values=(api_key,))
+    except BaseException:
+        _cleanup_kimi_after_failure(kimi_home)
+        raise
+    _cleanup_kimi_sessions(kimi_home)
+    return sanitized
