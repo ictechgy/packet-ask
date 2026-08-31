@@ -1,5 +1,7 @@
 """doctor 플래그 판정."""
 
+import os
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -77,40 +79,30 @@ def test_help_probe_does_not_inherit_parent_secrets(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """--help 프로브는 부모 키를 물려주지 않고 timeout 을 둔다."""
-    import subprocess
-    from pathlib import Path as PathType
+    import sys
 
-    captured: dict[str, object] = {}
-
-    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        captured["env"] = kwargs.get("env")
-        captured["timeout"] = kwargs.get("timeout")
-        captured["cwd"] = kwargs.get("cwd")
-        return subprocess.CompletedProcess(args=[], returncode=0, stdout="--quiet\n", stderr="")
-
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "parent-secret")
-    monkeypatch.setattr("packet_ask.doctor.subprocess.run", fake_run)
-    monkeypatch.setattr(
-        "packet_ask.doctor.resolve_trusted_executable",
-        lambda name: PathType("/usr/bin/true"),
+    binary = tmp_path / "claude"
+    binary.write_text(
+        f"#!{sys.executable}\n"
+        "import os\n"
+        "from pathlib import Path\n"
+        "print(os.environ.get('ANTHROPIC_API_KEY', 'missing'))\n"
+        "print(Path.cwd())\n",
+        encoding="utf-8",
     )
-    from packet_ask.doctor import _help_text
-
-    _help_text("claude")
-    env = captured["env"]
-    assert isinstance(env, dict)
-    assert "parent-secret" not in env.values()
-    assert "ANTHROPIC_API_KEY" not in env
-    assert captured["timeout"] == 10
-    assert captured["cwd"] is not None
+    binary.chmod(0o700)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "parent-secret")
+    output = doctor._run_help(binary)
+    assert output is not None
+    assert "parent-secret" not in output
+    assert "missing" in output
+    assert str(tmp_path) not in output
 
 
 def test_help_text_is_cached_by_path_and_mtime(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """같은 실행 파일은 --help 를 한 번만 돌린다."""
-    import subprocess
-
     from packet_ask import doctor
 
     binary = tmp_path / "claude"
@@ -118,12 +110,12 @@ def test_help_text_is_cached_by_path_and_mtime(
     binary.chmod(0o700)
     calls: list[int] = []
 
-    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(_path: Path) -> str:
         calls.append(1)
         flags = "--bare\n-p\n--tools\n--permission-mode\n--no-session-persistence\n--setting-sources\n"
-        return subprocess.CompletedProcess(args=[], returncode=0, stdout=flags, stderr="")
+        return flags
 
-    monkeypatch.setattr("packet_ask.doctor.subprocess.run", fake_run)
+    monkeypatch.setattr("packet_ask.doctor._run_help", fake_run)
     monkeypatch.setattr("packet_ask.doctor.resolve_trusted_executable", lambda name: binary)
     doctor._help_text("claude")
     doctor._help_text("claude")
@@ -135,7 +127,6 @@ def test_help_text_cache_invalidates_when_mtime_changes(
 ) -> None:
     """크기가 같아도 mtime 이 바뀌면 --help 를 다시 돌린다."""
     import os
-    import subprocess
 
     binary = tmp_path / "claude"
     body = "#!/bin/sh\n"
@@ -143,11 +134,11 @@ def test_help_text_cache_invalidates_when_mtime_changes(
     binary.chmod(0o700)
     calls: list[int] = []
 
-    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(_path: Path) -> str:
         calls.append(1)
-        return subprocess.CompletedProcess(args=[], returncode=0, stdout="--bare\n", stderr="")
+        return "--bare\n"
 
-    monkeypatch.setattr("packet_ask.doctor.subprocess.run", fake_run)
+    monkeypatch.setattr("packet_ask.doctor._run_help", fake_run)
     monkeypatch.setattr("packet_ask.doctor.resolve_trusted_executable", lambda name: binary)
     doctor._help_text("claude")
     os.utime(binary, ns=(binary.stat().st_atime_ns, binary.stat().st_mtime_ns + 1_000_000))
@@ -160,8 +151,6 @@ def test_inspect_providers_probes_shared_claude_once(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """glm 과 claude 는 같은 claude 바이너리를 한 번만 프로브한다."""
-    import subprocess
-
     from packet_ask import doctor
 
     binary = tmp_path / "claude"
@@ -169,12 +158,12 @@ def test_inspect_providers_probes_shared_claude_once(
     binary.chmod(0o700)
     probed: list[list[str]] = []
 
-    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        probed.append(list(args[0]) if args else [])
+    def fake_run(path: Path) -> str:
+        probed.append([str(path)])
         flags = "--bare\n-p\n--tools\n--permission-mode\n--no-session-persistence\n--setting-sources\n"
-        return subprocess.CompletedProcess(args=[], returncode=0, stdout=flags, stderr="")
+        return flags
 
-    monkeypatch.setattr("packet_ask.doctor.subprocess.run", fake_run)
+    monkeypatch.setattr("packet_ask.doctor._run_help", fake_run)
     monkeypatch.setattr(
         "packet_ask.doctor.resolve_trusted_executable",
         lambda name: binary if name == "claude" else None,
@@ -185,3 +174,80 @@ def test_inspect_providers_probes_shared_claude_once(
     names = {item.name for item in statuses}
     assert {"paste", "glm", "kimi", "claude", "grok", "agy"} <= names
     assert "glm" in names and "claude" in names
+
+
+@pytest.mark.parametrize("stream", ["stdout", "stderr"])
+def test_help_probe_rejects_oversized_output(
+    stream: str, tmp_path: Path
+) -> None:
+    """stdout/stderr 어느 쪽도 합산 help 한도를 넘겨 메모리를 키울 수 없다."""
+    import sys
+
+    binary = tmp_path / "claude"
+    binary.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        f"target = sys.{stream}.buffer\n"
+        f"target.write(b'x' * ({doctor._HELP_OUTPUT_BYTES} + 1))\n"
+        "target.flush()\n",
+        encoding="utf-8",
+    )
+    binary.chmod(0o700)
+    assert doctor._run_help(binary) is None
+
+
+def test_help_probe_combines_streams_and_ignores_returncode(tmp_path: Path) -> None:
+    """기존처럼 stdout 뒤 stderr를 합치고 help 자체의 종료 코드는 강제하지 않는다."""
+    import sys
+
+    binary = tmp_path / "claude"
+    binary.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "sys.stdout.write('--bare\\n')\n"
+        "sys.stderr.write('--tools\\n')\n"
+        "raise SystemExit(7)\n",
+        encoding="utf-8",
+    )
+    binary.chmod(0o700)
+    assert doctor._run_help(binary) == "--bare\n--tools\n"
+
+
+def test_help_probe_timeout_kills_descendant_after_leader_exits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """리더가 끝나도 pipe를 잡은 descendant를 deadline 뒤 프로세스 그룹으로 끝낸다."""
+    import sys
+
+    pid_file = tmp_path / "descendant.pid"
+    binary = tmp_path / "claude"
+    binary.write_text(
+        f"#!{sys.executable}\n"
+        "import os\n"
+        "import signal\n"
+        "import time\n"
+        "from pathlib import Path\n"
+        "pid = os.fork()\n"
+        "if pid == 0:\n"
+        "    signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        f"    Path({str(pid_file)!r}).write_text(str(os.getpid()))\n"
+        "    time.sleep(60)\n"
+        "os._exit(0)\n",
+        encoding="utf-8",
+    )
+    binary.chmod(0o700)
+    monkeypatch.setattr(doctor, "_HELP_TIMEOUT_SECONDS", 0.5)
+    started = time.monotonic()
+    assert doctor._run_help(binary) is None
+    assert time.monotonic() - started < 3
+    assert pid_file.is_file()
+    descendant_pid = int(pid_file.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        try:
+            os.kill(descendant_pid, 0)
+        except OSError:
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail("help probe descendant survived process-group cleanup")
