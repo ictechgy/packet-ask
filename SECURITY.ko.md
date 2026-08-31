@@ -28,6 +28,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 - worktree discovery, diff 수집, packet-local Git 초기화는 하나의 bounded runner를 쓰며 timeout·출력 초과·interrupt에서 process group을 종료합니다. task 범위 SIGTERM/SIGHUP handler는 생성한 process group 또는 packet이 등록될 때까지 signal 전달을 미룬 뒤 같은 child·packet cleanup 경로를 재사용합니다.
 - 임시 packet을 제거한 뒤에만 성공 출력을 내보냅니다. cleanup 실패는 기존 provider 실패 코드를 바꾸지 않습니다.
 - receipt와 manifest의 redaction metadata는 음이 아닌 정수 count allowlist만 직렬화하며 내부 report 필드는 포함하지 않습니다.
+- JSON 실패는 고정 code/kind/message mapping만 사용하며 raw argv·예외 원문·경로·credential·provider stderr·traceback을 직렬화하지 않습니다.
 
 ## 이 도구가 하지 않는 일
 

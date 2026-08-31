@@ -5,11 +5,25 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from packet_ask import codes
 from packet_ask.packet import Packet
 from packet_ask.redact import public_redaction_counts
 from packet_ask.scope import ScopedFile
 
 SCHEMA = "packet-ask.v1"
+
+_ERRORS = {
+    codes.INTERNAL: ("internal", "The command failed internally."),
+    codes.USAGE: ("usage", "Invalid command-line arguments."),
+    codes.POLICY: ("policy", "The request was rejected by policy."),
+    codes.SCOPE: ("scope", "The selected repository scope was rejected."),
+    codes.REDACTION: ("redaction", "The packet failed sensitive-data verification."),
+    codes.CONFINEMENT: ("confinement", "A required confinement check failed."),
+    codes.BUDGET: ("budget", "The packet exceeded a configured resource limit."),
+    codes.PROVIDER_MISSING: ("provider_missing", "The provider or credential is unavailable."),
+    codes.PROVIDER_FAILED: ("provider_failed", "The provider failed or timed out."),
+    codes.OUTPUT_GUARD: ("output_guard", "The provider output failed a safety check."),
+}
 
 
 def build_receipt(
@@ -96,4 +110,19 @@ def json_envelope(
     }
     if timing is not None:
         body["timing"] = _public_timing(timing)
+    return json.dumps(body, ensure_ascii=False, indent=2) + "\n"
+
+
+def json_error_envelope(code: int) -> str:
+    """raw argv, 예외 문자열, 경로, key를 포함하지 않는 실패 JSON."""
+    kind, message_text = _ERRORS.get(code, _ERRORS[codes.INTERNAL])
+    body = {
+        "schema": SCHEMA,
+        "ok": False,
+        "error": {
+            "code": int(code),
+            "kind": kind,
+            "message": message_text,
+        },
+    }
     return json.dumps(body, ensure_ascii=False, indent=2) + "\n"

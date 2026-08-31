@@ -28,6 +28,7 @@ How personal Kimi Code or GLM Coding Plan subscriptions handle data is defined b
 - Worktree discovery, diff collection, and packet-local Git initialization use one bounded runner with process-group termination on timeout, output excess, and interrupts. Task-scoped SIGTERM/SIGHUP handlers defer signal delivery until a spawned process group or built packet is registered, then reuse the same child and packet cleanup paths.
 - Success output is withheld until the temporary packet is removed. Cleanup failure cannot replace an existing provider failure code.
 - Receipt and manifest redaction metadata use an exact allowlist of non-negative integer counters; internal report fields are never serialized.
+- JSON failures use fixed code/kind/message mappings. They never serialize raw argv, exception text, paths, credentials, provider stderr, or tracebacks.
 
 ## What this tool does not do
 
