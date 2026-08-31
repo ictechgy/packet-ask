@@ -13,6 +13,7 @@ from pathlib import Path
 
 from packet_ask.errors import BudgetError, ScopeError
 from packet_ask.paths import git_subprocess_env, resolve_trusted_executable
+from packet_ask.signals import deferred_task_signals
 from packet_ask.text import message
 
 DEFAULT_MAX_FILES = 25
@@ -198,18 +199,26 @@ def _stop_process_group(proc: subprocess.Popen[bytes]) -> None:
 def run_bounded_git(worktree: Path, extra: list[str], max_bytes: int) -> str:
     """git stdout을 제한·timeout 아래에서 셸 없이 읽는다."""
     command = [_git_executable(), *extra]
+    proc: subprocess.Popen[bytes] | None = None
     try:
-        proc = subprocess.Popen(
-            command,
-            cwd=worktree,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            env=_git_env(),
-            start_new_session=True,
-        )
+        with deferred_task_signals():
+            proc = subprocess.Popen(
+                command,
+                cwd=worktree,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                env=_git_env(),
+                start_new_session=True,
+            )
     except OSError as exc:
+        if proc is not None:
+            _stop_process_group(proc)
         raise ScopeError(message("git_failed")) from exc
+    except BaseException:
+        if proc is not None:
+            _stop_process_group(proc)
+        raise
     try:
         if proc.stdout is None:
             raise ScopeError(message("git_output_failed"))

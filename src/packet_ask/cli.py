@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import errno
 import json
+import signal
 import sys
 import time
 from dataclasses import dataclass
@@ -38,6 +39,7 @@ from packet_ask.scope import (
     collect_git_diff,
     resolve_worktree,
 )
+from packet_ask.signals import blocked_signals, deferred_task_signals, task_signal_handlers
 from packet_ask.text import message
 
 AUTO_TIMEOUT_SMALL_BYTES = 64 * 1024
@@ -345,47 +347,59 @@ def _phase_timing(
 
 def _run_task(args: argparse.Namespace) -> int:
     """패킷을 만들고 프로바이더 또는 paste로 보낸다."""
+    with task_signal_handlers() as managed_signals:
+        return _run_task_guarded(args, managed_signals)
+
+
+def _run_task_guarded(
+    args: argparse.Namespace,
+    managed_signals: tuple[signal.Signals, ...],
+) -> int:
+    """종료 signal도 기존 process-group·packet cleanup 경로로 보낸다."""
     started = time.monotonic()
-    provider, question, files_flag, has_diff = _task_inputs(args)
-    mode = args.command if args.command != "paste" else "review"
-    assert_allowed_task(mode, question, files_flag, has_diff=has_diff)
-    spec = lookup_provider(provider)
-    _require_explicit_review_scope(args)
-    worktree = resolve_worktree(Path.cwd())
-    scoped_files, diff_text = _collect_scope(args, worktree)
-    if args.command == "review" and not scoped_files and not diff_text:
-        raise PacketAskError(message("review_scope"), codes.SCOPE)
-    _assert_packet_budget(question, scoped_files, diff_text, args.max_bytes)
-    preflight_ms = _ms_since(started)
-    packet_started = time.monotonic()
-    parent = packet_cache_dir(worktree)
-    reap_stale_packets(parent)
-    packet = build_packet(
-        mode=args.command,
-        question=question,
-        files=scoped_files,
-        diff_text=diff_text,
-        parent=parent,
-        max_bytes=args.max_bytes,
-    )
-    timeout_seconds, timeout_source = _resolve_timeout(
-        args.timeout,
-        len(packet.payload_bytes()),
-    )
-    selector = _review_selectors(args)[0] if _review_selectors(args) else files_flag or "none"
-    receipt = build_receipt(
-        provider,
-        selector,
-        scoped_files,
-        diff_text,
-        packet,
-        timeout_seconds=timeout_seconds,
-        timeout_source=timeout_source,
-        timeout_applies=spec.mode == "launch",
-    )
-    packet_ms = _ms_since(packet_started)
-    print(format_receipt_line(receipt), file=sys.stderr)
+    packet: Packet | None = None
+    parent: Path | None = None
     try:
+        provider, question, files_flag, has_diff = _task_inputs(args)
+        mode = args.command if args.command != "paste" else "review"
+        assert_allowed_task(mode, question, files_flag, has_diff=has_diff)
+        spec = lookup_provider(provider)
+        _require_explicit_review_scope(args)
+        worktree = resolve_worktree(Path.cwd())
+        scoped_files, diff_text = _collect_scope(args, worktree)
+        if args.command == "review" and not scoped_files and not diff_text:
+            raise PacketAskError(message("review_scope"), codes.SCOPE)
+        _assert_packet_budget(question, scoped_files, diff_text, args.max_bytes)
+        preflight_ms = _ms_since(started)
+        packet_started = time.monotonic()
+        parent = packet_cache_dir(worktree)
+        reap_stale_packets(parent)
+        with deferred_task_signals():
+            packet = build_packet(
+                mode=args.command,
+                question=question,
+                files=scoped_files,
+                diff_text=diff_text,
+                parent=parent,
+                max_bytes=args.max_bytes,
+            )
+        timeout_seconds, timeout_source = _resolve_timeout(
+            args.timeout,
+            len(packet.payload_bytes()),
+        )
+        selector = _review_selectors(args)[0] if _review_selectors(args) else files_flag or "none"
+        receipt = build_receipt(
+            provider,
+            selector,
+            scoped_files,
+            diff_text,
+            packet,
+            timeout_seconds=timeout_seconds,
+            timeout_source=timeout_source,
+            timeout_applies=spec.mode == "launch",
+        )
+        packet_ms = _ms_since(packet_started)
+        print(format_receipt_line(receipt), file=sys.stderr)
         result = _finish_task(
             args,
             provider,
@@ -396,13 +410,16 @@ def _run_task(args: argparse.Namespace) -> int:
             packet_ms,
         )
     except BaseException:
-        try:
-            _cleanup_packet(packet, parent)
-        except OSError:
-            print(message("packet_cleanup_warning"), file=sys.stderr)
+        if packet is not None and parent is not None:
+            try:
+                with blocked_signals(managed_signals):
+                    _cleanup_packet(packet, parent)
+            except OSError:
+                print(message("packet_cleanup_warning"), file=sys.stderr)
         raise
     try:
-        _cleanup_packet(packet, parent)
+        with blocked_signals(managed_signals):
+            _cleanup_packet(packet, parent)
     except OSError as exc:
         raise PacketAskError(message("packet_cleanup_failed"), codes.INTERNAL) from exc
     result.timing["total_ms"] = _ms_since(started)

@@ -15,6 +15,7 @@ from pathlib import Path
 
 from packet_ask.paths import minimal_child_env, resolve_trusted_executable
 from packet_ask.providers import ProviderSpec, load_catalog
+from packet_ask.signals import deferred_task_signals
 from packet_ask.text import message
 
 _HELP_TIMEOUT_SECONDS = 10
@@ -85,15 +86,16 @@ def _run_help(path: Path) -> str | None:
     probe.chmod(0o700)
     process: subprocess.Popen[bytes] | None = None
     try:
-        process = subprocess.Popen(
-            [str(path), "--help"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            cwd=probe,
-            env=minimal_child_env(probe),
-            stdin=subprocess.DEVNULL,
-            start_new_session=True,
-        )
+        with deferred_task_signals():
+            process = subprocess.Popen(
+                [str(path), "--help"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=probe,
+                env=minimal_child_env(probe),
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+            )
         return _read_help_output(process)
     except (_HelpProbeFailed, OSError, subprocess.TimeoutExpired):
         if process is not None:
