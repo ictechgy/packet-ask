@@ -73,7 +73,9 @@ uv run packet-ask doctor
 일반 redaction 뒤에는 detection-only Unicode shadow도 검사합니다. NFKC
 compatibility 문자, format control, 동등한 dot·dash, Unicode decimal digit으로
 난독화한 international email·phone 후보를 찾습니다. shadow로 packet 원문을
-normalize하거나 다시 쓰지 않고 후보가 있으면 fail-closed합니다. 코드 오탐을
+normalize하거나 다시 쓰지 않고 후보가 있으면 fail-closed합니다. known token
+family, secret literal, URL userinfo, PEM header도 같은 shadow에서 확인하며
+canonical dotted 국내 mobile 번호는 scrub하고 혼합 separator는 fail-closed합니다. 코드 오탐을
 줄이기 위해 알려지지 않은 ASCII attribute형 suffix를 가진 모호한 Unicode
 행렬곱 표현식은 허용하므로, 여전히 no-leak 보장이 아닌 denylist입니다.
 

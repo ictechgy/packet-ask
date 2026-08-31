@@ -73,8 +73,11 @@ the configured bound, and explicit binary or non-UTF-8 files are rejected.
 After normal redaction, verification also scans a detection-only Unicode
 shadow. NFKC-compatible characters, format controls, equivalent dots and
 dashes, and Unicode decimal digits can expose obfuscated international email or
-phone candidates. The packet text is never normalized or rewritten from this
-shadow; a candidate fails closed instead. Ambiguous Unicode matrix expressions
+phone candidates. Known token families, secret literals, URL userinfo, and PEM
+headers are checked against the same shadow; canonical dotted Korean mobile
+numbers are scrubbed and mixed-separator forms fail closed. The packet text is
+never normalized or rewritten from this shadow; a candidate fails closed instead.
+Ambiguous Unicode matrix expressions
 with an unrecognized ASCII attribute-like suffix remain allowed to reduce code
 false positives, so this is still a denylist rather than a no-leak guarantee.
 
