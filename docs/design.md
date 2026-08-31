@@ -43,6 +43,7 @@ paste 전용 내장: `grok`, `agy` (무도구 원샷 계약 확인 전).
 27. `--json` 실패는 같은 `packet-ask.v1`에 `ok: false`와 고정 code/kind/message만 넣는다. raw argv·예외 원문·경로·키·traceback은 넣지 않고 실제 exit code는 유지한다.
 28. `inspect review|research`는 기존 scope·policy·redaction·budget·signal·cleanup 경계를 재사용하고 provider catalog/probe·credential·timeout·launch 없이 mode/selector/상대경로/count/bytes/digest만 공개한다.
 29. builtin provider ID는 immutable adapter registry와 일치해야 한다. registry는 launch 함수 이름과 doctor 판정 종류만 코드로 보유하고 user alias는 adapter ID 없이 paste만 가능하다.
+30. scrubbed 원문은 NFKC/Cf/dot/dash/decimal detection shadow에서 Unicode mailbox·phone을 추가 검사하되 shadow로 packet을 변형하지 않는다. 위치 mapping 없이 generic kind로 fail-close하고 Unicode 코드 operand+미인식 ASCII suffix는 오탐 완화를 위해 허용한다.
 
 ## 금지
 

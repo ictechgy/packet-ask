@@ -71,6 +71,21 @@ def test_packet_diff_does_not_retain_unicode_adjacent_email(tmp_path: Path) -> N
     packet.destroy()
 
 
+def test_packet_rejects_obfuscated_international_email(tmp_path: Path) -> None:
+    """부분 redaction할 수 없는 Unicode mailbox는 packet/provider 전에 fail-closed한다."""
+    local = "".join(chr(item) for item in (0x7528, 0x6237))
+    domain = "".join(chr(item) for item in (0x4F8B, 0x5B50, 0x3002, 0x516C, 0x53F8))
+    with pytest.raises(RedactionFailed, match="email"):
+        build_packet(
+            mode="review",
+            question="review",
+            files=[],
+            diff_text=f"+{local}@{domain}\n",
+            parent=tmp_path,
+        )
+    assert list(tmp_path.glob("packet-ask-*")) == []
+
+
 def test_packet_contract_uses_selected_language(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """패킷 내부 계약도 기본 영어와 명시 한글을 구분한다."""
     monkeypatch.setenv("PACKET_ASK_LANG", "en")

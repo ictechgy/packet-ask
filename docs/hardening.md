@@ -34,6 +34,13 @@ broaden the tasks that a SUB may perform.
   handles escaped quote characters without deleting expressions or identifiers.
 - English remains the default for user-visible CLI text; Korean is selected with
   `PACKET_ASK_LANG=ko`.
+- Independent verification builds a Unicode detection shadow after normal
+  redaction. It canonicalizes compatibility forms, format controls, dot/dash
+  variants, and decimal digits to detect international mailbox and phone
+  leftovers without changing source text or public redaction counts.
+- Unicode mailbox candidates with an ASCII TLD use a conservative likely-TLD
+  gate when either operand is non-ASCII. This preserves attribute-like Unicode
+  matrix expressions while still rejecting common and IDNA email forms.
 
 ## Delivery controls
 

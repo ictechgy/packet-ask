@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -73,6 +74,41 @@ _VERIFY_PRIVATE_KEY_HEADER_RE = re.compile(
 _VERIFY_SECRET_LITERAL_RE = re.compile(
     rf'(?i)(?<![A-Za-z0-9_.-])(?:[\'\"]{_SECRET_KEY_FRAGMENT}[\'\"]|'
     rf'{_SECRET_KEY_FRAGMENT})\s*[:=]\s*(?P<quote>[\'\"])(?!\[REDACTED\](?P=quote))'
+)
+_EMAIL_LOCAL_EXTRA = frozenset("._%+-")
+_EMAIL_DOMAIN_EXTRA = frozenset(".-")
+_EMAIL_DOT_EQUIVALENTS = str.maketrans({"\u3002": ".", "\uff0e": ".", "\uff61": "."})
+_LIKELY_ASCII_TLDS = frozenset(
+    {
+        "aero",
+        "app",
+        "asia",
+        "biz",
+        "cloud",
+        "com",
+        "coop",
+        "dev",
+        "edu",
+        "gov",
+        "info",
+        "int",
+        "jobs",
+        "mil",
+        "mobi",
+        "museum",
+        "name",
+        "net",
+        "online",
+        "org",
+        "pro",
+        "shop",
+        "site",
+        "store",
+        "tech",
+        "tel",
+        "travel",
+        "xyz",
+    }
 )
 
 
@@ -241,6 +277,92 @@ def scrub_text(text: str, home: str | None = None) -> tuple[str, RedactionReport
     return text, report
 
 
+def _detection_shadow(text: str) -> str:
+    """원문을 바꾸지 않고 compatibility 문자와 format 난독화만 검출용으로 푼다."""
+    normalized = unicodedata.normalize("NFKC", text).translate(_EMAIL_DOT_EQUIVALENTS)
+    canonical: list[str] = []
+    for char in normalized:
+        category = unicodedata.category(char)
+        if category == "Cf":
+            continue
+        if category == "Pd":
+            canonical.append("-")
+            continue
+        if category == "Nd":
+            canonical.append(str(unicodedata.decimal(char)))
+            continue
+        canonical.append(char)
+    return unicodedata.normalize("NFKC", "".join(canonical))
+
+
+def _is_unicode_atom(char: str) -> bool:
+    """Unicode mailbox local/domain label에 허용할 letter·mark·number."""
+    return unicodedata.category(char)[:1] in {"L", "M", "N"}
+
+
+def _is_email_local_char(char: str) -> bool:
+    return _is_unicode_atom(char) or char in _EMAIL_LOCAL_EXTRA
+
+
+def _is_email_domain_char(char: str) -> bool:
+    return _is_unicode_atom(char) or char in _EMAIL_DOMAIN_EXTRA
+
+
+def _valid_email_local(local: str) -> bool:
+    """decorator의 기호-only local을 제외한 conservative mailbox local."""
+    if not local or local.startswith(".") or local.endswith(".") or ".." in local:
+        return False
+    return any(unicodedata.category(char)[:1] in {"L", "N"} for char in local)
+
+
+def _valid_email_domain(domain: str, local: str) -> bool:
+    """Unicode label 두 개 이상과 두 글자 이상의 letter/mark TLD를 요구한다."""
+    labels = domain.rstrip(".").split(".")
+    if len(labels) < 2 or any(not label for label in labels):
+        return False
+    for label in labels:
+        if label.startswith("-") or label.endswith("-"):
+            return False
+        if not all(_is_unicode_atom(char) or char == "-" for char in label):
+            return False
+        if not any(unicodedata.category(char)[:1] in {"L", "N"} for char in label):
+            return False
+    tld = labels[-1]
+    lowered_tld = tld.lower()
+    if lowered_tld.startswith("xn--"):
+        suffix = lowered_tld[4:]
+        return bool(suffix) and suffix[-1] != "-" and all(
+            char.isascii() and (char.isalnum() or char == "-") for char in suffix
+        )
+    if len(tld) < 2 or not all(
+        unicodedata.category(char)[:1] in {"L", "M"} for char in tld
+    ):
+        return False
+    mailbox_has_unicode = any(ord(char) > 127 for char in local + domain)
+    tld_is_ascii = all(char.isascii() for char in tld)
+    if mailbox_has_unicode and tld_is_ascii:
+        return len(tld) == 2 or lowered_tld in _LIKELY_ASCII_TLDS
+    return True
+
+
+def _contains_unicode_email_candidate(text: str) -> bool:
+    """NFKC/Cf shadow에서 ASCII·international mailbox 후보를 찾는다."""
+    for index, char in enumerate(text):
+        if char != "@":
+            continue
+        start = index
+        while start > 0 and _is_email_local_char(text[start - 1]):
+            start -= 1
+        end = index + 1
+        while end < len(text) and _is_email_domain_char(text[end]):
+            end += 1
+        local = text[start:index]
+        domain = text[index + 1 : end]
+        if _valid_email_local(local) and _valid_email_domain(domain, local):
+            return True
+    return False
+
+
 def verify_scrubbed(text: str, home: str | None = None) -> None:
     """스크럽과 다른 패턴으로 다시 훑는다. 남으면 RedactionError."""
     home = home if home is not None else str(Path.home())
@@ -249,9 +371,10 @@ def verify_scrubbed(text: str, home: str | None = None) -> None:
         if variant and variant in text:
             leftovers.append("home_path")
             break
-    if _VERIFY_EMAIL_RE.search(text):
+    shadow = _detection_shadow(text)
+    if _VERIFY_EMAIL_RE.search(shadow) or _contains_unicode_email_candidate(shadow):
         leftovers.append("email")
-    compact = re.sub(r"[\s-]", "", text)
+    compact = re.sub(r"[\s\-()]", "", shadow)
     if _VERIFY_PHONE_RE.search(compact):
         leftovers.append("phone")
     if _VERIFY_KEY_RE.search(text) or _VERIFY_PRIVATE_KEY_HEADER_RE.search(text):

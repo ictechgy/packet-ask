@@ -111,6 +111,140 @@ def test_verify_rejects_unicode_adjacent_ascii_email(source: str) -> None:
         verify_scrubbed(source + "\n")
 
 
+def _unicode_email_cases() -> list[str]:
+    """자기 diff가 mailbox 원문을 담지 않도록 codepoint로 fixture를 조립한다."""
+    return [
+        "alice" + chr(0xFF20) + "example" + chr(0xFF0E) + "com",
+        "alice@example" + chr(0x200B) + ".com",
+        "alice" + chr(0x2060) + "@" + chr(0x2060) + "example.com",
+        "jose" + chr(0x0301) + "@example.com",
+        chr(0x00E9) + "@example.com",
+        "".join(chr(item) for item in (0x7528, 0x6237)) + "@example.com",
+        "alice@" + "".join(chr(item) for item in (0x4F8B, 0x5B50)) + ".公司",
+        "".join(chr(item) for item in (0x7528, 0x6237))
+        + "@"
+        + "".join(chr(item) for item in (0x4F8B, 0x5B50, 0x3002, 0x516C, 0x53F8)),
+        "alice@exam" + chr(0x0440) + "le.com",
+    ]
+
+
+@pytest.mark.parametrize("source", _unicode_email_cases())
+def test_unicode_email_shadow_fails_closed_without_mutating_source(source: str) -> None:
+    """Unicode/format 난독화 email은 원문 변형 대신 independent verify에서 닫는다."""
+    scrubbed, report = scrub_text(source)
+    assert scrubbed == source
+    assert report.emails == 0
+    with pytest.raises(RedactionError, match="email"):
+        verify_scrubbed(scrubbed)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "+@pytest.mark.parametrize(",
+        "@decorator",
+        "ping @team.name",
+        "left @ module.attr",
+        "a@b.c",
+        "".join(chr(item) for item in (0xD589, 0xB82C)) + "@module.attr",
+        "left@" + "".join(chr(item) for item in (0xBAA8, 0xB4C8)) + ".attr",
+    ],
+)
+def test_unicode_email_shadow_keeps_non_mailbox_code(source: str) -> None:
+    """local atom이나 충분한 TLD가 없는 decorator·matrix 문법은 허용한다."""
+    verify_scrubbed(source)
+
+
+def test_ascii_punycode_email_still_redacts_instead_of_failing_closed() -> None:
+    """기존 ASCII-compatible 주소는 shadow 전에 정상 redaction 경로를 유지한다."""
+    source = "alice@xn--bcher-kva.com"
+    scrubbed, report = scrub_text(source)
+    assert source not in scrubbed
+    assert report.emails == 1
+    verify_scrubbed(scrubbed)
+
+
+def test_unicode_local_with_punycode_tld_fails_closed() -> None:
+    """Unicode local과 IDNA A-label TLD 조합도 shadow verifier가 잡는다."""
+    local = "".join(chr(item) for item in (0x7528, 0x6237))
+    source = local + "@example.xn--fiqs8s"
+    scrubbed, report = scrub_text(source)
+    assert scrubbed == source
+    assert report.emails == 0
+    with pytest.raises(RedactionError, match="email"):
+        verify_scrubbed(scrubbed)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "".join(
+            chr(item)
+            for item in (
+                0xFF10,
+                0xFF11,
+                0xFF10,
+                0xFF0D,
+                0xFF11,
+                0xFF12,
+                0xFF13,
+                0xFF14,
+                0xFF0D,
+                0xFF15,
+                0xFF16,
+                0xFF17,
+                0xFF18,
+            )
+        ),
+        "010" + chr(0x200B) + "-1234-5678",
+        "".join(
+            chr(item)
+            for item in (
+                0xFF08,
+                0xFF10,
+                0xFF11,
+                0xFF10,
+                0xFF09,
+                0xFF11,
+                0xFF12,
+                0xFF13,
+                0xFF14,
+                0xFF0D,
+                0xFF15,
+                0xFF16,
+                0xFF17,
+                0xFF18,
+            )
+        ),
+        "".join(
+            chr(item)
+            for item in (
+                0x0660,
+                0x0661,
+                0x0660,
+                0x2013,
+                0x0661,
+                0x0662,
+                0x0663,
+                0x0664,
+                0x2013,
+                0x0665,
+                0x0666,
+                0x0667,
+                0x0668,
+            )
+        ),
+    ],
+)
+def test_unicode_phone_shadow_fails_closed(source: str) -> None:
+    """fullwidth·format 문자로 분리한 전화번호도 detection-only shadow가 막는다."""
+    scrubbed, report = scrub_text(source)
+    assert scrubbed == source
+    assert report.phones == 0
+    with pytest.raises(RedactionError, match="phone"):
+        verify_scrubbed(scrubbed)
+
+
 def test_verify_fails_when_home_path_remains() -> None:
     """재검증은 홈 경로가 남으면 실패한다."""
     home = str(Path.home())

@@ -70,6 +70,14 @@ one escaped line; `--json` returns only the fixed packet summary fields.
 the final UTF-8 `packet.md`, including framing and path labels. Reads stop at
 the configured bound, and explicit binary or non-UTF-8 files are rejected.
 
+After normal redaction, verification also scans a detection-only Unicode
+shadow. NFKC-compatible characters, format controls, equivalent dots and
+dashes, and Unicode decimal digits can expose obfuscated international email or
+phone candidates. The packet text is never normalized or rewritten from this
+shadow; a candidate fails closed instead. Ambiguous Unicode matrix expressions
+with an unrecognized ASCII attribute-like suffix remain allowed to reduce code
+false positives, so this is still a denylist rather than a no-leak guarantee.
+
 If `--timeout` is omitted, launch providers use the final packet size: up to
 64 KiB gets 1200 seconds, up to 128 KiB gets 1500 seconds, and larger packets
 get 1800 seconds. A supplied `--timeout` is used exactly without clamping. The
