@@ -70,6 +70,13 @@ uv run packet-ask doctor
 프레이밍과 경로 라벨을 포함한 최종 UTF-8 `packet.md`에 적용됩니다. 입력은
 설정한 한도에서 읽기를 멈추며, 명시한 바이너리 또는 비 UTF-8 파일은 거절합니다.
 
+일반 redaction 뒤에는 detection-only Unicode shadow도 검사합니다. NFKC
+compatibility 문자, format control, 동등한 dot·dash, Unicode decimal digit으로
+난독화한 international email·phone 후보를 찾습니다. shadow로 packet 원문을
+normalize하거나 다시 쓰지 않고 후보가 있으면 fail-closed합니다. 코드 오탐을
+줄이기 위해 알려지지 않은 ASCII attribute형 suffix를 가진 모호한 Unicode
+행렬곱 표현식은 허용하므로, 여전히 no-leak 보장이 아닌 denylist입니다.
+
 `--timeout`을 생략하면 최종 packet 크기로 launch deadline을 고릅니다.
 64 KiB 이하는 1200초, 128 KiB 이하는 1500초, 그보다 크면 1800초입니다.
 명시한 `--timeout`은 clamp 없이 그대로 씁니다. 넉넉한 기본값은 성공 호출을

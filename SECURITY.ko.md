@@ -11,6 +11,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 - 워크트리에서 고른 파일·diff만 읽습니다.
 - `inspect review|research`는 같은 scope·redaction·packet 검증·cleanup을 실행하되 provider나 credential을 읽지 않고 고정 공개 metadata만 출력합니다.
 - 시크릿·홈 경로·이메일·전화 패턴을 가린 뒤, 다른 패턴으로 다시 검사합니다. 재검증이 실패하면 벤더를 실행하지 않습니다. 패턴 목록은 denylist이며 모든 비밀을 잡지 않습니다.
+- 재검증은 NFKC compatibility 형식, format control, 동등 dot/dash, Unicode decimal digit, international mailbox label과 phone 후보를 detection-only Unicode shadow에서 봅니다. shadow로 packet을 다시 쓰지 않으며 의심 값은 fail-closed합니다. 소스 코드 오탐을 줄이기 위해 알려지지 않은 ASCII attribute형 suffix의 모호한 Unicode 행렬곱 문법은 허용합니다.
 - 패킷은 원본 레포가 아니라 OS 캐시 전용 디렉터리에 만들고, 정상 종료 시 지웁니다. 새 패킷은 private directory advisory lock과 0600 lease marker를 만듭니다. 이후 실행은 현재 사용자 소유 0700 패킷 디렉터리의 lock을 얻을 수 있고 marker가 24시간 이상 됐을 때만 데이터를 지우며 active·fresh·symlink·비공개 권한 위반·marker가 없는 예전 디렉터리는 건너뜁니다. 따라서 강제 종료 뒤 데이터가 최소 24시간, 그리고 이후 정리 실행 전까지 남을 수 있습니다. 삭제는 일반 파일 삭제이며 안전한 소거가 아닙니다.
 - allowlist 디렉터리에서 `claude`/`kimi` 실행 파일을 찾습니다. 사용자 소유이고 그룹·기타에 쓸 수 없어야 합니다. **배포 출처·서명은 확인하지 않습니다.**
 - 부모 셸의 `ANTHROPIC_BASE_URL` / `ANTHROPIC_API_KEY` 는 복사하지 않습니다.
