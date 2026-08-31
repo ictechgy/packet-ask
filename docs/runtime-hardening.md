@@ -99,6 +99,17 @@ scope, or task authority.
   the question, packet body, temporary root, or provider-derived data.
 - The public summary is limited to mode, selector, escaped relative paths, file
   count, final bytes, allowlisted redaction counts, and packet SHA-256.
+- Explicit breakdown reuses cached scrub reports and payload bytes to add
+  question/framing/item sizes and per-item allowlisted counts without rereading
+  packet files or exposing content.
+
+## Launch progress
+
+- Progress is opt-in and emits a fixed launch phase plus elapsed milliseconds at
+  30-second intervals. It never includes provider, path, credential, or body.
+- A daemon worker uses zero-time writable checks for real stderr descriptors,
+  stops on success/error/signal, and is joined before final timing or output.
+  Thread-start failure disables progress without failing the task.
 
 ## Shared packet pipeline
 

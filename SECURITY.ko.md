@@ -10,6 +10,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 
 - 워크트리에서 고른 파일·diff만 읽습니다.
 - `inspect review|research`는 같은 scope·redaction·packet 검증·cleanup을 실행하되 provider나 credential을 읽지 않고 고정 공개 metadata만 출력합니다.
+- 명시한 inspect `--breakdown`은 scrubbed byte count, framing byte, 상대경로, 항목별 allowlisted redaction count만 추가합니다. 질문·항목 본문은 반환하지 않습니다.
 - 시크릿·홈 경로·이메일·전화 패턴을 가린 뒤, 다른 패턴으로 다시 검사합니다. 재검증이 실패하면 벤더를 실행하지 않습니다. 패턴 목록은 denylist이며 모든 비밀을 잡지 않습니다.
 - 재검증은 NFKC compatibility 형식, format control, 동등 dot/dash, Unicode decimal digit, international mailbox label과 phone 후보를 detection-only Unicode shadow에서 봅니다. shadow로 packet을 다시 쓰지 않으며 의심 값은 fail-closed합니다. 소스 코드 오탐을 줄이기 위해 알려지지 않은 ASCII attribute형 suffix의 모호한 Unicode 행렬곱 문법은 허용합니다.
 - known token family는 primary scrub과 shadow verify에서 대칭으로 확인합니다. secret literal·URL userinfo·PEM header도 shadow를 사용합니다. canonical dotted 국내 mobile 번호는 scrub하고 dot/dash/space 혼합형은 fail-closed합니다. 일반 E.164 coverage를 주장하지 않습니다.
@@ -37,6 +38,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 - Kimi config·실행·session cleanup은 0600 non-inheritable advisory run lock을 공유합니다. lock 획득은 30초로 제한하며 경쟁 실행은 `KIMI_CODE_HOME` 변경이나 Kimi launch 전에 실패합니다.
 - worktree discovery, diff 수집, packet-local Git 초기화는 하나의 bounded runner를 쓰며 timeout·출력 초과·interrupt에서 process group을 종료합니다. task 범위 SIGTERM/SIGHUP handler는 생성한 process group 또는 packet이 등록될 때까지 signal 전달을 미룬 뒤 같은 child·packet cleanup 경로를 재사용합니다.
 - 임시 packet을 제거한 뒤에만 성공 출력을 내보냅니다. cleanup 실패는 기존 provider 실패 코드를 바꾸지 않습니다.
+- 선택 `--progress`는 고정 launch phase와 음이 아닌 경과 ms만 출력합니다. 기본은 off이며 실제 stderr fd에서는 nonblocking write를 쓰고 최종 timing/output 전에 멈춥니다.
 - receipt와 manifest의 redaction metadata는 음이 아닌 정수 count allowlist만 직렬화하며 내부 report 필드는 포함하지 않습니다.
 - JSON 실패는 고정 code/kind/message mapping만 사용하며 raw argv·예외 원문·경로·credential·provider stderr·traceback을 직렬화하지 않습니다.
 
