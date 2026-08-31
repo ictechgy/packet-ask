@@ -256,6 +256,37 @@ def test_inspect_line_numbers_change_framing_not_item_shape(
     assert numbered["sha256_packet_md"] != plain["sha256_packet_md"]
 
 
+def test_inspect_selected_tree_changes_only_framing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """선택 tree는 manifest render overhead이고 item metadata는 바꾸지 않는다."""
+    repo = _init_repo(tmp_path / "repo", "one\ntwo\n")
+    monkeypatch.chdir(repo)
+
+    def inspect(extra: list[str]) -> dict[str, object]:
+        code = main(
+            [
+                "inspect",
+                "review",
+                "--files",
+                "src/app.py",
+                "--breakdown",
+                "--json",
+                *extra,
+            ]
+        )
+        assert code == codes.SUCCESS
+        return json.loads(capsys.readouterr().out)["summary"]
+
+    plain = inspect([])
+    tree = inspect(["--selected-tree"])
+    assert plain["breakdown"]["items"] == tree["breakdown"]["items"]  # type: ignore[index]
+    assert tree["breakdown"]["framing_bytes"] > plain["breakdown"]["framing_bytes"]  # type: ignore[index]
+    assert tree["bytes"] > plain["bytes"]  # type: ignore[operator]
+
+
 def test_inspect_research_reuses_include_files_policy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

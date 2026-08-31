@@ -39,6 +39,8 @@ _LINE_NUMBER_NOTE_EN = (
     "Packet-local line numbers (stable only for this packet digest):"
 )
 _LINE_NUMBER_NOTE_KO = "패킷 로컬 줄 번호(이 패킷 digest에서만 고정):"
+_SELECTED_TREE_TITLE_EN = "Selected file tree (explicit files only):"
+_SELECTED_TREE_TITLE_KO = "선택 파일 트리(명시한 파일만):"
 
 
 def _task_contract() -> str:
@@ -49,6 +51,11 @@ def _task_contract() -> str:
 def _line_number_note() -> str:
     """줄 번호의 packet-local 의미도 CLI 언어 선택을 따른다."""
     return _LINE_NUMBER_NOTE_KO if language() == "ko" else _LINE_NUMBER_NOTE_EN
+
+
+def _selected_tree_title() -> str:
+    """선택 트리의 제한도 CLI 언어 선택을 따른다."""
+    return _SELECTED_TREE_TITLE_KO if language() == "ko" else _SELECTED_TREE_TITLE_EN
 
 
 @dataclass
@@ -154,10 +161,54 @@ def _render_numbered_body(text: str) -> str:
     return rendered + ("\n" if text.endswith("\n") else "")
 
 
+def _escape_tree_segment(segment: str) -> str:
+    """tree label이 줄·Markdown 경계를 만들지 않도록 ASCII escape한다."""
+    escaped = json.dumps(segment, ensure_ascii=True)[1:-1]
+    return escaped.replace("`", "\\u0060")
+
+
+def _render_selected_tree(paths: list[str]) -> str:
+    """이미 선택된 상대경로만 deterministic tree로 만든다. 파일시스템은 보지 않는다."""
+    tree: dict[str, dict] = {}
+    normalized = sorted({_validated_packet_relative_text(relative) for relative in paths})
+    selected = set(normalized)
+    for relative in normalized:
+        parts = relative.split("/")
+        for depth in range(1, len(parts)):
+            if "/".join(parts[:depth]) in selected:
+                raise RedactionFailed(message("packet_relative"))
+        node = tree
+        for segment in parts:
+            node = node.setdefault(segment, {})
+
+    lines: list[str] = []
+    stack = [
+        (segment, tree[segment], 0)
+        for segment in reversed(sorted(tree))
+    ]
+    while stack:
+        segment, child, depth = stack.pop()
+        suffix = "/" if child else ""
+        lines.append(f"{'  ' * depth}{_escape_tree_segment(segment)}{suffix}")
+        for nested in reversed(sorted(child)):
+            stack.append((nested, child[nested], depth + 1))
+    return "\n".join(lines)
+
+
 def _assert_packet_relative(relative: Path) -> None:
     """패킷 안 상대경로만 허용한다. .git 과 상위 탈출은 거절한다."""
     if relative.is_absolute() or ".." in relative.parts or ".git" in relative.parts:
         raise RedactionFailed(message("packet_relative"))
+
+
+def _validated_packet_relative_text(relative_text: str) -> str:
+    """정규화가 필요한 모호한 label을 거절하고 canonical POSIX path만 반환한다."""
+    relative = Path(relative_text)
+    _assert_packet_relative(relative)
+    normalized = relative.as_posix()
+    if not relative.parts or normalized != relative_text:
+        raise RedactionFailed(message("packet_relative"))
+    return normalized
 
 
 def _init_git_boundary(root: Path, deadline: Deadline | None = None) -> None:
@@ -203,8 +254,11 @@ def build_packet(
     max_bytes: int | None = None,
     deadline: Deadline | None = None,
     line_numbers: bool = False,
+    selected_tree: bool = False,
 ) -> Packet:
     """스크럽된 패킷 디렉터리를 parent 아래에 만든다."""
+    if selected_tree and not files:
+        raise ScopeError(message("selected_tree_files"))
     parent.mkdir(parents=True, exist_ok=True)
     previous_umask = os.umask(0o077)
     root: Path | None = None
@@ -224,15 +278,22 @@ def build_packet(
         _write_private(root / "AGENTS.md", "")
         _write_private(root / "KIMI.md", "")
         rendered: list[str] = [task, ""]
-        for item in files:
+        relative_paths = [
+            _validated_packet_relative_text(item.relative) for item in files
+        ]
+        if selected_tree and files:
+            tree = _render_selected_tree(relative_paths)
+            rendered.append(
+                f"## {_selected_tree_title()}\n\n```text\n{tree}\n```\n"
+            )
+        for item, relative_text in zip(files, relative_paths, strict=True):
             body, report = _scrub_or_raise(item.content)
             reports.append(report)
-            relative = Path(item.relative)
-            _assert_packet_relative(relative)
+            relative = Path(relative_text)
             _write_private(root / "files" / relative, body)
             items.append(
                 PacketItem(
-                    item.relative,
+                    relative_text,
                     len(body.encode("utf-8")),
                     _logical_line_count(body),
                     report,
@@ -241,7 +302,7 @@ def build_packet(
             rendered_body = _render_numbered_body(body) if line_numbers else body
             note = f"{_line_number_note()}\n\n" if line_numbers else ""
             rendered.append(
-                f"## File: {item.relative}\n\n{note}```\n{rendered_body}\n```\n"
+                f"## File: {relative_text}\n\n{note}```\n{rendered_body}\n```\n"
             )
         if diff_text:
             diff_body, report = _scrub_or_raise(diff_text)

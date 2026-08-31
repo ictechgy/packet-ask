@@ -79,6 +79,13 @@ the scrubbed files under `files/`, never decorates unified diffs, and counts all
 gutter/note bytes against `--max-bytes`. The numbers are stable only for the
 receipt's packet digest. With the flag off, packet bytes remain unchanged.
 
+`--selected-tree` opt-in adds a deterministic tree made only from paths already
+selected by `--files` or `--include-files`. It never walks the repository,
+shows repeated selections once, renders ASCII-escaped labels in an inert fenced
+text block, and counts the tree against `--max-bytes`. Diff-only and
+question-only packets reject the flag instead of silently widening or ignoring
+its scope.
+
 `--max-files` applies to explicit files and diff paths. `--max-bytes` applies to
 the final UTF-8 `packet.md`, including framing and path labels. Reads stop at
 the configured bound, and explicit binary or non-UTF-8 files are rejected.
