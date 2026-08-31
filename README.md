@@ -183,6 +183,9 @@ digest, plus unchanged user provider overlays, are reused in-process to avoid
 repeated reads, hashes, and TOML parses.
 
 User config `~/.config/packet-ask/providers.toml` adds **paste aliases only**. It does not accept executables, argv, env, adapter IDs, launchers, probes, or registration hooks. Builtin launch dispatch and doctor probe kinds come from an immutable code registry.
+Alias labels and notes are bounded and reject terminal, bidi, and line/paragraph
+control characters before either human or JSON output. ZWNJ and ZWJ remain
+allowed for normal language and emoji sequences.
 
 The implementation/incident question gate is a conservative lexical check, not
 a proof of intent. Launch adapters disable vendor tools and use the packet as

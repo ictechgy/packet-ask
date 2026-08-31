@@ -179,6 +179,9 @@ packet cleanup 뒤 전파됩니다. packet cleanup이
 parse를 피합니다.
 
 사용자 설정 `~/.config/packet-ask/providers.toml` 은 **paste 별명만** 추가합니다. 실행 파일·argv·env·adapter ID·launcher·probe·registration hook은 받지 않습니다. builtin launch dispatch와 doctor probe 종류는 immutable code registry에서만 정합니다.
+alias label과 notes는 길이를 제한하고 human/JSON 출력 전에 terminal·bidi·line/
+paragraph control을 거절합니다. 정상 언어와 emoji sequence의 ZWNJ·ZWJ는
+허용합니다.
 
 구현·장애 질문 게이트는 보수적인 어휘 검사이며 의도를 증명하지는 않습니다.
 런치 어댑터는 벤더 도구를 끄고 패킷을 자식 cwd로 사용하지만, 이는 OS 수준
