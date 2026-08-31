@@ -220,8 +220,9 @@ def test_timeout_kills_sigterm_ignoring_descendant(tmp_path: Path) -> None:
     script.write_text(
         "#!/bin/sh\n"
         f"{sys.executable} -c "
-        f"\"import os, pathlib, signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
-        f"pathlib.Path(r'{pid_file}').write_text(str(os.getpid())); time.sleep(60)\" &\n"
+        "\"import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        "time.sleep(60)\" &\n"
+        f'echo $! > "{pid_file}"\n'
         "wait\n",
         encoding="utf-8",
     )
@@ -256,8 +257,9 @@ def test_timeout_kills_descendant_after_leader_exits(tmp_path: Path) -> None:
     script.write_text(
         "#!/bin/sh\n"
         f"{sys.executable} -c "
-        f"\"import os, pathlib, signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
-        f"pathlib.Path(r'{pid_file}').write_text(str(os.getpid())); time.sleep(60)\" &\n"
+        "\"import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        "time.sleep(60)\" &\n"
+        f'echo $! > "{pid_file}"\n'
         "exit 0\n",
         encoding="utf-8",
     )

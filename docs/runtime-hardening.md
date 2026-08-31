@@ -44,6 +44,16 @@ scope, or task authority.
 
 ## Deferred
 
-Stale-packet garbage collection, SIGTERM handlers, JSON error envelopes, and a
-provider-adapter registry need separate concurrency or compatibility design.
-They are not bundled into this change.
+SIGTERM handlers, JSON error envelopes, and a provider-adapter registry need
+separate concurrency or compatibility design. They are not bundled into this
+change.
+
+## Stale packet leases
+
+- Every new packet owns an open, non-inheritable directory advisory lock and a
+  0600 lease marker.
+- Startup cleanup skips active, fresh, symlinked, non-private, other-owner, and
+  legacy directories without a lease. The fixed stale threshold is 24 hours.
+- Cleanup is anchored to open directory descriptors. It removes packet content
+  before the lease marker, so an interrupted cleanup remains eligible for a
+  later retry and a path replacement cannot redirect recursive deletion.

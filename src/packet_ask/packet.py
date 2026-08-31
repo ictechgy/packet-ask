@@ -5,13 +5,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
 import stat
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from packet_ask.errors import BudgetError, RedactionFailed, ScopeError
+from packet_ask.lifecycle import close_packet_lease, create_packet_lease, remove_packet_tree
 from packet_ask.redact import (
     RedactionError,
     RedactionReport,
@@ -50,10 +50,15 @@ class Packet:
     _packet_text: str | None = field(default=None, repr=False)
     _packet_bytes: bytes | None = field(default=None, repr=False)
     _packet_digest: str | None = field(default=None, repr=False)
+    _lease_fd: int | None = field(default=None, repr=False)
 
     def destroy(self) -> None:
         """패킷 트리를 삭제한다. APFS에서 물리적 소거는 아니다."""
-        shutil.rmtree(self.root, ignore_errors=False)
+        try:
+            remove_packet_tree(self.root, directory_fd=self._lease_fd)
+        finally:
+            close_packet_lease(self._lease_fd)
+            self._lease_fd = None
 
     def payload_text(self) -> str:
         """렌더링 payload 문자열을 한 번만 읽어 재사용한다."""
@@ -137,10 +142,12 @@ def build_packet(
     parent.mkdir(parents=True, exist_ok=True)
     previous_umask = os.umask(0o077)
     root: Path | None = None
+    lease_fd: int | None = None
     reports: list[RedactionReport] = []
     try:
         root = Path(tempfile.mkdtemp(prefix="packet-ask-", dir=str(parent)))
         root.chmod(stat.S_IRWXU)
+        lease_fd = create_packet_lease(root)
         question_text, report = _scrub_or_raise(question)
         reports.append(report)
         task = f"# Task\n\nmode: {mode}\n\n{question_text}\n\n{_task_contract()}\n"
@@ -186,10 +193,16 @@ def build_packet(
             _packet_text=packet_text,
             _packet_bytes=packet_bytes,
             _packet_digest=packet_digest,
+            _lease_fd=lease_fd,
         )
     except BaseException:
         if root is not None:
-            shutil.rmtree(root, ignore_errors=True)
+            try:
+                remove_packet_tree(root, directory_fd=lease_fd)
+            except OSError:
+                pass
+            finally:
+                close_packet_lease(lease_fd)
         raise
     finally:
         os.umask(previous_umask)

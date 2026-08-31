@@ -22,6 +22,7 @@ from packet_ask.doctor import inspect_providers
 from packet_ask.errors import PacketAskError
 from packet_ask.install_skills import install_skills
 from packet_ask.launch import launch_claude, launch_glm, launch_kimi
+from packet_ask.lifecycle import reap_stale_packets
 from packet_ask.providers import lookup_provider, load_catalog
 from packet_ask.output import wrap_untrusted
 from packet_ask.packet import Packet, build_packet
@@ -358,6 +359,7 @@ def _run_task(args: argparse.Namespace) -> int:
     preflight_ms = _ms_since(started)
     packet_started = time.monotonic()
     parent = packet_cache_dir(worktree)
+    reap_stale_packets(parent)
     packet = build_packet(
         mode=args.command,
         question=question,

@@ -107,6 +107,8 @@ _EN = {
     "redaction_report_invalid": "Redaction metadata contains an invalid public count.",
     "packet_cleanup_failed": "Could not remove the temporary packet safely.",
     "packet_cleanup_warning": "Warning: temporary packet cleanup also failed.",
+    "packet_gc_failed": "Could not safely clean stale temporary packets.",
+    "packet_lease_failed": "Could not create the temporary packet lease.",
     "packet_git_failed": "Could not initialize the packet Git boundary.",
 }
 
@@ -225,6 +227,8 @@ _KO = {
     "redaction_report_invalid": "redaction metadata의 공개 count가 잘못되었습니다.",
     "packet_cleanup_failed": "임시 패킷을 안전하게 제거하지 못했습니다.",
     "packet_cleanup_warning": "경고: 임시 패킷 정리도 실패했습니다.",
+    "packet_gc_failed": "오래된 임시 패킷을 안전하게 정리하지 못했습니다.",
+    "packet_lease_failed": "임시 패킷 lease를 만들지 못했습니다.",
     "packet_git_failed": "패킷 Git 경계를 초기화하지 못했습니다.",
 }
 

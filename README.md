@@ -124,7 +124,7 @@ Receipt JSON adds `timeout_seconds`, `timeout_source` (`auto` or `explicit`),
 and `timeout_applies`. The `packet-ask.v1` schema is additive; consumers should
 ignore unknown receipt keys. The four-key millisecond `timing` object is unchanged.
 
-Packet temp dirs live in the OS cache, not the git worktree. cwd is not a sandbox. A `PACKET_ASK_CACHE_DIR` inside the worktree is rejected. `.gitignore` entries for `.packet-ask-tmp/` and `packet.md` only stop leftover files from being committed.
+Packet temp dirs live in the OS cache, not the git worktree. cwd is not a sandbox. A `PACKET_ASK_CACHE_DIR` inside the worktree is rejected. Every new packet holds a private lease; a later run removes packet data only when that lease is unlocked and at least 24 hours old. Active, fresh, symlinked, non-private, and legacy directories without a lease are not reaped. `.gitignore` entries for `.packet-ask-tmp/` and `packet.md` only stop leftover files from being committed.
 
 Every Git subprocess uses the same bounded process-group runner. Worktree
 discovery, diff collection, and packet-local `git init` share a deadline and

@@ -220,6 +220,7 @@ def test_help_probe_timeout_kills_descendant_after_leader_exits(
     import sys
 
     pid_file = tmp_path / "descendant.pid"
+    ready_file = tmp_path / "descendant.ready"
     binary = tmp_path / "claude"
     binary.write_text(
         f"#!{sys.executable}\n"
@@ -230,13 +231,16 @@ def test_help_probe_timeout_kills_descendant_after_leader_exits(
         "pid = os.fork()\n"
         "if pid == 0:\n"
         "    signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
-        f"    Path({str(pid_file)!r}).write_text(str(os.getpid()))\n"
+        f"    Path({str(ready_file)!r}).write_text('ready')\n"
         "    time.sleep(60)\n"
+        f"Path({str(pid_file)!r}).write_text(str(pid))\n"
+        f"while not Path({str(ready_file)!r}).is_file():\n"
+        "    time.sleep(0.01)\n"
         "os._exit(0)\n",
         encoding="utf-8",
     )
     binary.chmod(0o700)
-    monkeypatch.setattr(doctor, "_HELP_TIMEOUT_SECONDS", 0.5)
+    monkeypatch.setattr(doctor, "_HELP_TIMEOUT_SECONDS", 1.0)
     started = time.monotonic()
     assert doctor._run_help(binary) is None
     assert time.monotonic() - started < 3
