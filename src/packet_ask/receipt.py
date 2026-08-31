@@ -18,6 +18,9 @@ def build_receipt(
     files: list[ScopedFile],
     diff_text: str | None,
     packet: Packet,
+    timeout_seconds: int,
+    timeout_source: str,
+    timeout_applies: bool,
 ) -> dict[str, Any]:
     """비밀 값 없이 보낸 범위를 요약한다."""
     paths = [item.relative for item in files]
@@ -32,6 +35,9 @@ def build_receipt(
         "bytes": len(payload),
         "redaction": redaction,
         "sha256_packet_md": packet.payload_digest(),
+        "timeout_seconds": timeout_seconds,
+        "timeout_source": timeout_source,
+        "timeout_applies": timeout_applies,
     }
 
 
@@ -43,10 +49,17 @@ def format_receipt_line(receipt: dict[str, Any]) -> str:
         separators=(",", ":"),
     )
     digest = str(receipt["sha256_packet_md"])[:12]
+    timeout = ""
+    if "timeout_seconds" in receipt:
+        applies = "applies" if receipt.get("timeout_applies") else "informational"
+        timeout = (
+            f" timeout={receipt['timeout_seconds']}s"
+            f"({receipt['timeout_source']},{applies})"
+        )
     return (
         f"packet-ask receipt provider={receipt['provider']} "
         f"selector={receipt['selector']} paths={paths} "
-        f"bytes={receipt['bytes']} sha256={digest}"
+        f"bytes={receipt['bytes']} sha256={digest}{timeout}"
     )
 
 
