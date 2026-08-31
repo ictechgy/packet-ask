@@ -129,6 +129,11 @@ packet-ask doctor
 
 Kimi is official `kimi --quiet` one-shot. It does not open an interactive session. It refuses to run without a resolved dedicated Kimi credential. Tools are disabled with a `tools: []` agent file and a non-matching `[tools] enabled` list. `KIMI_CODE_HOME` is only the isolated profile `~/.config/packet-ask/providers/kimi/kimi-code`. Do not run `kimi` in the real repo.
 
+Kimi session cleanup must succeed before successful output is returned. If a
+provider, output-guard, or signal failure already exists, a simultaneous session
+cleanup failure is reported as a fixed non-sensitive warning and never replaces
+the original exception or exit status.
+
 GLM uses the official `claude` binary. **It does not change the parent shell `ANTHROPIC_BASE_URL`.** Only the child environment gets the [Z.ai Claude Code endpoint](https://docs.z.ai/scenario-example/develop-tools/claude) and the resolved dedicated GLM credential. GLM and Claude child environments also set `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, and `DISABLE_ERROR_REPORTING`. That reduces local session residue. It does not prove the vendor stores nothing.
 
 Task commands default to `--credential-source auto`: the dedicated environment

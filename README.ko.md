@@ -126,6 +126,10 @@ packet-ask doctor
 
 Kimi는 공식 `kimi --quiet` 원샷입니다. 대화형 세션을 열지 않습니다. 전용 Kimi credential을 resolve하지 못하면 실행하지 않습니다. 도구는 `tools: []` 에이전트 파일과 매칭되지 않는 `[tools] enabled` 로 끄고, `KIMI_CODE_HOME` 은 `~/.config/packet-ask/providers/kimi/kimi-code` 격리 프로필만 씁니다. 실제 레포에서 `kimi`를 직접 실행하지 마세요.
 
+Kimi session cleanup이 성공하기 전에는 성공 output을 반환하지 않습니다.
+provider·output-guard·signal 실패가 이미 있으면 동시에 발생한 session cleanup
+실패는 고정 비민감 warning으로만 보고하고 원래 예외·exit status를 보존합니다.
+
 GLM은 공식 `claude` 바이너리를 쓰되, **부모 셸의 `ANTHROPIC_BASE_URL` 은 바꾸지 않습니다.** 자식 환경에만 [Z.ai Claude Code 연동](https://docs.z.ai/scenario-example/develop-tools/claude) 엔드포인트와 resolve한 전용 GLM credential을 넣습니다. GLM과 Claude 자식 환경에는 `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_ERROR_REPORTING` 도 넣습니다. 로컬 세션 잔여를 줄이기 위한 것이며, 벤더가 아무것도 저장하지 않음을 증명하지 않습니다.
 
 task 명령의 기본값은 `--credential-source auto`입니다. 전용 환경변수가
