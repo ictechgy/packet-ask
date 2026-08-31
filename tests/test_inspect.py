@@ -12,6 +12,7 @@ import pytest
 
 from packet_ask import cli, codes
 from packet_ask.cli import main
+from packet_ask.packet import _logical_line_count
 
 
 def _init_repo(root: Path, body: str = "print(1)\n") -> Path:
@@ -144,14 +145,83 @@ def test_inspect_breakdown_reports_per_item_bytes_without_content(
     assert breakdown["question_bytes"] == len(question.encode("utf-8"))
     assert len(breakdown["items"]) == 1
     item = breakdown["items"][0]
+    assert set(item) == {"path", "bytes", "lines", "redaction"}
     assert item["path"] == "src/app.py"
     assert item["bytes"] > 0
+    assert item["lines"] == 1
     assert item["redaction"]["emails"] == 1
     assert summary["bytes"] == (
         breakdown["question_bytes"] + breakdown["framing_bytes"] + item["bytes"]
     )
     assert question not in captured.out
     assert "owner@example.com" not in captured.out
+
+
+@pytest.mark.parametrize(
+    ("content", "expected_lines"),
+    [
+        ("", 0),
+        ("one", 1),
+        ("one\n", 1),
+        ("\n", 1),
+        ("one\n\n", 2),
+        ("one\r\ntwo\r\n", 2),
+    ],
+)
+def test_inspect_breakdown_counts_scrubbed_logical_lines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    content: str,
+    expected_lines: int,
+) -> None:
+    """빈 파일·미종결 줄·CRLF를 post-scrub 논리 줄 기준으로 센다."""
+    repo = _init_repo(tmp_path / "repo", content)
+    monkeypatch.chdir(repo)
+    code = main(
+        [
+            "inspect",
+            "review",
+            "--files",
+            "src/app.py",
+            "--breakdown",
+            "--json",
+        ]
+    )
+    assert code == codes.SUCCESS
+    summary = json.loads(capsys.readouterr().out)["summary"]
+    assert summary["breakdown"]["items"][0]["lines"] == expected_lines
+
+
+@pytest.mark.parametrize("separator", ["\r", "\f", "\u2028"])
+def test_logical_line_count_uses_only_lf(separator: str) -> None:
+    """렌더링 packet의 LF 기준과 다른 Unicode separator는 줄을 늘리지 않는다."""
+    assert _logical_line_count(f"one{separator}two") == 1
+
+
+def test_inspect_breakdown_counts_entire_scrubbed_diff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """diff 줄 수는 추가/삭제 수가 아니라 header와 hunk를 포함한 payload 줄 수다."""
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "src" / "app.py").write_text("print(2)\n", encoding="utf-8")
+    expected = subprocess.run(
+        ["git", "diff", "--", "src/app.py"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    monkeypatch.chdir(repo)
+    code = main(
+        ["inspect", "review", "--unstaged", "--breakdown", "--json"]
+    )
+    assert code == codes.SUCCESS
+    item = json.loads(capsys.readouterr().out)["summary"]["breakdown"]["items"][0]
+    assert item["path"] == "changes.patch"
+    assert item["lines"] == _logical_line_count(expected)
 
 
 def test_inspect_research_reuses_include_files_policy(

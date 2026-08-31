@@ -90,6 +90,7 @@ class Packet:
             {
                 "path": item.path,
                 "bytes": item.bytes,
+                "lines": item.lines,
                 "redaction": public_redaction_counts(item.report),
             }
             for item in self._items
@@ -108,6 +109,7 @@ class PacketItem:
 
     path: str
     bytes: int
+    lines: int
     report: RedactionReport = field(repr=False)
 
 
@@ -119,6 +121,13 @@ def _scrub_or_raise(text: str) -> tuple[str, RedactionReport]:
     except RedactionError as exc:
         raise RedactionFailed(str(exc)) from exc
     return scrubbed, report
+
+
+def _logical_line_count(text: str) -> int:
+    """LF로 구분한 payload 줄 수를 센다. 마지막 LF는 새 줄을 만들지 않는다."""
+    if not text:
+        return 0
+    return text.count("\n") + (0 if text.endswith("\n") else 1)
 
 
 def _assert_packet_relative(relative: Path) -> None:
@@ -197,7 +206,12 @@ def build_packet(
             _assert_packet_relative(relative)
             _write_private(root / "files" / relative, body)
             items.append(
-                PacketItem(item.relative, len(body.encode("utf-8")), report)
+                PacketItem(
+                    item.relative,
+                    len(body.encode("utf-8")),
+                    _logical_line_count(body),
+                    report,
+                )
             )
             rendered.append(f"## File: {item.relative}\n\n```\n{body}\n```\n")
         if diff_text:
@@ -205,7 +219,12 @@ def build_packet(
             reports.append(report)
             _write_private(root / "files" / "changes.patch", diff_body)
             items.append(
-                PacketItem("changes.patch", len(diff_body.encode("utf-8")), report)
+                PacketItem(
+                    "changes.patch",
+                    len(diff_body.encode("utf-8")),
+                    _logical_line_count(diff_body),
+                    report,
+                )
             )
             rendered.append(f"## Diff\n\n```\n{diff_body}\n```\n")
         packet_text = "\n".join(rendered)
