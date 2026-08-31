@@ -31,6 +31,7 @@ How personal Kimi Code or GLM Coding Plan subscriptions handle data is defined b
 - ANSI CSI/OSC/DCS and unsafe control characters are removed from vendor output. Receipt paths are JSON escaped.
 - Tool-owned provider profile directories reject final-component symlinks. A Kimi session cleanup failure is reported rather than silently ignored.
 - Successful Kimi output is withheld until session cleanup succeeds. If a provider, output-guard, or signal failure already exists, a simultaneous Kimi cleanup failure emits only a fixed non-sensitive warning and cannot replace the primary failure.
+- Kimi config, execution, and session cleanup share a 0600 non-inheritable advisory run lock. Lock acquisition is bounded to 30 seconds; a competing run fails before mutating `KIMI_CODE_HOME` or launching Kimi.
 - Worktree discovery, diff collection, and packet-local Git initialization use one bounded runner with process-group termination on timeout, output excess, and interrupts. Task-scoped SIGTERM/SIGHUP handlers defer signal delivery until a spawned process group or built packet is registered, then reuse the same child and packet cleanup paths.
 - Success output is withheld until the temporary packet is removed. Cleanup failure cannot replace an existing provider failure code.
 - Receipt and manifest redaction metadata use an exact allowlist of non-negative integer counters; internal report fields are never serialized.

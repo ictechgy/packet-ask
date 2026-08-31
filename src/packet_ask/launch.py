@@ -11,6 +11,8 @@ import stat
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from packet_ask import codes
@@ -25,6 +27,8 @@ from packet_ask.text import message
 
 GLM_ENDPOINT = "https://api.z.ai/api/anthropic"
 KIMI_DISABLED_TOOL_SENTINEL = "packet-ask-no-such-tool"
+KIMI_RUN_LOCK_TIMEOUT_SECONDS = 30
+_KIMI_RUN_LOCK_NAME = "run.lock"
 
 
 def provider_home(name: str) -> Path:
@@ -480,6 +484,56 @@ def _cleanup_kimi_after_failure(kimi_home: Path) -> None:
         print(message("kimi_cleanup_warning"), file=sys.stderr)
 
 
+@contextmanager
+def _kimi_run_lock(home: Path) -> Iterator[None]:
+    """공유 KIMI_CODE_HOME의 config/session lifecycle을 한 실행으로 직렬화한다."""
+    descriptor = _acquire_kimi_run_lock(home)
+    try:
+        yield
+    finally:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+
+
+def _acquire_kimi_run_lock(home: Path) -> int:
+    """lock 획득 오류만 confinement로 변환하고 열린 descriptor를 반환한다."""
+    path = home / _KIMI_RUN_LOCK_NAME
+    flags = os.O_RDWR | os.O_CREAT
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor: int | None = None
+    acquired = False
+    try:
+        descriptor = os.open(path, flags, 0o600)
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
+            raise PacketAskError(message("kimi_lock_failed"), codes.CONFINEMENT)
+        os.fchmod(descriptor, 0o600)
+        deadline = time.monotonic() + KIMI_RUN_LOCK_TIMEOUT_SECONDS
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+                break
+            except BlockingIOError:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise PacketAskError(message("kimi_busy"), codes.CONFINEMENT) from None
+                time.sleep(min(0.05, remaining))
+        return descriptor
+    except PacketAskError:
+        raise
+    except OSError as exc:
+        raise PacketAskError(message("kimi_lock_failed"), codes.CONFINEMENT) from exc
+    finally:
+        if descriptor is not None and not acquired:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
 def _kimi_child_env(home: Path, kimi_home: Path, api_key: str) -> dict[str, str]:
     """Kimi 키는 디스크가 아니라 자식 환경에만 넣는다."""
     extra = {
@@ -501,27 +555,28 @@ def launch_kimi(
     api_key = _require_kimi_key(credential_source)
     executable = _require_executable("kimi")
     home = provider_home("kimi")
-    kimi_home = home / "kimi-code"
-    ensure_kimi_config(kimi_home)
-    agent_file = write_kimi_no_tools_agent(packet.root)
-    skills_dir = packet.root / ".pa-skills"
-    skills_dir.mkdir(exist_ok=True)
-    skills_dir.chmod(0o700)
-    env = isolated_env(home, _kimi_child_env(home, kimi_home, api_key))
-    stdin_text = packet.payload_text()
-    argv = kimi_launch_args(packet.root, agent_file, skills_dir)
-    try:
-        output = run_isolated_command(
-            executable,
-            argv,
-            stdin_text,
-            packet.root,
-            env,
-            timeout,
-        )
-        sanitized = sanitize_provider_output(output, protected_values=(api_key,))
-    except BaseException:
-        _cleanup_kimi_after_failure(kimi_home)
-        raise
-    _cleanup_kimi_sessions(kimi_home)
-    return sanitized
+    with _kimi_run_lock(home):
+        kimi_home = home / "kimi-code"
+        ensure_kimi_config(kimi_home)
+        agent_file = write_kimi_no_tools_agent(packet.root)
+        skills_dir = packet.root / ".pa-skills"
+        skills_dir.mkdir(exist_ok=True)
+        skills_dir.chmod(0o700)
+        env = isolated_env(home, _kimi_child_env(home, kimi_home, api_key))
+        stdin_text = packet.payload_text()
+        argv = kimi_launch_args(packet.root, agent_file, skills_dir)
+        try:
+            output = run_isolated_command(
+                executable,
+                argv,
+                stdin_text,
+                packet.root,
+                env,
+                timeout,
+            )
+            sanitized = sanitize_provider_output(output, protected_values=(api_key,))
+        except BaseException:
+            _cleanup_kimi_after_failure(kimi_home)
+            raise
+        _cleanup_kimi_sessions(kimi_home)
+        return sanitized

@@ -47,6 +47,7 @@ paste 전용 내장: `grok`, `agy` (무도구 원샷 계약 확인 전).
 31. credential source는 immutable builtin backend registry의 env/keychain/prompt만 허용한다. auto 순서는 env→keychain으로 별도 고정하고 prompt를 포함하지 않으며 explicit source는 다른 backend로 fallback하지 않는다.
 32. `_SECRET_VALUE_PATTERNS`는 primary scrub과 detection shadow verify가 공유한다. secret literal·URL userinfo·PEM header도 shadow에서 재검증하고 dotted 국내 mobile은 canonical scrub + mixed-separator fail-close로 처리하되 E.164 일반화는 별도다.
 33. Kimi 성공 output은 session cleanup 뒤에만 반환한다. provider/output-guard/SystemExit/KeyboardInterrupt가 먼저 실패한 경로에서는 cleanup PacketAskError를 고정 warning으로 강등하고 primary exception을 bare raise로 보존한다.
+34. 공유 KIMI_CODE_HOME의 config→launch→session cleanup 전체를 0600 non-inheritable advisory lock으로 직렬화한다. 획득은 30초 상한이며 lock 획득 오류만 confinement로 변환하고 with 본문 예외는 재분류하지 않는다.
 
 ## 금지
 

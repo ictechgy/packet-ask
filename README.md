@@ -134,6 +134,11 @@ provider, output-guard, or signal failure already exists, a simultaneous session
 cleanup failure is reported as a fixed non-sensitive warning and never replaces
 the original exception or exit status.
 
+Kimi runs sharing the isolated `KIMI_CODE_HOME` are serialized by a private,
+non-inheritable advisory lock held through config creation, provider execution,
+and session cleanup. A second run that cannot acquire it within 30 seconds fails
+before touching the shared profile or launching a vendor.
+
 GLM uses the official `claude` binary. **It does not change the parent shell `ANTHROPIC_BASE_URL`.** Only the child environment gets the [Z.ai Claude Code endpoint](https://docs.z.ai/scenario-example/develop-tools/claude) and the resolved dedicated GLM credential. GLM and Claude child environments also set `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, and `DISABLE_ERROR_REPORTING`. That reduces local session residue. It does not prove the vendor stores nothing.
 
 Task commands default to `--credential-source auto`: the dedicated environment
