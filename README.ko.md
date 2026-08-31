@@ -65,8 +65,11 @@ uv run packet-ask doctor
 뒤 cleanup이 성공하면 metadata만 출력합니다. provider를 읽거나 credential을
 확인하거나 provider timeout을 계산하거나 vendor를 실행하지 않습니다. human
 출력은 이스케이프한 한 줄이고 `--json`은 고정 packet summary 필드만 반환합니다.
-`--breakdown`은 scrubbed question byte, framing byte, 파일/diff별 scrubbed byte와
-allowlisted redaction count를 additive로 보여 줍니다. 질문·항목 본문은 반환하지
+`--breakdown`은 scrubbed question byte, framing byte, 파일/diff별 scrubbed byte,
+논리 줄 수와 allowlisted redaction count를 additive로 보여 줍니다. 줄 수는 scrub
+이후 payload에서 LF만 구분자로 사용하며 항목별로만 셉니다(0-byte 파일은 `0`).
+diff는 변경 줄만이 아니라 header와 hunk를 포함한 전체 렌더링 diff를 셉니다.
+이 항목별 shape metadata는 의도적으로 공개하지만 질문·항목 본문은 반환하지
 않습니다.
 
 `--max-files`는 명시 파일과 diff 경로 모두에 적용됩니다. `--max-bytes`는

@@ -66,8 +66,12 @@ but print metadata only after cleanup. They do not load a provider, inspect a
 credential, calculate a provider timeout, or launch a vendor. Human output is
 one escaped line; `--json` returns only the fixed packet summary fields.
 `--breakdown` additively reports scrubbed question bytes, framing bytes, and
-per-file/diff scrubbed bytes plus allowlisted redaction counts. It never returns
-the question or item body.
+per-file/diff scrubbed bytes, logical lines, and allowlisted redaction counts.
+Line counts describe only the post-scrub payload, use LF as the separator, and
+are per-item only (`0` for a zero-byte file). A diff count covers its complete
+rendered diff, including headers and hunks—not just changed lines. This
+per-item shape metadata is disclosed by design; the question and item body are
+never returned.
 
 `--max-files` applies to explicit files and diff paths. `--max-bytes` applies to
 the final UTF-8 `packet.md`, including framing and path labels. Reads stop at
