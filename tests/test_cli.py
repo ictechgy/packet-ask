@@ -372,6 +372,45 @@ def test_research_rejects_local_diff(
     assert code == codes.POLICY
 
 
+@pytest.mark.parametrize(
+    ("diff", "staged", "unstaged"),
+    [
+        ("HEAD", False, False),
+        ("", False, False),
+        (None, True, False),
+        (None, False, True),
+    ],
+)
+def test_collect_scope_research_rejects_diff_without_policy_dependency(
+    diff: str | None,
+    staged: bool,
+    unstaged: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """policy 순서가 바뀌어도 scope collector가 research local diff를 열지 않는다."""
+    args = argparse.Namespace(
+        command="research",
+        files=[],
+        include_files=[],
+        diff=diff,
+        staged=staged,
+        unstaged=unstaged,
+        max_files=25,
+        max_bytes=1024,
+    )
+    monkeypatch.setattr(
+        cli,
+        "collect_git_diff",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("git diff must not run")
+        ),
+    )
+    with pytest.raises(PacketAskError) as exc:
+        cli._collect_scope(args, tmp_path, mode="research")
+    assert exc.value.code == codes.USAGE
+
+
 def test_review_rejects_files_and_diff_together(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
