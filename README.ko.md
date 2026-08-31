@@ -65,6 +65,13 @@ uv run packet-ask doctor
 프레이밍과 경로 라벨을 포함한 최종 UTF-8 `packet.md`에 적용됩니다. 입력은
 설정한 한도에서 읽기를 멈추며, 명시한 바이너리 또는 비 UTF-8 파일은 거절합니다.
 
+`--timeout`을 생략하면 최종 packet 크기로 launch deadline을 고릅니다.
+64 KiB 이하는 1200초, 128 KiB 이하는 1500초, 그보다 크면 1800초입니다.
+명시한 `--timeout`은 clamp 없이 그대로 씁니다. 넉넉한 기본값은 성공 호출을
+늦추지 않고 실제 hang의 실패 판정만 늦춥니다. Ctrl+C로 중단할 수 있으며 CI와
+무인 실행은 timeout을 명시하는 편이 좋습니다. paste/dry-run receipt에도
+계산값을 참고용으로 표시하지만 provider deadline은 적용되지 않습니다.
+
 ## 사용
 
 ```bash
@@ -111,6 +118,10 @@ password를 읽지 않고 항목 존재만 확인합니다. 어느 source에서 
 원문·터미널 정규화 출력의 반사 검사를 거칩니다.
 
 성공하면 stderr에 런치 전 영수증(`packet-ask receipt …`)과 완료 후 밀리초 구간(`packet-ask timing …`)을 씁니다. `--json` 에는 `timing` 객체가 들어갑니다. 두 줄 모두 키 값을 넣지 않습니다. 영수증 경로는 JSON 이스케이프하며, 불신뢰 프로바이더 출력의 터미널 제어 시퀀스는 출력 전에 제거합니다.
+
+receipt JSON에는 `timeout_seconds`, `timeout_source`(`auto`/`explicit`),
+`timeout_applies`가 추가됩니다. `packet-ask.v1`은 additive schema이므로 소비자는
+모르는 receipt key를 무시해야 합니다. 밀리초 `timing`의 기존 4개 key는 불변입니다.
 
 패킷 임시 디렉터리는 git 워크트리가 아니라 OS 캐시에 만듭니다. cwd는 샌드박스가 아닙니다. `PACKET_ASK_CACHE_DIR` 을 워크트리 안으로 두면 거절합니다. `.gitignore` 의 `.packet-ask-tmp/` 와 `packet.md` 는 예전 산출물이나 실수로 만든 파일을 커밋하지 않기 위한 방어입니다.
 
