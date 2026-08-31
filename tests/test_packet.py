@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from packet_ask.errors import BudgetError, RedactionFailed, ScopeError
-from packet_ask.packet import _render_numbered_body, build_packet
+from packet_ask.packet import _render_numbered_body, _render_selected_tree, build_packet
 from packet_ask.scope import ScopedFile
 
 
@@ -147,6 +147,134 @@ def test_packet_line_number_overhead_obeys_final_byte_cap(tmp_path: Path) -> Non
             tmp_path / "numbered",
             max_bytes=limit,
             line_numbers=True,
+        )
+
+
+def test_selected_tree_uses_only_explicit_manifest_and_is_deterministic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """트리는 filesystem walk 없이 명시 path만 정렬하고 중복을 한 번 표시한다."""
+    monkeypatch.setenv("PACKET_ASK_LANG", "en")
+    files = [
+        ScopedFile(relative="tests/test_app.py", content="test\n"),
+        ScopedFile(relative="src/lib/util.py", content="util\n"),
+        ScopedFile(relative="src/app.py", content="app\n"),
+        ScopedFile(relative="src/app.py", content="app\n"),
+    ]
+    packet = build_packet(
+        "review",
+        "review",
+        files,
+        None,
+        tmp_path,
+        selected_tree=True,
+    )
+    try:
+        expected = "src/\n  app.py\n  lib/\n    util.py\ntests/\n  test_app.py"
+        assert (
+            f"Selected file tree (explicit files only):\n\n```text\n{expected}\n```"
+            in packet.payload_text()
+        )
+        assert packet.payload_text().count("  app.py\n") == 1
+        assert "unselected.py" not in packet.payload_text()
+    finally:
+        packet.destroy()
+
+
+def test_selected_tree_escapes_control_and_markdown_segments() -> None:
+    """manifest label은 tree 문맥 밖 새 줄이나 fence를 만들 수 없다."""
+    rendered = _render_selected_tree(["src/line\nbreak.py", "src/```danger.py"])
+    assert rendered == "src/\n  \\u0060\\u0060\\u0060danger.py\n  line\\nbreak.py"
+    assert rendered.count("\n") == 2
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["", "./src/app.py", "src//app.py", "src/app.py/", "../app.py", "/app.py"],
+)
+def test_selected_tree_rejects_noncanonical_relative_paths(path: str) -> None:
+    """빈 segment·정규화·상위/절대 path는 tree label이 되기 전에 거절한다."""
+    with pytest.raises(RedactionFailed):
+        _render_selected_tree([path])
+
+
+def test_selected_tree_rejects_file_directory_collision() -> None:
+    """같은 label을 파일과 디렉터리로 합쳐 manifest 정보를 잃지 않는다."""
+    with pytest.raises(RedactionFailed):
+        _render_selected_tree(["src", "src/app.py"])
+
+
+def test_selected_tree_handles_deep_manifest_iteratively() -> None:
+    """synthetic API 입력도 Python recursion limit과 무관하게 렌더한다."""
+    deep = "/".join(["a"] * 1100 + ["leaf.py"])
+    rendered = _render_selected_tree([deep])
+    assert rendered.startswith("a/\n  a/")
+    assert rendered.endswith("leaf.py")
+
+
+def test_selected_tree_requires_files_at_packet_api(tmp_path: Path) -> None:
+    """CLI 밖 build API에서도 selected tree의 silent no-op을 막는다."""
+    with pytest.raises(ScopeError):
+        build_packet(
+            "review",
+            "review",
+            [],
+            None,
+            tmp_path,
+            selected_tree=True,
+        )
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_selected_tree_combines_with_packet_line_numbers(tmp_path: Path) -> None:
+    """tree section은 file section 앞에 있고 file gutter 의미를 바꾸지 않는다."""
+    packet = build_packet(
+        "review",
+        "review",
+        [ScopedFile(relative="src/app.py", content="one\ntwo\n")],
+        None,
+        tmp_path,
+        line_numbers=True,
+        selected_tree=True,
+    )
+    try:
+        payload = packet.payload_text()
+        assert payload.index("Selected file tree") < payload.index("## File: src/app.py")
+        assert "1 | one\n2 | two" in payload
+    finally:
+        packet.destroy()
+
+
+def test_selected_tree_default_is_byte_identical_and_overhead_is_capped(
+    tmp_path: Path,
+) -> None:
+    """opt-in을 끄면 기존 byte를 유지하고 켜면 tree도 최종 budget에 포함한다."""
+    files = [ScopedFile(relative="src/app.py", content="app\n")]
+    implicit = build_packet("review", "review", files, None, tmp_path / "implicit")
+    explicit = build_packet(
+        "review",
+        "review",
+        files,
+        None,
+        tmp_path / "explicit",
+        selected_tree=False,
+    )
+    limit = len(implicit.payload_bytes())
+    try:
+        assert implicit.payload_bytes() == explicit.payload_bytes()
+    finally:
+        implicit.destroy()
+        explicit.destroy()
+    with pytest.raises(BudgetError):
+        build_packet(
+            "review",
+            "review",
+            files,
+            None,
+            tmp_path / "tree",
+            max_bytes=limit,
+            selected_tree=True,
         )
 
 

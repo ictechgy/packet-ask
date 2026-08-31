@@ -185,6 +185,7 @@ def _add_task_parser(sub: argparse._SubParsersAction, name: str, help_text: str)
     item.add_argument("--dry-run", action="store_true")
     item.add_argument("--progress", action="store_true")
     item.add_argument("--line-numbers", action="store_true")
+    item.add_argument("--selected-tree", action="store_true")
     item.add_argument("--json", action="store_true")
 
 
@@ -214,6 +215,7 @@ def _add_inspect_parser(
     item.add_argument("--json", action="store_true")
     item.add_argument("--breakdown", action="store_true")
     item.add_argument("--line-numbers", action="store_true")
+    item.add_argument("--selected-tree", action="store_true")
 
 
 def _read_question(args: argparse.Namespace, deadline: Deadline) -> str:
@@ -597,6 +599,8 @@ def _prepare_packet_inputs(
     if not question.strip():
         question = message("default_question")
     files_flag, has_diff = _selector_flags(args)
+    if getattr(args, "selected_tree", False) and files_flag is None:
+        raise PacketAskError(message("selected_tree_files"), codes.USAGE)
     assert_allowed_task(mode, question, files_flag, has_diff=has_diff)
     if require_review_scope:
         _require_explicit_review_scope(args, "review")
@@ -642,6 +646,7 @@ def _packet_pipeline(
                 max_bytes=args.max_bytes,
                 deadline=deadline,
                 line_numbers=getattr(args, "line_numbers", False),
+                selected_tree=getattr(args, "selected_tree", False),
             )
         selectors = _review_selectors(args)
         selector = selectors[0] if selectors else inputs.files_flag or "none"

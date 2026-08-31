@@ -134,6 +134,56 @@ def test_review_line_numbers_reach_task_packet(
     assert "1 | print(1)" in captured.out
 
 
+def test_review_selected_tree_reaches_task_packet(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """명시 파일 tree는 provider payload에 들어가고 sibling을 자동 수집하지 않는다."""
+    repo = _init_repo(tmp_path)
+    (repo / "src" / "unselected.py").write_text("unique sibling\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("PACKET_ASK_LANG", "en")
+    code = main(
+        [
+            "review",
+            "--provider",
+            "paste",
+            "--files",
+            "src/app.py",
+            "--selected-tree",
+            "--question",
+            "review this code",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == codes.SUCCESS
+    assert "Selected file tree" in captured.out
+    assert "```text\nsrc/\n  app.py\n```" in captured.out
+    assert "unselected.py" not in captured.out
+    assert "unique sibling" not in captured.out
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["review", "--provider", "paste", "--diff", "HEAD", "--selected-tree"],
+        ["research", "--provider", "paste", "--question", "research", "--selected-tree"],
+    ],
+)
+def test_selected_tree_requires_explicit_files(argv: list[str]) -> None:
+    """diff나 question-only packet에서 tree flag가 조용한 no-op이 되지 않는다."""
+    assert main(argv) == codes.USAGE
+
+
+def test_inspect_diff_selected_tree_is_rejected() -> None:
+    """inspect parser에서도 diff-only tree가 조용히 무시되지 않는다."""
+    assert (
+        main(["inspect", "review", "--diff", "HEAD", "--selected-tree"])
+        == codes.USAGE
+    )
+
+
 def test_rejects_implementation_without_vendor(monkeypatch: pytest.MonkeyPatch) -> None:
     """구현 요청은 벤더 없이 거절한다."""
     code = main(

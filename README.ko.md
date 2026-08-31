@@ -78,6 +78,12 @@ gutter를 붙여 리뷰가 packet-local 줄을 인용할 수 있습니다. `file
 `--max-bytes`에 포함합니다. 번호는 receipt의 packet digest에서만 고정됩니다.
 플래그를 끄면 기존 packet byte가 그대로 유지됩니다.
 
+`--selected-tree`를 명시하면 `--files` 또는 `--include-files`로 이미 선택한 경로만
+deterministic tree로 추가합니다. 저장소를 다시 탐색하지 않고, 반복 선택은 한 번만
+표시하며, ASCII-escaped label을 inert fenced text block 안에 렌더링하고 tree byte도
+`--max-bytes`에 포함합니다. diff-only와 question-only packet은 범위를 조용히
+넓히거나 flag를 무시하지 않고 거절합니다.
+
 `--max-files`는 명시 파일과 diff 경로 모두에 적용됩니다. `--max-bytes`는
 프레이밍과 경로 라벨을 포함한 최종 UTF-8 `packet.md`에 적용됩니다. 입력은
 설정한 한도에서 읽기를 멈추며, 명시한 바이너리 또는 비 UTF-8 파일은 거절합니다.
