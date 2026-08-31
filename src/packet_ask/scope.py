@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from packet_ask.errors import BudgetError, ScopeError
+from packet_ask.deadline import Deadline
 from packet_ask.paths import git_subprocess_env, resolve_trusted_executable
 from packet_ask.signals import deferred_task_signals
 from packet_ask.text import message
@@ -52,13 +53,15 @@ class ScopedFile:
     content: str
 
 
-def resolve_worktree(start: Path) -> Path:
+def resolve_worktree(start: Path, deadline: Deadline | None = None) -> Path:
     """start에서 git 최상위 디렉터리를 찾는다."""
     try:
+        kwargs = {"deadline": deadline} if deadline is not None else {}
         root = run_bounded_git(
             start,
             ["rev-parse", "--show-toplevel"],
             GIT_METADATA_OUTPUT_BYTES,
+            **kwargs,
         ).strip()
     except (BudgetError, ScopeError) as exc:
         raise ScopeError(message("not_worktree")) from exc
@@ -196,8 +199,15 @@ def _stop_process_group(proc: subprocess.Popen[bytes]) -> None:
         pass
 
 
-def run_bounded_git(worktree: Path, extra: list[str], max_bytes: int) -> str:
+def run_bounded_git(
+    worktree: Path,
+    extra: list[str],
+    max_bytes: int,
+    deadline: Deadline | None = None,
+) -> str:
     """git stdout을 제한·timeout 아래에서 셸 없이 읽는다."""
+    if deadline is not None and deadline.remaining() <= 0:
+        raise ScopeError(message("git_timeout"))
     command = [_git_executable(), *extra]
     proc: subprocess.Popen[bytes] | None = None
     try:
@@ -223,11 +233,15 @@ def run_bounded_git(worktree: Path, extra: list[str], max_bytes: int) -> str:
         if proc.stdout is None:
             raise ScopeError(message("git_output_failed"))
         os.set_blocking(proc.stdout.fileno(), False)
-        deadline = time.monotonic() + GIT_TIMEOUT_SECONDS
+        expires_at = (
+            deadline.bounded_expires_at(GIT_TIMEOUT_SECONDS)
+            if deadline is not None
+            else time.monotonic() + GIT_TIMEOUT_SECONDS
+        )
         chunks: list[bytes] = []
         total = 0
         while True:
-            remaining_time = deadline - time.monotonic()
+            remaining_time = expires_at - time.monotonic()
             if remaining_time <= 0:
                 raise ScopeError(message("git_timeout"))
             ready, _, _ = select.select([proc.stdout], [], [], min(0.1, remaining_time))
@@ -274,12 +288,18 @@ def _diff_guard_args() -> list[str]:
     ]
 
 
-def _name_status_paths(worktree: Path, range_args: list[str], max_bytes: int) -> list[str]:
+def _name_status_paths(
+    worktree: Path,
+    range_args: list[str],
+    max_bytes: int,
+    deadline: Deadline | None = None,
+) -> list[str]:
     """NUL 구분 name-status 로 원본·대상 경로를 모두 모은다."""
     raw = run_bounded_git(
         worktree,
         [*_diff_guard_args(), "--name-status", "-z", *range_args],
         max_bytes,
+        deadline=deadline,
     )
     return _parse_name_status(raw)
 
@@ -323,6 +343,7 @@ def collect_git_diff(
     staged: bool = False,
     max_bytes: int = DEFAULT_MAX_BYTES,
     max_files: int = DEFAULT_MAX_FILES,
+    deadline: Deadline | None = None,
 ) -> str:
     """요청한 diff를 텍스트로 모은다. 사용자 문자열을 셸에 넣지 않는다."""
     if max_bytes < 1:
@@ -330,10 +351,15 @@ def collect_git_diff(
     if max_files < 1:
         raise BudgetError(message("max_files", limit=max_files))
     range_args = _git_range_args(range_spec, unstaged, staged)
-    paths = _name_status_paths(worktree, range_args, max_bytes)
+    paths = _name_status_paths(worktree, range_args, max_bytes, deadline)
     if len(set(paths)) > max_files:
         raise BudgetError(message("max_files", limit=max_files))
-    text = run_bounded_git(worktree, [*_diff_guard_args(), *range_args], max_bytes)
+    text = run_bounded_git(
+        worktree,
+        [*_diff_guard_args(), *range_args],
+        max_bytes,
+        deadline=deadline,
+    )
     if not text.strip():
         raise ScopeError(message("empty_diff"))
     if not paths:

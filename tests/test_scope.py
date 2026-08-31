@@ -1,16 +1,19 @@
 """워크트리 스코프 수집과 거절 규칙."""
 
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
 
 from packet_ask.errors import BudgetError, ScopeError
+from packet_ask.deadline import Deadline
 from packet_ask.scope import (
     collect_files,
     collect_git_diff,
     is_secret_path,
     resolve_worktree,
+    run_bounded_git,
 )
 
 
@@ -74,6 +77,43 @@ def test_bounded_git_runner_has_deadline(
     monkeypatch.setattr("packet_ask.scope.GIT_TIMEOUT_SECONDS", 0)
     with pytest.raises(ScopeError):
         resolve_worktree(tmp_path)
+
+
+def test_expired_shared_deadline_stops_git_promptly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """남은 preflight 시간이 없으면 개별 30초를 새로 시작하지 않는다."""
+    script = tmp_path / "git"
+    script.write_text("#!/bin/sh\nsleep 60\n", encoding="utf-8")
+    script.chmod(0o700)
+    monkeypatch.setenv("PACKET_ASK_GIT_BIN", str(script))
+    started = time.monotonic()
+    with pytest.raises(ScopeError):
+        run_bounded_git(tmp_path, ["status"], 4096, deadline=Deadline.after(0))
+    assert time.monotonic() - started < 2
+
+
+def test_diff_subprocesses_share_one_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """name-status와 diff 본문 호출이 같은 absolute deadline 객체를 받는다."""
+    seen: list[Deadline | None] = []
+
+    def bounded(
+        _worktree: Path,
+        extra: list[str],
+        _max_bytes: int,
+        deadline: Deadline | None = None,
+    ) -> str:
+        seen.append(deadline)
+        if "--name-status" in extra:
+            return "M\0src/app.py\0"
+        return "diff --git a/src/app.py b/src/app.py\n"
+
+    monkeypatch.setattr("packet_ask.scope.run_bounded_git", bounded)
+    deadline = Deadline.after(10)
+    assert collect_git_diff(tmp_path, unstaged=True, deadline=deadline).startswith("diff")
+    assert seen == [deadline, deadline]
 
 
 def test_rejects_secret_filename(tmp_path: Path) -> None:

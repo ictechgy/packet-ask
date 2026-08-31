@@ -27,6 +27,7 @@ How personal Kimi Code or GLM Coding Plan subscriptions handle data is defined b
 - GLM and Claude child environments set `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, and `DISABLE_ERROR_REPORTING=1`. The vendor can ignore those flags. This CLI does not delete `~/.claude/projects/`.
 - If vendor stdout contains a dedicated key value or is too large, it is discarded and the process exits 22.
 - Vendor stdin, stdout, and stderr share one bounded, nonblocking deadline. Explicit file, stdin-question, and git diff collection also stop at configured limits.
+- Real-fd question stdin and all Git preflight calls share one configurable monotonic deadline (30 seconds by default). Each Git call still has its own 30-second cap. Regular file reads and CPU redaction are size-bounded but not forcibly preempted by this deadline.
 - The final rendered `packet.md`, not only its source fragments, must fit `--max-bytes`. Binary and non-UTF-8 explicit files are rejected.
 - ANSI CSI/OSC/DCS and unsafe control characters are removed from vendor output. Receipt paths are JSON escaped.
 - Tool-owned provider profile directories reject final-component symlinks. A Kimi session cleanup failure is reported rather than silently ignored.

@@ -7,6 +7,8 @@ import contextlib
 import errno
 import io
 import json
+import os
+import select
 import signal
 import sys
 import time
@@ -22,6 +24,7 @@ from packet_ask.keysource import (
     store_macos_keychain,
 )
 from packet_ask.doctor import inspect_providers
+from packet_ask.deadline import Deadline
 from packet_ask.errors import PacketAskError
 from packet_ask.install_skills import install_skills
 from packet_ask.launch import launch_claude, launch_glm, launch_kimi
@@ -58,6 +61,7 @@ AUTO_TIMEOUT_MEDIUM_BYTES = 128 * 1024
 AUTO_TIMEOUT_SMALL_SECONDS = 1200
 AUTO_TIMEOUT_MEDIUM_SECONDS = 1500
 AUTO_TIMEOUT_LARGE_SECONDS = 1800
+DEFAULT_PREFLIGHT_TIMEOUT_SECONDS = 30
 
 
 @dataclass(frozen=True)
@@ -143,6 +147,12 @@ def _add_task_parser(sub: argparse._SubParsersAction, name: str, help_text: str)
     item.add_argument("--max-files", type=_positive_int, default=DEFAULT_MAX_FILES)
     item.add_argument("--max-bytes", type=_positive_int, default=DEFAULT_MAX_BYTES)
     item.add_argument(
+        "--preflight-timeout",
+        type=_positive_int,
+        default=DEFAULT_PREFLIGHT_TIMEOUT_SECONDS,
+        help="shared stdin and Git preflight timeout in seconds",
+    )
+    item.add_argument(
         "--credential-source",
         choices=CREDENTIAL_SOURCES,
         default="auto",
@@ -168,30 +178,65 @@ def _add_inspect_parser(
         item.add_argument("--unstaged", action="store_true")
     item.add_argument("--max-files", type=_positive_int, default=DEFAULT_MAX_FILES)
     item.add_argument("--max-bytes", type=_positive_int, default=DEFAULT_MAX_BYTES)
+    item.add_argument(
+        "--preflight-timeout",
+        type=_positive_int,
+        default=DEFAULT_PREFLIGHT_TIMEOUT_SECONDS,
+        help="shared stdin and Git preflight timeout in seconds",
+    )
     item.add_argument("--json", action="store_true")
 
 
-def _read_question(args: argparse.Namespace) -> str:
+def _read_question(args: argparse.Namespace, deadline: Deadline) -> str:
     """질문 텍스트를 모은다."""
     if args.question_stdin:
-        parts: list[str] = []
-        total = 0
-        while True:
-            chunk = sys.stdin.read(min(4096, args.max_bytes - total + 1))
-            if not chunk:
-                break
-            parts.append(chunk)
-            total += len(chunk.encode("utf-8"))
-            if total > args.max_bytes:
-                raise BudgetError(f"total packet exceeds {args.max_bytes} bytes")
-        return "".join(parts)
+        return _read_question_stdin(args.max_bytes, deadline)
     return args.question
+
+
+def _read_question_stdin(max_bytes: int, deadline: Deadline) -> str:
+    """실제 stdin fd는 UTF-8 byte와 absolute deadline 아래에서 읽는다."""
+    stream = getattr(sys.stdin, "buffer", None)
+    fileno = getattr(stream, "fileno", None)
+    if stream is None or fileno is None:
+        text = sys.stdin.read(max_bytes + 1)
+        if len(text.encode("utf-8")) > max_bytes:
+            raise BudgetError(message("max_bytes", limit=max_bytes))
+        return text
+    try:
+        descriptor = fileno()
+    except (OSError, ValueError, io.UnsupportedOperation):
+        text = sys.stdin.read(max_bytes + 1)
+        if len(text.encode("utf-8")) > max_bytes:
+            raise BudgetError(message("max_bytes", limit=max_bytes))
+        return text
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        remaining = deadline.remaining()
+        if remaining <= 0:
+            raise BudgetError(message("question_timeout"))
+        ready, _, _ = select.select([descriptor], [], [], remaining)
+        if not ready:
+            raise BudgetError(message("question_timeout"))
+        chunk = os.read(descriptor, min(4096, max_bytes - total + 1))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+        if total > max_bytes:
+            raise BudgetError(message("max_bytes", limit=max_bytes))
+    try:
+        return b"".join(chunks).decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise PacketAskError(message("question_utf8"), codes.USAGE) from exc
 
 
 def _collect_scope(
     args: argparse.Namespace,
     worktree: Path,
     mode: str | None = None,
+    deadline: Deadline | None = None,
 ) -> tuple[list, str | None]:
     """모드에 맞는 파일과 diff를 모은다."""
     active_mode = mode or args.command
@@ -212,15 +257,27 @@ def _collect_scope(
     budget = args.max_bytes
     if args.staged:
         diff_text = collect_git_diff(
-            worktree, staged=True, max_bytes=budget, max_files=args.max_files
+            worktree,
+            staged=True,
+            max_bytes=budget,
+            max_files=args.max_files,
+            deadline=deadline,
         )
     elif args.diff:
         diff_text = collect_git_diff(
-            worktree, range_spec=args.diff, max_bytes=budget, max_files=args.max_files
+            worktree,
+            range_spec=args.diff,
+            max_bytes=budget,
+            max_files=args.max_files,
+            deadline=deadline,
         )
     elif getattr(args, "unstaged", False):
         diff_text = collect_git_diff(
-            worktree, unstaged=True, max_bytes=budget, max_files=args.max_files
+            worktree,
+            unstaged=True,
+            max_bytes=budget,
+            max_files=args.max_files,
+            deadline=deadline,
         )
     return scoped_files, diff_text
 
@@ -411,8 +468,9 @@ def _run_inspect_guarded(
     mode = args.inspect_mode
     packet: Packet | None = None
     parent: Path | None = None
+    deadline = Deadline.after(args.preflight_timeout)
     try:
-        question = _read_question(args)
+        question = _read_question(args, deadline)
         if mode == "research" and not question.strip():
             raise PacketAskError(message("research_question"), codes.USAGE)
         if not question.strip():
@@ -420,8 +478,8 @@ def _run_inspect_guarded(
         files_flag, has_diff = _selector_flags(args)
         assert_allowed_task(mode, question, files_flag, has_diff=has_diff)
         _require_explicit_review_scope(args, mode)
-        worktree = resolve_worktree(Path.cwd())
-        scoped_files, diff_text = _collect_scope(args, worktree, mode)
+        worktree = resolve_worktree(Path.cwd(), deadline)
+        scoped_files, diff_text = _collect_scope(args, worktree, mode, deadline)
         if mode == "review" and not scoped_files and not diff_text:
             raise PacketAskError(message("review_scope"), codes.SCOPE)
         _assert_packet_budget(question, scoped_files, diff_text, args.max_bytes)
@@ -435,6 +493,7 @@ def _run_inspect_guarded(
                 diff_text=diff_text,
                 parent=parent,
                 max_bytes=args.max_bytes,
+                deadline=deadline,
             )
         selector = _review_selectors(args)[0] if _review_selectors(args) else files_flag or "none"
         summary = build_packet_summary(
@@ -470,16 +529,17 @@ def _run_task_guarded(
 ) -> int:
     """종료 signal도 기존 process-group·packet cleanup 경로로 보낸다."""
     started = time.monotonic()
+    deadline = Deadline.after(args.preflight_timeout)
     packet: Packet | None = None
     parent: Path | None = None
     try:
-        provider, question, files_flag, has_diff = _task_inputs(args)
+        provider, question, files_flag, has_diff = _task_inputs(args, deadline)
         mode = args.command if args.command != "paste" else "review"
         assert_allowed_task(mode, question, files_flag, has_diff=has_diff)
         spec = lookup_provider(provider)
         _require_explicit_review_scope(args)
-        worktree = resolve_worktree(Path.cwd())
-        scoped_files, diff_text = _collect_scope(args, worktree)
+        worktree = resolve_worktree(Path.cwd(), deadline)
+        scoped_files, diff_text = _collect_scope(args, worktree, deadline=deadline)
         if args.command == "review" and not scoped_files and not diff_text:
             raise PacketAskError(message("review_scope"), codes.SCOPE)
         _assert_packet_budget(question, scoped_files, diff_text, args.max_bytes)
@@ -495,6 +555,7 @@ def _run_task_guarded(
                 diff_text=diff_text,
                 parent=parent,
                 max_bytes=args.max_bytes,
+                deadline=deadline,
             )
         timeout_seconds, timeout_source = _resolve_timeout(
             args.timeout,
@@ -552,12 +613,15 @@ def _cleanup_packet(packet: Packet, parent: Path) -> None:
         raise
 
 
-def _task_inputs(args: argparse.Namespace) -> tuple[str, str, str | None, bool]:
+def _task_inputs(
+    args: argparse.Namespace,
+    deadline: Deadline,
+) -> tuple[str, str, str | None, bool]:
     """프로바이더·질문·스코프 플래그를 모은다."""
     provider = "paste" if args.command == "paste" else (args.provider or "paste")
     if args.dry_run:
         provider = "paste"
-    question = _read_question(args)
+    question = _read_question(args, deadline)
     if args.command == "research" and not question.strip():
         raise PacketAskError(message("research_question"), codes.USAGE)
     if not question.strip():

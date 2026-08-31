@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from packet_ask.errors import BudgetError, RedactionFailed, ScopeError
+from packet_ask.deadline import Deadline
 from packet_ask.lifecycle import close_packet_lease, create_packet_lease, remove_packet_tree
 from packet_ask.redact import (
     RedactionError,
@@ -98,13 +99,15 @@ def _assert_packet_relative(relative: Path) -> None:
         raise RedactionFailed(message("packet_relative"))
 
 
-def _init_git_boundary(root: Path) -> None:
+def _init_git_boundary(root: Path, deadline: Deadline | None = None) -> None:
     """상위 CLAUDE.md 탐색을 막기 위한 로컬 git 경계만 만든다."""
     try:
+        kwargs = {"deadline": deadline} if deadline is not None else {}
         run_bounded_git(
             root,
             ["init"],
             GIT_METADATA_OUTPUT_BYTES,
+            **kwargs,
         )
     except (BudgetError, ScopeError) as exc:
         raise RedactionFailed(message("packet_git_failed")) from exc
@@ -137,6 +140,7 @@ def build_packet(
     diff_text: str | None,
     parent: Path,
     max_bytes: int | None = None,
+    deadline: Deadline | None = None,
 ) -> Packet:
     """스크럽된 패킷 디렉터리를 parent 아래에 만든다."""
     parent.mkdir(parents=True, exist_ok=True)
@@ -186,7 +190,7 @@ def build_packet(
             "sha256_packet_md": packet_digest,
         }
         _write_private(root / "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
-        _init_git_boundary(root)
+        _init_git_boundary(root, deadline)
         return Packet(
             root=root,
             report=merged,
