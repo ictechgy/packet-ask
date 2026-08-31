@@ -1,6 +1,7 @@
 """CLI 종료 코드와 paste 출력."""
 
 import argparse
+import os
 import subprocess
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from packet_ask import cli
 from packet_ask.cli import main
 from packet_ask.errors import PacketAskError
 from packet_ask.keysource import CredentialStatus
+from packet_ask.lifecycle import PACKET_LEASE_NAME, STALE_PACKET_SECONDS, close_packet_lease
+from packet_ask.packet import build_packet
 
 
 def _init_repo(root: Path) -> Path:
@@ -532,6 +535,36 @@ def test_review_paste_uses_cache_dir_not_repo(
     assert not (repo / ".packet-ask-tmp").exists()
     leftovers = list(cache.glob("packet-ask-*")) if cache.exists() else []
     assert leftovers == []
+
+
+def test_review_reaps_old_unlocked_packet_before_building(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """새 task는 lease가 풀린 오래된 packet을 먼저 정리한다."""
+    repo = _init_repo(tmp_path / "repo")
+    cache_parent = tmp_path / "cache" / "packet-ask"
+    cache_parent.mkdir(parents=True)
+    stale = build_packet("review", "review", [], None, cache_parent)
+    stale_root = stale.root
+    close_packet_lease(stale._lease_fd)
+    stale._lease_fd = None
+    old = (stale_root / PACKET_LEASE_NAME).stat().st_mtime - STALE_PACKET_SECONDS - 1
+    os.utime(stale_root / PACKET_LEASE_NAME, (old, old))
+
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("PACKET_ASK_CACHE_DIR", str(cache_parent))
+    assert main(
+        [
+            "review",
+            "--provider",
+            "paste",
+            "--files",
+            "src/app.py",
+            "--question",
+            "review",
+        ]
+    ) == codes.SUCCESS
+    assert not stale_root.exists()
 
 
 def test_success_cleanup_failure_emits_no_success_body(
