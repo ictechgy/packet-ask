@@ -56,6 +56,7 @@ _EN = {
     "provider_path_symlink": "Symlinks are not allowed in provider profile paths.",
     "provider_path_invalid": "The provider profile path is not a private user-owned directory.",
     "kimi_cleanup_failed": "Could not remove the isolated Kimi session data.",
+    "kimi_cleanup_warning": "Warning: isolated Kimi session cleanup also failed.",
     "provider_unknown_status": "Unknown provider.",
     "provider_cli_missing": "{name} CLI is missing.",
     "kimi_flags_missing": "The CLI lacks --agent-file or --work-dir for an isolated one-shot.",
@@ -171,6 +172,7 @@ _KO = {
         "비공개 디렉터리가 아닙니다."
     ),
     "kimi_cleanup_failed": "격리 Kimi 세션 데이터를 지우지 못했습니다.",
+    "kimi_cleanup_warning": "경고: 격리 Kimi 세션 정리도 실패했습니다.",
     "provider_unknown_status": "알 수 없는 프로바이더입니다.",
     "provider_cli_missing": "{name} CLI가 없습니다.",
     "kimi_flags_missing": "--agent-file/--work-dir가 없어 격리 원샷을 못 합니다.",

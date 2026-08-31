@@ -19,6 +19,9 @@ scope, or task authority.
   no success body. When a provider or policy failure already exists, cleanup
   failure is reported as a non-sensitive warning and never replaces the
   original exit code.
+- Kimi session cleanup follows the same precedence: success still requires
+  cleanup, while an existing provider/output/signal exception is preserved and
+  a simultaneous cleanup failure becomes a fixed warning.
 - Removing the shared cache parent tolerates `ENOENT` and `ENOTEMPTY`, which are
   expected under concurrent packet-ask processes.
 

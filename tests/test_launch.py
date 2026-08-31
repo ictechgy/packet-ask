@@ -366,6 +366,108 @@ def test_kimi_cleanup_failure_is_reported(tmp_path: Path, monkeypatch: pytest.Mo
     assert exc.value.code == codes.INTERNAL
 
 
+@pytest.mark.parametrize("primary_code", [codes.PROVIDER_FAILED, codes.OUTPUT_GUARD])
+def test_kimi_cleanup_failure_does_not_mask_primary_error(
+    primary_code: int,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """provider/output 실패 뒤 session cleanup 오류는 원래 code를 보존한다."""
+    monkeypatch.setenv("PACKET_ASK_LANG", "en")
+    key = "kimi-review-key-value"
+    monkeypatch.setenv("PACKET_ASK_KIMI_KEY", key)
+    monkeypatch.setattr("packet_ask.launch.require_launchable", lambda _name: None)
+    monkeypatch.setattr(
+        "packet_ask.launch.resolve_trusted_executable",
+        lambda name: Path("/usr/bin/true") if name == "kimi" else None,
+    )
+    monkeypatch.setattr("packet_ask.launch.provider_home", lambda _name: tmp_path)
+
+    def fail_provider(*_args: object, **_kwargs: object) -> str:
+        raise PacketAskError("primary failure", primary_code)
+
+    def fail_cleanup(_home: Path) -> None:
+        raise PacketAskError("cleanup failure", codes.INTERNAL)
+
+    monkeypatch.setattr("packet_ask.launch.run_isolated_command", fail_provider)
+    monkeypatch.setattr("packet_ask.launch._cleanup_kimi_sessions", fail_cleanup)
+    dummy = Packet(root=tmp_path, report=RedactionReport(), _packet_text="hello")
+    with pytest.raises(PacketAskError) as exc:
+        launch_kimi(dummy, 1)
+    captured = capsys.readouterr()
+    assert exc.value.code == primary_code
+    assert "cleanup" in captured.err.lower()
+    assert key not in captured.err
+
+
+@pytest.mark.parametrize(
+    ("exception_type", "exception_args"),
+    [(SystemExit, (143,)), (KeyboardInterrupt, ())],
+)
+def test_kimi_cleanup_failure_does_not_mask_signal_exception(
+    exception_type: type[BaseException],
+    exception_args: tuple[object, ...],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """SystemExit·KeyboardInterrupt도 cleanup 오류보다 우선한다."""
+    monkeypatch.setenv("PACKET_ASK_LANG", "en")
+    monkeypatch.setenv("PACKET_ASK_KIMI_KEY", "kimi-review-key-value")
+    monkeypatch.setattr("packet_ask.launch.require_launchable", lambda _name: None)
+    monkeypatch.setattr(
+        "packet_ask.launch.resolve_trusted_executable",
+        lambda name: Path("/usr/bin/true") if name == "kimi" else None,
+    )
+    monkeypatch.setattr("packet_ask.launch.provider_home", lambda _name: tmp_path)
+
+    def fail_provider(*_args: object, **_kwargs: object) -> str:
+        raise exception_type(*exception_args)
+
+    monkeypatch.setattr("packet_ask.launch.run_isolated_command", fail_provider)
+    monkeypatch.setattr(
+        "packet_ask.launch._cleanup_kimi_sessions",
+        lambda _home: (_ for _ in ()).throw(
+            PacketAskError("cleanup failure", codes.INTERNAL)
+        ),
+    )
+    dummy = Packet(root=tmp_path, report=RedactionReport(), _packet_text="hello")
+    with pytest.raises(exception_type) as exc:
+        launch_kimi(dummy, 1)
+    if exception_type is SystemExit:
+        assert exc.value.code == 143
+    assert "cleanup" in capsys.readouterr().err.lower()
+
+
+def test_kimi_success_cleanup_failure_remains_internal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """성공 output은 session cleanup이 성공하기 전까지 반환하지 않는다."""
+    monkeypatch.setenv("PACKET_ASK_KIMI_KEY", "kimi-review-key-value")
+    monkeypatch.setattr("packet_ask.launch.require_launchable", lambda _name: None)
+    monkeypatch.setattr(
+        "packet_ask.launch.resolve_trusted_executable",
+        lambda name: Path("/usr/bin/true") if name == "kimi" else None,
+    )
+    monkeypatch.setattr("packet_ask.launch.provider_home", lambda _name: tmp_path)
+    monkeypatch.setattr(
+        "packet_ask.launch.run_isolated_command",
+        lambda *_args, **_kwargs: "success must remain buffered",
+    )
+    monkeypatch.setattr(
+        "packet_ask.launch._cleanup_kimi_sessions",
+        lambda _home: (_ for _ in ()).throw(
+            PacketAskError("cleanup failure", codes.INTERNAL)
+        ),
+    )
+    dummy = Packet(root=tmp_path, report=RedactionReport(), _packet_text="hello")
+    with pytest.raises(PacketAskError) as exc:
+        launch_kimi(dummy, 1)
+    assert exc.value.code == codes.INTERNAL
+
+
 def test_kimi_config_disables_tools_without_star_allowlist(tmp_path: Path) -> None:
     """도구 차단은 매칭되지 않는 명시적 allowlist 로 한다. '*' 관용구는 오해를 부른다."""
     from packet_ask.launch import ensure_kimi_config
