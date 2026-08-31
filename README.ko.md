@@ -127,7 +127,8 @@ receipt JSON에는 `timeout_seconds`, `timeout_source`(`auto`/`explicit`),
 
 모든 Git subprocess는 같은 bounded process-group runner를 씁니다. worktree
 discovery, diff 수집, packet-local `git init`이 deadline과 byte limit을
-공유하며 Ctrl+C는 생성된 Git/provider 그룹을 종료합니다. packet cleanup이
+공유합니다. Ctrl+C·SIGTERM·SIGHUP은 등록된 Git/provider 그룹을 종료하고
+packet cleanup 뒤 전파됩니다. packet cleanup이
 성공한 뒤에만 성공 stdout을 냅니다. packet payload byte/digest와 변경되지
 않은 사용자 provider overlay는 프로세스 안에서 재사용해 반복 read/hash/TOML
 parse를 피합니다.
@@ -152,7 +153,8 @@ label = "Gemini CLI"
 
 ## 종료 코드
 
-`10`–`14`는 벤더 프로세스를 시작하지 않았다는 뜻입니다.
+`10`–`14`는 벤더 프로세스를 시작하지 않았다는 뜻입니다. task 종료 signal은
+관례적인 상태를 유지해 SIGHUP은 129, SIGTERM은 143입니다.
 
 | 코드 | 의미 |
 |---:|---|

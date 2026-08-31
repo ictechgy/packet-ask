@@ -44,9 +44,8 @@ scope, or task authority.
 
 ## Deferred
 
-SIGTERM handlers, JSON error envelopes, and a provider-adapter registry need
-separate concurrency or compatibility design. They are not bundled into this
-change.
+JSON error envelopes and a provider-adapter registry need separate compatibility
+design. They are not bundled into this change.
 
 ## Stale packet leases
 
@@ -57,3 +56,13 @@ change.
 - Cleanup is anchored to open directory descriptors. It removes packet content
   before the lease marker, so an interrupted cleanup remains eligible for a
   later retry and a path replacement cannot redirect recursive deletion.
+
+## Task signals
+
+- Task-only SIGTERM and SIGHUP handlers raise conventional 143 and 129 exits.
+- Spawn and packet return/assignment temporarily defer delivery without leaving
+  the signals blocked in an exec child. The pending signal is replayed only
+  after the process group or packet has been registered for cleanup.
+- Packet removal blocks those signals only for the deletion critical section.
+  Previous handlers and the calling thread's original mask are restored on all
+  exits. Non-task commands do not install handlers.

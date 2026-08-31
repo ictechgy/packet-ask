@@ -38,7 +38,8 @@ paste 전용 내장: `grok`, `agy` (무도구 원샷 계약 확인 전).
 22. `Packet`은 렌더링 text/bytes/digest를 소유하고 receipt·launch가 재사용한다. user provider overlay는 path·mtime·size·언어로 캐시한다.
 23. `--timeout` 생략 시 최종 packet bytes로 64KiB 이하 1200초, 128KiB 이하 1500초, 초과 1800초를 고른다. 명시값은 clamp하지 않는다.
 24. receipt에 `timeout_seconds`/`timeout_source`/`timeout_applies`를 additive 공개하고 기존 `timing` 4-key 계약은 유지한다.
-25. 새 packet은 0600 advisory lease를 process 동안 보유한다. 다음 실행은 current-user 0700 direct child 중 lease가 unlock되고 24시간 지난 packet만 fd-relative로 비우며 lease marker는 마지막에 지운다.
+25. 새 packet은 directory advisory lock과 0600 lease marker를 process 동안 보유한다. 다음 실행은 current-user 0700 direct child 중 lock을 얻을 수 있고 marker가 24시간 지난 packet만 fd-relative로 비우며 marker는 마지막에 지운다.
+26. task 범위 SIGTERM/SIGHUP은 각각 143/129 `SystemExit`로 바꾼다. spawn과 packet assignment 동안만 전달을 미루고 등록 직후 기존 BaseException 경로가 child group과 packet을 정리한다.
 
 ## 금지
 
