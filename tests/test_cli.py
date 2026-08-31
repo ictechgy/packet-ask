@@ -1,6 +1,7 @@
 """CLI 종료 코드와 paste 출력."""
 
 import argparse
+import io
 import json
 import os
 import subprocess
@@ -11,7 +12,9 @@ import pytest
 from packet_ask import codes
 from packet_ask import cli
 from packet_ask.cli import main
-from packet_ask.errors import PacketAskError
+from packet_ask.cli import _parser, _read_question_stdin
+from packet_ask.deadline import Deadline
+from packet_ask.errors import BudgetError, PacketAskError
 from packet_ask.keysource import CredentialStatus
 from packet_ask.lifecycle import PACKET_LEASE_NAME, STALE_PACKET_SECONDS, close_packet_lease
 from packet_ask.packet import build_packet
@@ -28,6 +31,53 @@ def _init_repo(root: Path) -> Path:
     subprocess.run(["git", "add", "src/app.py"], cwd=root, check=True, capture_output=True)
     subprocess.run(["git", "commit", "-m", "init"], cwd=root, check=True, capture_output=True)
     return root
+
+
+def test_task_parser_exposes_preflight_timeout() -> None:
+    """task preflight timeout은 기본 30초이고 명시값을 그대로 받는다."""
+    default = _parser().parse_args(["review", "--provider", "paste", "--files", "a.py"])
+    explicit = _parser().parse_args(
+        [
+            "inspect",
+            "review",
+            "--files",
+            "a.py",
+            "--preflight-timeout",
+            "7",
+        ]
+    )
+    assert default.preflight_timeout == 30
+    assert explicit.preflight_timeout == 7
+
+
+def test_question_stdin_obeys_absolute_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """닫히지 않은 pipe는 provider 시작 전 bounded budget 오류로 끝난다."""
+    read_fd, write_fd = os.pipe()
+    stream = io.TextIOWrapper(os.fdopen(read_fd, "rb"), encoding="utf-8")
+    monkeypatch.setattr("sys.stdin", stream)
+    try:
+        with pytest.raises(BudgetError, match="preflight"):
+            _read_question_stdin(1024, Deadline.after(0.01))
+    finally:
+        os.close(write_fd)
+        stream.close()
+
+
+def test_question_stdin_requires_utf8(monkeypatch: pytest.MonkeyPatch) -> None:
+    """locale 대신 UTF-8 byte contract를 쓰고 잘못된 입력은 stable usage로 닫는다."""
+    read_fd, write_fd = os.pipe()
+    os.write(write_fd, b"\xff\xfe")
+    os.close(write_fd)
+    stream = io.TextIOWrapper(os.fdopen(read_fd, "rb"), encoding="utf-8")
+    monkeypatch.setattr("sys.stdin", stream)
+    try:
+        with pytest.raises(PacketAskError) as exc:
+            _read_question_stdin(1024, Deadline.after(1))
+    finally:
+        stream.close()
+    assert exc.value.code == codes.USAGE
 
 
 def test_review_paste_prints_untrusted_packet(

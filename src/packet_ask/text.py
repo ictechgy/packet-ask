@@ -113,6 +113,8 @@ _EN = {
     "packet_cleanup_warning": "Warning: temporary packet cleanup also failed.",
     "packet_gc_failed": "Could not safely clean stale temporary packets.",
     "packet_lease_failed": "Could not create the temporary packet lease.",
+    "question_timeout": "Question stdin exceeded the preflight time limit.",
+    "question_utf8": "Question stdin is not UTF-8 text.",
     "packet_git_failed": "Could not initialize the packet Git boundary.",
 }
 
@@ -237,6 +239,8 @@ _KO = {
     "packet_cleanup_warning": "경고: 임시 패킷 정리도 실패했습니다.",
     "packet_gc_failed": "오래된 임시 패킷을 안전하게 정리하지 못했습니다.",
     "packet_lease_failed": "임시 패킷 lease를 만들지 못했습니다.",
+    "question_timeout": "질문 stdin이 preflight 시간 제한을 넘었습니다.",
+    "question_utf8": "질문 stdin이 UTF-8 텍스트가 아닙니다.",
     "packet_git_failed": "패킷 Git 경계를 초기화하지 못했습니다.",
 }
 
