@@ -75,3 +75,12 @@ bundled into this change.
   credentials, provider stderr, and tracebacks are never serialized.
 - Human parse usage and runtime stderr remain unchanged when `--json` is absent;
   help remains human-readable even when `--json` is also present.
+
+## Packet inspection
+
+- `inspect review|research` builds the normal verified packet and withholds its
+  summary until descriptor-relative packet cleanup succeeds.
+- It never loads a provider, credential, or provider timeout and never returns
+  the question, packet body, temporary root, or provider-derived data.
+- The public summary is limited to mode, selector, escaped relative paths, file
+  count, final bytes, allowlisted redaction counts, and packet SHA-256.

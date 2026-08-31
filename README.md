@@ -61,6 +61,11 @@ uv run packet-ask doctor
 
 `research` does not attach local files or diffs by default. The only exception is `--include-files`. `--diff` and `--staged` are rejected.
 
+`inspect review` and `inspect research` build and verify the same scrubbed packet
+but print metadata only after cleanup. They do not load a provider, inspect a
+credential, calculate a provider timeout, or launch a vendor. Human output is
+one escaped line; `--json` returns only the fixed packet summary fields.
+
 `--max-files` applies to explicit files and diff paths. `--max-bytes` applies to
 the final UTF-8 `packet.md`, including framing and path labels. Reads stop at
 the configured bound, and explicit binary or non-UTF-8 files are rejected.
@@ -85,6 +90,10 @@ packet-ask credentials set glm --store macos-keychain --access command
 # Packet only; do not launch a vendor
 packet-ask review --provider paste --files src/app.py --question "Find race conditions in this code"
 packet-ask review --provider paste --files src/app.py --json --question "Find race conditions in this code"
+
+# Metadata only; no packet body, provider, or credential access
+packet-ask inspect review --files src/app.py --question "Find race conditions"
+packet-ask inspect review --diff HEAD --json --question "Review this change"
 
 # GLM. auto = dedicated env first, then packet-ask-glm in macOS Keychain
 packet-ask review --provider glm --credential-source auto --diff HEAD --question "Review this change"
