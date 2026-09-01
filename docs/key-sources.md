@@ -62,8 +62,9 @@ session cannot show that approval, so runtime retrieval remains fail-closed.
 - Missing or inaccessible credentials fail before the provider process starts.
 - Status reports existence only and never retrieves or prints a key.
 - A task-time read distinguishes a missing item, an existing but inaccessible
-  item, a read timeout, and an invalid UTF-8 value with fixed non-sensitive
-  messages. JSON failures remain the generic stable envelope.
+  item, a read timeout, an invalid UTF-8 value, and an indeterminate local read
+  failure with fixed non-sensitive messages. JSON failures remain the generic
+  stable envelope, so code-level consumers still see the same error code.
 - The exact resolved key is included in provider-output reflection checks, both
   before and after terminal-control removal.
 - Key values never enter receipts, timing, JSON metadata, errors, or config.

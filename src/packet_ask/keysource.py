@@ -199,7 +199,7 @@ def _read_macos_keychain(provider: str) -> str | None:
         ) from exc
     except OSError as exc:
         raise PacketAskError(
-            message("keychain_unavailable", provider=provider),
+            message("keychain_read_failed", provider=provider),
             codes.PROVIDER_MISSING,
         ) from exc
     if result.returncode != 0:

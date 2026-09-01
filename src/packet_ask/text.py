@@ -100,6 +100,7 @@ _EN = {
         "Headless use requires an item saved with --access command."
     ),
     "keychain_timeout": "Reading the packet-ask {provider} Keychain item timed out.",
+    "keychain_read_failed": "The packet-ask {provider} Keychain item could not be read.",
     "credential_prompt": "{provider} credential for this run: ",
     "credential_prompt_tty": "Credential prompt requires an interactive terminal.",
     "credential_prompt_failed": "Could not read the credential securely.",
@@ -231,6 +232,7 @@ _KO = {
         "headless 사용에는 --access command로 저장한 항목이 필요합니다."
     ),
     "keychain_timeout": "packet-ask {provider} Keychain 항목 읽기가 시간 초과됐습니다.",
+    "keychain_read_failed": "packet-ask {provider} Keychain 항목을 읽지 못했습니다.",
     "credential_prompt": "이번 실행의 {provider} credential: ",
     "credential_prompt_tty": "credential prompt에는 대화형 터미널이 필요합니다.",
     "credential_prompt_failed": "credential을 안전하게 읽지 못했습니다.",
