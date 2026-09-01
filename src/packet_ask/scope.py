@@ -345,7 +345,29 @@ def collect_git_diff(
     max_files: int = DEFAULT_MAX_FILES,
     deadline: Deadline | None = None,
 ) -> str:
-    """요청한 diff를 텍스트로 모은다. 사용자 문자열을 셸에 넣지 않는다."""
+    """요청한 diff 텍스트만 돌려준다."""
+    text, _paths = collect_git_diff_with_paths(
+        worktree,
+        range_spec,
+        unstaged,
+        staged,
+        max_bytes,
+        max_files,
+        deadline,
+    )
+    return text
+
+
+def collect_git_diff_with_paths(
+    worktree: Path,
+    range_spec: str | None = None,
+    unstaged: bool = False,
+    staged: bool = False,
+    max_bytes: int = DEFAULT_MAX_BYTES,
+    max_files: int = DEFAULT_MAX_FILES,
+    deadline: Deadline | None = None,
+) -> tuple[str, list[str]]:
+    """diff 텍스트와 바뀐 경로를 함께 돌려준다. name-status 를 다시 돌리지 않는다."""
     if max_bytes < 1:
         raise BudgetError(message("max_bytes", limit=max_bytes))
     if max_files < 1:
@@ -366,4 +388,4 @@ def collect_git_diff(
         raise ScopeError(message("missing_diff_paths"))
     _reject_oversized_diff(text, max_bytes)
     _reject_secret_diff_paths(paths)
-    return text
+    return text, list(paths)

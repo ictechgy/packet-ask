@@ -141,6 +141,52 @@ only a fixed code, kind, and message.
 The receipt line is an append-only token sequence. Parse it by whitespace and
 `key=value`; do not anchor a regex to the end of the line.
 
+## Disclosure surface
+
+The design says the user picks the packet. When a skill drives this CLI, the
+agent picks `--files`. The scope flags only stop "the whole tree by accident";
+they do not stop "256 KiB the agent chose".
+
+Commit a `.packet-ask-surface` file at the worktree root listing the path
+prefixes this repository may disclose:
+
+```
+# what this repository may send to a SUB
+src
+docs/public
+```
+
+With that file present, an explicit `--files` / `--include-files` path outside
+the declared prefixes is rejected with exit 11 before any vendor starts. Without
+the file, nothing changes. Matching is by path component, so `src` does not open
+`srcret/`. Absolute paths, `..`, globs, control characters, a symlinked
+declaration, and an empty declaration are all rejected.
+
+`--outside-surface` overrides the check for one run, and the receipt, `inspect`
+summary, and ledger all record `surface: overridden` instead of `enforced`.
+
+Diff paths are checked too. `--diff <ref>` can reach history without touching
+the worktree at all, so exempting diffs would leave a channel that changes
+nothing a reviewer would see.
+
+### What it does not do
+
+This is not a leak-prevention allowlist and it is not a sandbox. Its only
+mechanism is that widening the scope requires editing a committed file, so the
+edit shows up in `git status` or as a new commit and lands in the review you
+already do.
+
+- A declaration is about **paths, not contents**. Declaring `src` does not mean
+  `src` holds no secrets; the redaction denylist still applies and still is a
+  denylist.
+- A hard link inside a declared prefix that points at a file outside it is
+  accepted, because a hard link *is* the file and there is no original to
+  prefer. Creating one is itself a visible worktree change.
+- Content injected into an ordinary diff is not caught. The edit is visible, but
+  far less salient than a change to the declaration file.
+- A malformed declaration fails closed and `--outside-surface` does not bypass
+  it. Fix the file.
+
 ## Egress ledger
 
 The receipt goes to stderr once and is gone with the scrollback. When a skill

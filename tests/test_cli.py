@@ -600,7 +600,7 @@ def test_collect_scope_research_rejects_diff_without_policy_dependency(
     )
     monkeypatch.setattr(
         cli,
-        "collect_git_diff",
+        "collect_git_diff_with_paths",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             AssertionError("git diff must not run")
         ),
