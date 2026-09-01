@@ -20,7 +20,7 @@ from packet_ask.text import message
 
 _HELP_TIMEOUT_SECONDS = 10
 _HELP_OUTPUT_BYTES = 256 * 1024
-_HELP_CACHE: dict[tuple[str, int, int], str | None] = {}
+_HELP_CACHE: dict[tuple[str, int, int, int, int], str | None] = {}
 
 
 @dataclass(frozen=True)
@@ -57,13 +57,19 @@ def kimi_supports_isolated_print(help_text: str) -> bool:
     return all(has_cli_flag(help_text, flag) for flag in needed)
 
 
-def _help_stat_key(path: Path) -> tuple[str, int, int] | None:
-    """같은 바이너리 재프로브를 피하기 위한 경로·mtime·크기 키."""
+def _help_stat_key(path: Path) -> tuple[str, int, int, int, int] | None:
+    """같은 inode 바이너리 재프로브를 피하기 위한 identity key."""
     try:
         info = path.stat()
     except OSError:
         return None
-    return (str(path), int(info.st_mtime_ns), int(info.st_size))
+    return (
+        str(path),
+        int(info.st_dev),
+        int(info.st_ino),
+        int(info.st_mtime_ns),
+        int(info.st_size),
+    )
 
 
 def _help_text(executable: str) -> str | None:

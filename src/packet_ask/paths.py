@@ -146,17 +146,31 @@ def resolve_trusted_executable(name: str) -> Path | None:
 
 
 def _executable_if_valid(path: Path) -> Path | None:
-    """절대경로이고 현재 사용자 소유이며 그룹·기타에 쓸 수 없는 실행 파일만 받는다."""
-    if not path.is_absolute() or not path.exists() or path.is_dir():
-        return None
-    if not os.access(path, os.X_OK):
+    """신뢰 디렉터리의 canonical, private executable만 반환한다."""
+    if not path.is_absolute() or not _trusted_executable_directory(path.parent):
         return None
     try:
-        info = path.stat()
+        resolved = path.resolve(strict=True)
+        info = resolved.stat()
     except OSError:
+        return None
+    if not _trusted_executable_directory(resolved.parent):
+        return None
+    if not stat.S_ISREG(info.st_mode) or not os.access(resolved, os.X_OK):
         return None
     if info.st_uid not in {0, os.getuid()}:
         return None
     if stat.S_IMODE(info.st_mode) & 0o022:
         return None
-    return path
+    return resolved
+
+
+def _trusted_executable_directory(path: Path) -> bool:
+    """entry/target를 바꿀 수 있는 immediate directory 권한을 검사한다."""
+    try:
+        info = path.stat()
+    except OSError:
+        return False
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid not in {0, os.getuid()}:
+        return False
+    return not bool(stat.S_IMODE(info.st_mode) & 0o022)

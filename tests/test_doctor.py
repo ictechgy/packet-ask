@@ -147,6 +147,33 @@ def test_help_text_cache_invalidates_when_mtime_changes(
     assert len(calls) == 2
 
 
+def test_help_text_cache_invalidates_when_inode_changes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """path·mtime·size가 같아도 inode 교체면 help를 다시 probe한다."""
+    binary = tmp_path / "claude"
+    replacement = tmp_path / "replacement"
+    body = "#!/bin/sh\n"
+    binary.write_text(body, encoding="utf-8")
+    binary.chmod(0o700)
+    original = binary.stat()
+    calls: list[int] = []
+
+    def fake_run(_path: Path) -> str:
+        calls.append(1)
+        return "--bare\n"
+
+    monkeypatch.setattr("packet_ask.doctor._run_help", fake_run)
+    monkeypatch.setattr("packet_ask.doctor.resolve_trusted_executable", lambda _name: binary)
+    doctor._help_text("claude")
+    replacement.write_text(body, encoding="utf-8")
+    replacement.chmod(0o700)
+    os.utime(replacement, ns=(original.st_atime_ns, original.st_mtime_ns))
+    replacement.replace(binary)
+    doctor._help_text("claude")
+    assert len(calls) == 2
+
+
 def test_inspect_providers_probes_shared_claude_once(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
