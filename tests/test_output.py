@@ -200,4 +200,47 @@ def test_receipt_line_states_limits_inline() -> None:
             "sha256_packet_md": "a" * 64,
         }
     )
-    assert " guarantees=leak:no,sandbox:no,scrub:denylist" in line
+    # 반전 해석이 불가능해야 한다. "leak:no" 는 "유출 없음"으로 읽힌다.
+    assert " guarantees=leakage:not-guaranteed,cwd_sandbox:none,redaction:denylist" in line
+    assert "leak:no" not in line
+
+
+def test_positive_guarantee_keys_match_real_behaviour() -> None:
+    """부정문 키와 달리 redaction/doctor/policy_gate 는 '기전이 있다'는 긍정 서술이다.
+
+    구현이 회귀했는데 상수가 그대로 실리면 기계 판독 가능한 거짓 계약이 된다.
+    값만 고정하지 말고 각 기전이 실제로 살아 있는지 함께 고정한다.
+    """
+    from packet_ask import codes as _codes
+    from packet_ask.errors import PolicyError
+    from packet_ask.policy import assert_allowed_task
+    from packet_ask.receipt import GUARANTEES
+    from packet_ask.redact import scrub_text
+
+    # redaction: denylist — 알려진 패턴은 실제로 지워진다.
+    assert GUARANTEES["redaction"] == "denylist"
+    scrubbed, _report = scrub_text("token = 'ghp_" + "a" * 24 + "'")
+    assert "ghp_" not in scrubbed
+
+    # policy_gate: lexical-tripwire — 어휘 기반 게이트가 실제로 존재한다.
+    assert GUARANTEES["policy_gate"] == "lexical-tripwire"
+    with pytest.raises(PolicyError):
+        assert_allowed_task("review", "이 기능을 구현해줘")
+    # 그리고 어휘일 뿐이라 표현을 바꾸면 통과한다. 이것이 tripwire 라는 뜻이다.
+    assert_allowed_task("review", "이 기능의 설계를 검토만 해줘")
+    assert _codes.POLICY == 10
+
+
+def test_doctor_probe_is_help_text_only() -> None:
+    """doctor: help-text-only — 프로브 argv 가 --help 하나뿐임을 고정한다."""
+    import inspect as _inspect
+
+    from packet_ask import doctor as _doctor
+    from packet_ask.receipt import GUARANTEES
+
+    assert GUARANTEES["doctor"] == "help-text-only"
+    source = _inspect.getsource(_doctor)
+    # 프로브 argv 는 --help 하나뿐이고, 자식 spawn 지점도 하나뿐이어야 한다.
+    # 내용 있는 벤더 호출이 추가되면 둘 중 하나가 깨진다.
+    assert '[str(path), "--help"]' in source
+    assert source.count("subprocess.Popen(") == 1

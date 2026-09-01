@@ -52,7 +52,7 @@ paste 전용 내장: `grok`, `agy` (무도구 원샷 계약 확인 전).
 36. user alias label/note는 길이·UTF-8 byte 상한과 Cc/Zl/Zp 및 bidi Cf 거절을 적용하되 ZWNJ/ZWJ는 허용한다. research diff selector는 policy와 scope collector 양쪽에서 거절하고 cache OSError는 path 없는 confinement로 변환한다.
 37. task와 inspect는 `PacketInputs`로 question/policy를 먼저 확정하고 공통 packet pipeline context가 worktree·scope·budget·cache/GC·build 및 success/failure cleanup을 소유한다. provider lookup과 공개 output은 context 밖/본문에서 기존 순서를 유지한다.
 38. inspect `--breakdown`은 cached scrub 결과로 question/framing/item byte와 항목별 public redaction count만 additive 공개한다. task `--progress`는 opt-in 30초 heartbeat로 fixed phase/elapsed만 0초 writable check 뒤 stderr에 쓰고 provider 종료 시 join한다.
-39. 성공 표면은 자신의 한계를 같이 공개한다. receipt 와 inspect summary 에 코드 상수 `GUARANTEES`(leakage/vendor_training/vendor_local_copy/cwd_sandbox/redaction/doctor/policy_gate)를 additive 로 싣고, 사람이 읽는 receipt 한 줄에는 고정 축약을 붙인다. 산출값이 아니라 상수라서 구현이 변해도 과잉 약속으로 드리프트하지 않는다. 27의 실패 봉투는 넓히지 않는다. 실패는 아무것도 보내지 않은 상태라 상쇄할 잘못된 안심이 없다.
+39. 성공 표면은 자신의 한계를 같이 공개한다. receipt 와 inspect summary 에 코드 상수 `GUARANTEES`(leakage/vendor_training/vendor_local_copy/cwd_sandbox/redaction/doctor/policy_gate)를 additive 로 싣고, 사람이 읽는 receipt 한 줄에는 고정 축약을 붙인다. 산출값이 아니라 상수다. 부정문 키는 그래서 과잉 약속으로 드리프트하지 않는다. 기전 존재를 주장하는 redaction/doctor/policy_gate 는 상수가 기전보다 오래 살아남으면 기계 판독 가능한 거짓이 되므로 실제 동작 테스트에 묶는다. 목록은 전부가 아니다. 27의 실패 봉투는 넓히지 않는다. 실패는 아무것도 보내지 않은 상태라 상쇄할 잘못된 안심이 없다.
 
 ## 금지
 

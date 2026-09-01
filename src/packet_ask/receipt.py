@@ -27,7 +27,11 @@ GUARANTEES: Mapping[str, str] = MappingProxyType(
         "policy_gate": "lexical-tripwire",
     }
 )
-_RECEIPT_LINE_GUARANTEES = "leak:no,sandbox:no,scrub:denylist"
+# "leak:no" 는 "유출 없음"으로 정반대로 읽힌다. 오독 방지가 유일한 목적인 줄이므로
+# JSON 과 같은 어휘를 그대로 써서 반전 해석이 불가능하게 한다.
+_RECEIPT_LINE_GUARANTEES = (
+    "leakage:not-guaranteed,cwd_sandbox:none,redaction:denylist"
+)
 
 _ERRORS = {
     codes.INTERNAL: ("internal", "The command failed internally."),
