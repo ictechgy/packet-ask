@@ -20,7 +20,7 @@ paste 전용 내장: `grok`, `agy` (무도구 원샷 계약 확인 전).
 4. `doctor`는 지원 버전에서 필요하다고 본 help 플래그가 있는지 확인한다. 무도구를 수학적으로 증명하지 않는다. 불일치하면 실행하지 않는다.
 5. Kimi는 TUI를 열지 않고 `kimi --quiet --agent-file`(tools: []) `--work-dir` 패킷으로 원샷한다.
 6. 플래그를 확인하지 못하면 paste만 한다.
-7. 사용자 개시, 한 건, 재시도 없음, 병렬 없음. review 는 --files/--diff/--staged/--unstaged 중 하나를 요구한다. research 는 로컬 diff 를 받지 않는다.
+7. 사용자 개시, 한 건, 재시도 없음, 병렬 없음. task mode 는 `review` 와 `research` 둘뿐이고 문서화된 표면과 CLI 표면이 같아야 한다. review 는 --files/--diff/--staged/--unstaged 중 하나를 요구한다. research 는 로컬 diff 를 받지 않는다.
 8. 출력은 untrusted 봉투로 반환하고 패킷을 삭제한다.
 9. 런치는 고른 프로바이더만 `--help` 한다. help stdout/stderr는 합산 상한과 하나의 deadline 아래 읽고 실패 시 프로세스 그룹을 끝낸다. `doctor`는 카탈로그 전체를 보되 성공한 같은 바이너리는 canonical 경로·device·inode·mtime·크기로 캐시한다.
 10. GLM/Claude 자식은 공식 bare mode, 빈 built-in tools, strict inline empty MCP config를 쓰고 claude.ai MCP·오토메모리·부가 트래픽·에러 리포팅을 끈다. 벤더가 값을 무시할 수 있으며 OS sandbox는 아니다.

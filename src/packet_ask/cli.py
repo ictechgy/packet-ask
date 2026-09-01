@@ -106,8 +106,6 @@ def _parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     _add_task_parser(sub, "review", "Review only the scrubbed files or diff")
     _add_task_parser(sub, "research", "Question required; files only via --include-files")
-    _add_task_parser(sub, "brainstorm", "Brainstorm from a scrubbed question")
-    _add_task_parser(sub, "paste", "Print a packet without launching a vendor")
     inspect_cmd = sub.add_parser("inspect", help="Summarize a scrubbed packet without a provider")
     inspect_sub = inspect_cmd.add_subparsers(dest="inspect_mode", required=True)
     _add_inspect_parser(inspect_sub, "review", "Inspect an explicit review scope")
@@ -152,9 +150,9 @@ def _positive_int(raw: str) -> int:
 
 
 def _add_task_parser(sub: argparse._SubParsersAction, name: str, help_text: str) -> None:
-    """review/research/brainstorm/paste 공통 인자를 붙인다."""
+    """review/research 공통 인자를 붙인다."""
     item = sub.add_parser(name, help=help_text)
-    item.add_argument("--provider", required=name != "paste")
+    item.add_argument("--provider", required=True)
     item.add_argument("--question", default="")
     item.add_argument("--question-stdin", action="store_true")
     item.add_argument("--files", nargs="*", default=[], type=Path)
@@ -540,7 +538,7 @@ def _run_task_guarded(
     """종료 signal도 기존 process-group·packet cleanup 경로로 보낸다."""
     started = time.monotonic()
     deadline = Deadline.after(args.preflight_timeout)
-    mode = args.command if args.command != "paste" else "review"
+    mode = args.command
     require_review_scope = args.command == "review"
     inputs = _prepare_packet_inputs(
         args,
@@ -694,7 +692,7 @@ def _cleanup_packet(packet: Packet, parent: Path) -> None:
 
 def _task_provider(args: argparse.Namespace) -> str:
     """dry-run을 포함한 task provider만 고른다."""
-    provider = "paste" if args.command == "paste" else (args.provider or "paste")
+    provider = args.provider or "paste"
     if args.dry_run:
         provider = "paste"
     return provider

@@ -50,7 +50,7 @@ uv run packet-ask doctor
 
 ## Scope
 
-`review` requires **one** of the flags below. It does not send the whole working tree by default.
+`review` and `research` are the only task commands. `review` requires **one** of the flags below. It does not send the whole working tree by default.
 
 | Flag | What is sent |
 | --- | --- |
