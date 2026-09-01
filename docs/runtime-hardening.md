@@ -119,5 +119,5 @@ scope, or task authority.
 - One context owns worktree resolution, scope collection, packet budget, stale
   GC, packet construction, signal-safe cleanup, and success-output gating.
 - Provider lookup remains after policy but before explicit review-scope failure,
-  preserving existing error precedence. Paste/research/brainstorm remain
-  question-only; only review requires an explicit scope.
+  preserving existing error precedence. Research remains question-only;
+  only review requires an explicit scope.

@@ -27,7 +27,7 @@ def assert_allowed_task(
     has_diff: bool = False,
 ) -> None:
     """모드와 질문 조합이 서브 정책에 맞는지 검사한다."""
-    if mode not in {"review", "research", "brainstorm", "paste", "doctor"}:
+    if mode not in {"review", "research", "doctor"}:
         raise PolicyError(message("policy_unknown_mode", mode=mode))
     if _IMPLEMENTATION_RE.search(question or ""):
         raise PolicyError(message("policy_implementation"))

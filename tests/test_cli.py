@@ -199,23 +199,71 @@ def test_research_requires_question() -> None:
     assert code == codes.USAGE
 
 
-@pytest.mark.parametrize(
-    "argv",
-    [
-        ["paste", "--question", "review this question"],
-        ["research", "--provider", "paste", "--question", "research this question"],
-        ["brainstorm", "--provider", "paste", "--question", "brainstorm this question"],
-    ],
-)
 def test_non_review_modes_remain_question_only(
-    argv: list[str],
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """shared pipeline으로 수렴해도 review 외 mode에 scope를 새로 강제하지 않는다."""
     repo = _init_repo(tmp_path)
     monkeypatch.chdir(repo)
+    argv = ["research", "--provider", "paste", "--question", "research this question"]
     assert main(argv) == codes.SUCCESS
+
+
+@pytest.mark.parametrize("command", ["brainstorm", "paste"])
+def test_undocumented_task_commands_are_gone(command: str) -> None:
+    """문서에 없던 task mode는 파서 단계에서 사라졌다. provider paste 는 남는다."""
+    # --provider 를 채워야 "provider 누락" 때문에 통과하는 헛된 성공을 막는다.
+    with pytest.raises(SystemExit) as excinfo:
+        _parser().parse_args([command, "--provider", "paste", "--question", "t"])
+    assert excinfo.value.code == codes.USAGE
+
+
+def test_task_commands_are_exactly_review_and_research() -> None:
+    """CLI 표면 전체를 고정해 문서에 없는 task 커맨드가 다시 들어오지 못하게 한다."""
+    parser = _parser()
+    # argparse 내부 구조 의존. 아래 format_help 단언이 공개 API 교차 검증이다.
+    actions = [
+        action for action in parser._actions
+        if isinstance(action, argparse._SubParsersAction)
+    ]
+    assert set(actions[0].choices) == {
+        "review",
+        "research",
+        "inspect",
+        "doctor",
+        "providers",
+        "install-skills",
+        "credentials",
+    }
+    help_text = parser.format_help()
+    assert "brainstorm" not in help_text
+    assert "paste" not in help_text
+
+
+def test_empty_provider_is_not_a_silent_paste(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """빈 --provider 는 조용히 paste 로 떨어지지 않고 usage 로 거절한다."""
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    for provider in ("", "   "):
+        code = main(
+            ["review", "--provider", provider, "--files", "src/app.py",
+             "--question", "이 변경을 리뷰해줘"]
+        )
+        assert code == codes.USAGE
+        assert message("provider_required") in capsys.readouterr().err
+
+
+def test_provider_is_required_for_every_task_command() -> None:
+    """paste 커맨드가 사라졌으므로 --provider 는 모든 task 에서 필수다."""
+    for command in ("review", "research"):
+        with pytest.raises(SystemExit) as excinfo:
+            _parser().parse_args([command, "--question", "t"])
+        assert excinfo.value.code == codes.USAGE
 
 
 def test_policy_rejects_before_provider_lookup(
@@ -263,10 +311,7 @@ def test_explicit_timeout_is_never_clamped(requested: int) -> None:
     [
         ("research", [Path("a.py")], []),
         ("review", [], [Path("a.py")]),
-        ("brainstorm", [], [Path("a.py")]),
-        ("paste", [], [Path("a.py")]),
-        ("brainstorm", [Path("a.py")], [Path("b.py")]),
-        ("paste", [Path("a.py")], [Path("b.py")]),
+        ("future-mode", [], [Path("a.py")]),
     ],
 )
 def test_collect_scope_rejects_wrong_mode_file_flags(
@@ -290,30 +335,21 @@ def test_collect_scope_rejects_wrong_mode_file_flags(
         cli._collect_scope(args, tmp_path)
 
 
-@pytest.mark.parametrize(
-    "argv",
-    [
-        ["brainstorm", "--provider", "paste", "--include-files", "src/app.py"],
-        ["brainstorm", "--provider", "paste", "--files", "src/app.py",
-         "--include-files", "README.md"],
-        ["paste", "--files", "src/app.py", "--include-files", "README.md"],
-    ],
-)
-def test_include_files_is_never_silently_dropped(
-    argv: list[str],
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """research 외 mode의 --include-files 는 조용히 버려지지 않고 거절한다."""
-    repo = _init_repo(tmp_path)
-    (repo / "README.md").write_text("readme\n", encoding="utf-8")
-    monkeypatch.chdir(repo)
-    code = main([*argv, "--question", "이 범위를 넓게 봐줘"])
-    captured = capsys.readouterr()
-    assert code == codes.USAGE
-    # argparse 도 인자 오류에 2를 내므로 메시지까지 봐야 가드 적중이 증명된다.
-    assert message("include_files_mode") in captured.err
+def test_include_files_is_never_silently_dropped(tmp_path: Path) -> None:
+    """research 만 --include-files 를 소비한다. 새 mode 가 생겨도 조용히 버리지 않는다."""
+    args = argparse.Namespace(
+        command="future-mode",
+        files=[Path("a.py")],
+        include_files=[Path("b.py")],
+        max_files=25,
+        max_bytes=256 * 1024,
+        staged=False,
+        diff=None,
+        unstaged=False,
+    )
+    with pytest.raises(PacketAskError) as excinfo:
+        cli._collect_scope(args, tmp_path)
+    assert str(excinfo.value) == message("include_files_mode")
 
 
 def test_review_include_files_keeps_its_own_message(tmp_path: Path) -> None:
