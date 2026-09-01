@@ -16,7 +16,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 - known token family는 primary scrub과 shadow verify에서 대칭으로 확인합니다. secret literal·URL userinfo·PEM header도 shadow를 사용합니다. canonical dotted 국내 mobile 번호는 scrub하고 dot/dash/space 혼합형은 fail-closed합니다. 일반 E.164 coverage를 주장하지 않습니다.
 - 패킷은 원본 레포가 아니라 OS 캐시 전용 디렉터리에 만들고, 정상 종료 시 지웁니다. 새 패킷은 private directory advisory lock과 0600 lease marker를 만듭니다. 이후 실행은 현재 사용자 소유 0700 패킷 디렉터리의 lock을 얻을 수 있고 marker가 24시간 이상 됐을 때만 데이터를 지우며 active·fresh·symlink·비공개 권한 위반·marker가 없는 예전 디렉터리는 건너뜁니다. 따라서 강제 종료 뒤 데이터가 최소 24시간, 그리고 이후 정리 실행 전까지 남을 수 있습니다. 삭제는 일반 파일 삭제이며 안전한 소거가 아닙니다.
 - packet cache mkdir/stat/chmod 실패는 경로나 traceback을 노출하지 않는 고정 confinement 오류로 변환합니다.
-- allowlist 디렉터리에서 `claude`/`kimi` 실행 파일을 찾고 symlink를 canonical target으로 해석합니다. entry directory, target directory, regular executable은 root/현재 사용자 소유이고 그룹·기타에 쓸 수 없어야 합니다. path 교체 범위를 줄이지만 fd 기반 실행은 아닙니다. **배포 출처·서명은 확인하지 않습니다.**
+- allowlist 디렉터리에서 `claude`/`kimi` 실행 파일을 찾고 symlink를 canonical target으로 해석합니다. immediate entry directory, immediate target directory, regular executable은 mode bit 기준 root/현재 사용자 소유이고 그룹·기타에 쓸 수 없어야 합니다. path 교체 범위를 줄이지만 ACL을 검사하지 않고 fd 기반 실행도 아닙니다. user-private-group의 `0775 ~/.local/bin`도 의도적으로 거절하므로 디렉터리를 `0755`로 두거나 다른 private allowlist directory를 써야 합니다. doctor는 경로 없이 고정 owner/mode 실패를 표시합니다. **배포 출처·서명은 확인하지 않습니다.**
 - 부모 셸의 `ANTHROPIC_BASE_URL` / `ANTHROPIC_API_KEY` 는 복사하지 않습니다.
 - GLM은 [Z.ai Claude Code 연동](https://docs.z.ai/scenario-example/develop-tools/claude)처럼 자식 환경에만 엔드포인트와 resolve한 전용 GLM credential을 넣습니다.
 - resolve한 Kimi credential은 자식 환경으로만 넘기고 `config.toml` 에 쓰지 않습니다.

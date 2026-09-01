@@ -145,6 +145,21 @@ def resolve_trusted_executable(name: str) -> Path | None:
     return None
 
 
+def trusted_executable_candidate_exists(name: str) -> bool:
+    """경로를 공개하지 않고 allowlist entry 존재만 진단한다."""
+    override = os.environ.get(f"PACKET_ASK_{name.upper()}_BIN", "").strip()
+    candidates = [Path(override)] if override and Path(override).is_absolute() else []
+    if not candidates:
+        candidates = [directory / name for directory in trusted_bin_dirs()]
+    for candidate in candidates:
+        try:
+            if os.path.lexists(candidate):
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def _executable_if_valid(path: Path) -> Path | None:
     """신뢰 디렉터리의 canonical, private executable만 반환한다."""
     if not path.is_absolute() or not _trusted_executable_directory(path.parent):

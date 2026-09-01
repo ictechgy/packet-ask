@@ -179,6 +179,22 @@ def test_help_text_cache_invalidates_when_inode_changes(
     replacement.replace(binary)
     doctor._help_text("claude")
     assert len(calls) == 2
+    assert len(doctor._HELP_CACHE) == 1
+
+
+def test_doctor_distinguishes_untrusted_candidate_from_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """권한 검증 실패를 missing으로 오진하거나 실제 경로를 출력하지 않는다."""
+    monkeypatch.setattr("packet_ask.doctor._help_text", lambda _name: None)
+    monkeypatch.setattr(
+        "packet_ask.doctor.trusted_executable_candidate_exists",
+        lambda _name: True,
+    )
+    status = doctor.inspect_provider("glm")
+    assert status.installed is True
+    assert status.can_launch is False
+    assert status.note == "claude CLI exists but failed trusted owner/mode validation."
 
 
 def test_inspect_providers_probes_shared_claude_once(

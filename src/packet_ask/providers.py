@@ -234,15 +234,12 @@ def _load_user_aliases(path: Path) -> list[ProviderSpec]:
 def _user_alias_cache_key(path: Path) -> tuple[str, int, int, int, int, str] | None:
     """overlay inode identity와 기본 note 언어를 반영하는 cache key."""
     try:
-        info = path.stat()
-    except OSError:
-        return None
-    try:
-        canonical = str(path.resolve())
+        resolved = path.resolve(strict=True)
+        info = resolved.stat()
     except OSError:
         return None
     return (
-        canonical,
+        str(resolved),
         int(info.st_dev),
         int(info.st_ino),
         int(info.st_mtime_ns),

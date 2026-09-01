@@ -13,7 +13,11 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from packet_ask.paths import minimal_child_env, resolve_trusted_executable
+from packet_ask.paths import (
+    minimal_child_env,
+    resolve_trusted_executable,
+    trusted_executable_candidate_exists,
+)
 from packet_ask.providers import ProviderSpec, load_catalog, resolve_provider_adapter
 from packet_ask.signals import deferred_task_signals
 from packet_ask.text import message
@@ -91,6 +95,8 @@ def _help_text(executable: str) -> str | None:
         return _HELP_CACHE[key]
     text = _run_help(path)
     if key is not None and text is not None:
+        for stale in [item for item in _HELP_CACHE if item[0] == key[0]]:
+            _HELP_CACHE.pop(stale, None)
         _HELP_CACHE[key] = text
     return text
 
@@ -215,11 +221,15 @@ def _launch_status(spec: ProviderSpec, doctor_kind: str | None) -> ProviderStatu
     binary = spec.binary or spec.provider_id
     help_text = _help_text(binary)
     if help_text is None:
+        candidate_exists = trusted_executable_candidate_exists(binary)
         return ProviderStatus(
             spec.provider_id,
+            candidate_exists,
             False,
-            False,
-            message("provider_cli_missing", name=binary),
+            message(
+                "provider_cli_untrusted" if candidate_exists else "provider_cli_missing",
+                name=binary,
+            ),
             spec.source,
             spec.mode,
         )

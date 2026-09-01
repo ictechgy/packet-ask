@@ -124,6 +124,7 @@ def test_user_alias_cache_invalidates_when_inode_changes(tmp_path: Path) -> None
     ids = {item.provider_id for item in load_catalog(user_file=path)}
     assert "other" in ids
     assert "first" not in ids
+    assert len(providers._USER_ALIAS_CACHE) == 1
 
 
 def test_user_toml_adds_paste_alias(tmp_path: Path) -> None:

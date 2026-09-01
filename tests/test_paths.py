@@ -8,7 +8,12 @@ import pytest
 
 from packet_ask import codes
 from packet_ask.errors import PacketAskError
-from packet_ask.paths import packet_cache_dir, resolve_trusted_executable, trusted_bin_dirs
+from packet_ask.paths import (
+    packet_cache_dir,
+    resolve_trusted_executable,
+    trusted_bin_dirs,
+    trusted_executable_candidate_exists,
+)
 
 
 def test_packet_cache_dir_uses_override_and_is_private(
@@ -177,6 +182,7 @@ def test_group_writable_executable_directory_is_rejected(
     binary.chmod(0o700)
     monkeypatch.setattr("packet_ask.paths.trusted_bin_dirs", lambda: [trusted])
     assert resolve_trusted_executable("kimi") is None
+    assert trusted_executable_candidate_exists("kimi") is True
 
 
 def test_trusted_symlink_resolves_to_private_canonical_target(
