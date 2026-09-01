@@ -262,6 +262,10 @@ def test_explicit_timeout_is_never_clamped(requested: int) -> None:
     [
         ("research", [Path("a.py")], []),
         ("review", [], [Path("a.py")]),
+        ("brainstorm", [], [Path("a.py")]),
+        ("paste", [], [Path("a.py")]),
+        ("brainstorm", [Path("a.py")], [Path("b.py")]),
+        ("paste", [Path("a.py")], [Path("b.py")]),
     ],
 )
 def test_collect_scope_rejects_wrong_mode_file_flags(
@@ -283,6 +287,27 @@ def test_collect_scope_rejects_wrong_mode_file_flags(
     )
     with pytest.raises(PacketAskError):
         cli._collect_scope(args, tmp_path)
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["brainstorm", "--provider", "paste", "--include-files", "src/app.py"],
+        ["brainstorm", "--provider", "paste", "--files", "src/app.py",
+         "--include-files", "README.md"],
+        ["paste", "--files", "src/app.py", "--include-files", "README.md"],
+    ],
+)
+def test_include_files_is_never_silently_dropped(
+    argv: list[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """research 외 mode의 --include-files 는 조용히 버려지지 않고 거절한다."""
+    repo = _init_repo(tmp_path)
+    (repo / "README.md").write_text("readme\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+    assert main([*argv, "--question", "이 범위를 넓게 봐줘"]) == codes.USAGE
 
 
 def test_claude_without_dedicated_key(

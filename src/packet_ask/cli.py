@@ -279,6 +279,10 @@ def _collect_scope(
         raise PacketAskError(message("research_diff"), codes.USAGE)
     if active_mode == "review" and args.include_files:
         raise PacketAskError(message("review_include_files"), codes.USAGE)
+    # research 만 --include-files 를 소비한다. 나머지 mode에서 조용히 버리면
+    # 영수증이 보내지 않은 selector를 보고하므로 fail-closed 로 거절한다.
+    if active_mode != "research" and args.include_files:
+        raise PacketAskError(message("include_files_mode"), codes.USAGE)
     files_arg = list(args.include_files or []) if active_mode == "research" else list(args.files or [])
     scoped_files = []
     if files_arg:
