@@ -141,6 +141,38 @@ only a fixed code, kind, and message.
 The receipt line is an append-only token sequence. Parse it by whitespace and
 `key=value`; do not anchor a regex to the end of the line.
 
+## Disclosure surface
+
+The design says the user picks the packet. When a skill drives this CLI, the
+agent picks `--files`. The scope flags only stop "the whole tree by accident";
+they do not stop "256 KiB the agent chose".
+
+Commit a `.packet-ask-surface` file at the worktree root listing the path
+prefixes this repository may disclose:
+
+```
+# what this repository may send to a SUB
+src
+docs/public
+```
+
+With that file present, an explicit `--files` / `--include-files` path outside
+the declared prefixes is rejected with exit 11 before any vendor starts. Without
+the file, nothing changes. Matching is by path component, so `src` does not open
+`srcret/`. Absolute paths, `..`, globs, control characters, a symlinked
+declaration, and an empty declaration are all rejected.
+
+`--outside-surface` overrides the check for one run, and the receipt, `inspect`
+summary, and ledger all record `surface: overridden` instead of `enforced`.
+
+Diff selectors are not surface-checked. A diff is a footprint of the human's own
+work, and blocking review of a change outside the declared prefixes is not what
+this control is for.
+
+This is not a leak-prevention allowlist and it is not a sandbox. Its only
+mechanism is that widening the scope requires editing a committed file, so the
+edit shows up in `git status` and lands in the review you already do.
+
 ## Egress ledger
 
 The receipt goes to stderr once and is gone with the scrollback. When a skill

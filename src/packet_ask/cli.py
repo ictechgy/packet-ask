@@ -57,6 +57,7 @@ from packet_ask.scope import (
     collect_git_diff,
     resolve_worktree,
 )
+from packet_ask.surface import assert_within_surface, load_surface
 from packet_ask.signals import blocked_signals, deferred_task_signals, task_signal_handlers
 from packet_ask.text import message
 
@@ -97,6 +98,7 @@ class PreparedPacket:
     preflight_ms: int
     packet_started: float
     worktree: Path
+    surface: str
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -182,6 +184,7 @@ def _add_task_parser(sub: argparse._SubParsersAction, name: str, help_text: str)
         choices=CREDENTIAL_SOURCES,
         default="auto",
     )
+    item.add_argument("--outside-surface", action="store_true")
     item.add_argument("--dry-run", action="store_true")
     item.add_argument("--progress", action="store_true")
     item.add_argument("--line-numbers", action="store_true")
@@ -196,6 +199,7 @@ def _add_inspect_parser(
 ) -> None:
     """provider·credential·timeout 없이 review/research packet 인자를 붙인다."""
     item = sub.add_parser(name, help=help_text)
+    item.add_argument("--outside-surface", action="store_true")
     item.add_argument("--question", default="")
     item.add_argument("--question-stdin", action="store_true")
     item.add_argument("--files", nargs="*", default=[], type=Path)
@@ -320,6 +324,27 @@ def _collect_scope(
             deadline=deadline,
         )
     return scoped_files, diff_text
+
+
+def _check_surface(
+    args: argparse.Namespace,
+    worktree: Path,
+    scoped_files: list[ScopedFile],
+) -> str:
+    """사람이 커밋한 공개 표면 선언과 명시 파일 목록을 대조한다.
+
+    diff selector 에는 적용하지 않는다. diff 는 그 자체가 사람 작업의 발자국이고,
+    선언 밖 변경을 리뷰하지 못하게 막는 것은 이 통제의 목적이 아니다.
+    """
+    surface = load_surface(worktree)
+    if surface is None:
+        return "absent"
+    if not scoped_files:
+        return "enforced"
+    if getattr(args, "outside_surface", False):
+        return "overridden"
+    assert_within_surface([item.relative for item in scoped_files], surface)
+    return "enforced"
 
 
 def _selector_flags(args: argparse.Namespace) -> tuple[str | None, bool]:
@@ -524,6 +549,7 @@ def _run_inspect_guarded(
             prepared.scoped_files,
             prepared.diff_text,
             prepared.packet,
+            surface=prepared.surface,
             include_breakdown=args.breakdown,
         )
     if args.json:
@@ -576,6 +602,7 @@ def _run_task_guarded(
             timeout_seconds=timeout_seconds,
             timeout_source=timeout_source,
             timeout_applies=spec.mode == "launch",
+            surface=prepared.surface,
         )
         packet_ms = _ms_since(prepared.packet_started)
         # 런치 전에 남긴다. 여기서 실패하면 벤더가 시작되지 않는다. 조용히
@@ -644,6 +671,7 @@ def _packet_pipeline(
         )
         if require_review_scope and not scoped_files and not diff_text:
             raise PacketAskError(message("review_scope"), codes.SCOPE)
+        surface_state = _check_surface(args, worktree, scoped_files)
         _assert_packet_budget(inputs.question, scoped_files, diff_text, args.max_bytes)
         preflight_ms = _ms_since(started)
         packet_started = time.monotonic()
@@ -671,6 +699,7 @@ def _packet_pipeline(
             preflight_ms,
             packet_started,
             worktree,
+            surface_state,
         )
     except BaseException:
         if packet is not None and parent is not None:

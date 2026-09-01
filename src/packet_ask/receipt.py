@@ -56,6 +56,7 @@ def build_receipt(
     timeout_seconds: int,
     timeout_source: str,
     timeout_applies: bool,
+    surface: str,
 ) -> dict[str, Any]:
     """비밀 값 없이 보낸 범위를 요약한다."""
     paths = _packet_paths(files, diff_text)
@@ -71,6 +72,7 @@ def build_receipt(
         "timeout_seconds": timeout_seconds,
         "timeout_source": timeout_source,
         "timeout_applies": timeout_applies,
+        "surface": surface,
         "guarantees": dict(GUARANTEES),
     }
 
@@ -81,6 +83,7 @@ def build_packet_summary(
     files: list[ScopedFile],
     diff_text: str | None,
     packet: Packet,
+    surface: str,
     include_breakdown: bool = False,
 ) -> dict[str, Any]:
     """본문·질문·임시 경로 없이 검증된 packet metadata만 만든다."""
@@ -93,6 +96,7 @@ def build_packet_summary(
         "bytes": len(packet.payload_bytes()),
         "redaction": public_redaction_counts(packet.report),
         "sha256_packet_md": packet.payload_digest(),
+        "surface": surface,
         "guarantees": dict(GUARANTEES),
     }
     if include_breakdown:
@@ -127,6 +131,7 @@ def format_receipt_line(receipt: dict[str, Any]) -> str:
         f"packet-ask receipt provider={receipt['provider']} "
         f"selector={receipt['selector']} paths={paths} "
         f"bytes={receipt['bytes']} sha256={digest}{timeout}"
+        f" surface={receipt.get('surface', 'absent')}"
         f" guarantees={_RECEIPT_LINE_GUARANTEES}"
     )
 

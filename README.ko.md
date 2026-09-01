@@ -135,6 +135,36 @@ receipt 한 줄 끝에 `guarantees=leakage:not-guaranteed,cwd_sandbox:none,redac
 receipt 한 줄은 append-only 토큰 나열입니다. 공백과 `key=value` 로 파싱하고 줄 끝에
 정규식 앵커를 걸지 마세요.
 
+## 공개 표면 선언
+
+설계는 "사용자가 고른 패킷"입니다. 그런데 스킬이 이 CLI 를 몰면 `--files` 를 고르는
+것은 에이전트입니다. 스코프 플래그는 "실수로 워킹 트리 전체"만 막고 "에이전트가 고른
+256 KiB"는 막지 못합니다.
+
+워크트리 루트에 `.packet-ask-surface` 를 커밋해 이 저장소가 공개해도 되는 경로
+접두어를 선언하세요.
+
+```
+# 이 저장소가 SUB 에 보내도 되는 범위
+src
+docs/public
+```
+
+이 파일이 있으면 선언 밖의 명시 `--files` / `--include-files` 경로는 벤더 시작 전에
+exit 11 로 거절됩니다. 파일이 없으면 아무것도 달라지지 않습니다. 매칭은 경로 구성요소
+단위라 `src` 선언이 `srcret/` 를 열어주지 않습니다. 절대 경로, `..`, 글롭, 제어문자,
+심링크 선언, 빈 선언은 모두 거절합니다.
+
+`--outside-surface` 로 한 번 우회할 수 있고, receipt 와 `inspect` summary 와 대장에
+`enforced` 대신 `overridden` 이 남습니다.
+
+diff selector 에는 적용하지 않습니다. diff 는 사람 작업의 발자국이고, 선언 밖 변경을
+리뷰하지 못하게 막는 것은 이 통제의 목적이 아닙니다.
+
+이것은 유출 방지 allowlist 가 아니고 샌드박스도 아닙니다. 유일한 기제는 범위를 넓히려면
+커밋된 파일을 고쳐야 하고 그 편집이 `git status` 에 나타나 이미 하고 있는 리뷰 위로
+올라온다는 것뿐입니다.
+
 ## 발송 대장
 
 영수증은 stderr 로 한 번 나가고 스크롤백과 함께 사라집니다. 스킬이 이 CLI 를 몰면
