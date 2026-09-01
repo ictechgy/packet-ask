@@ -12,6 +12,8 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
+from typing import Mapping
 
 from packet_ask.paths import (
     minimal_child_env,
@@ -25,6 +27,32 @@ from packet_ask.text import message
 _HELP_TIMEOUT_SECONDS = 10
 _HELP_OUTPUT_BYTES = 256 * 1024
 _HELP_CACHE: dict[tuple[str, int, int, int, int], str | None] = {}
+
+# doctor 성공은 "설치가 됐다"로 읽히고 그 다음 문장은 대개 "그러니 안전하다"이다.
+# 그런데 `receipt.GUARANTEES` 는 성공한 task 에만 붙으므로, 사람이 이 도구를
+# 믿을지 정하는 첫 화면인 doctor 에는 그 상쇄가 도착하지 않는다. 상쇄해야 할
+# 신호보다 상쇄가 늦게 오면 안 된다.
+# GUARANTEES 와 같은 이유로 산출값이 아니라 코드 상수다. 검사 로직이 바뀌어도
+# 상수가 스스로 강해지지 않아야 한다.
+DOCTOR_SIGNALS: Mapping[str, str] = MappingProxyType(
+    {
+        "verification": "flags-mentioned",
+        "sandbox": "unproven",
+        "signatures": "unverified",
+    }
+)
+# 사람 줄과 상수가 갈라지지 않도록 같은 매핑에서 만든다. receipt 한 줄과 달리
+# 부분집합이 아니라 전부이므로 별도 리터럴을 두면 드리프트만 생긴다.
+_SIGNALS_LINE_BODY = ",".join(f"{key}:{value}" for key, value in DOCTOR_SIGNALS.items())
+
+
+def format_doctor_signals_line() -> str:
+    """doctor 가 스스로 밝히는 검증 수준 한 줄.
+
+    영수증과 같은 규약으로 append-only 토큰만 쓴다. 뒤에 키가 붙을 수 있으니
+    줄 끝에 정규식을 앵커하면 안 된다.
+    """
+    return f"packet-ask doctor signals={_SIGNALS_LINE_BODY}"
 
 
 @dataclass(frozen=True)

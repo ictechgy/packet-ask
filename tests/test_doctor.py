@@ -316,3 +316,91 @@ def test_help_probe_timeout_kills_descendant_after_leader_exits(
         time.sleep(0.05)
     else:
         pytest.fail("help probe descendant survived process-group cleanup")
+
+
+def test_doctor_signals_are_fixed_constants_not_computed() -> None:
+    """doctor 한계 공개도 산출값이 아니라 코드 상수여야 드리프트하지 않는다.
+
+    `GUARANTEES` 와 같은 이유다. 검사 로직이 바뀌어도 상수는 스스로 강해지지
+    않아야 한다.
+    """
+    from types import MappingProxyType
+
+    from packet_ask.doctor import DOCTOR_SIGNALS
+
+    assert isinstance(DOCTOR_SIGNALS, MappingProxyType)
+    assert dict(DOCTOR_SIGNALS) == {
+        "verification": "flags-mentioned",
+        "sandbox": "unproven",
+        "signatures": "unverified",
+    }
+    with pytest.raises(TypeError):
+        DOCTOR_SIGNALS["sandbox"] = "enforced"  # type: ignore[index]
+
+
+def test_doctor_output_states_its_own_limits(capsys: pytest.CaptureFixture[str]) -> None:
+    """한계는 그것을 근거로 판단하기 전에 도착해야 한다.
+
+    `guarantees` 는 성공한 task 의 영수증에만 붙는다. 그런데 사람이 이 도구를
+    믿을지 정하는 첫 표면은 설치 직후의 `doctor` 다. 상쇄해야 할 신호보다
+    상쇄가 늦게 오면 안 된다.
+    """
+    from packet_ask.cli import main
+
+    assert main(["doctor"]) == 0
+    out = capsys.readouterr().out
+    assert (
+        "packet-ask doctor signals="
+        "verification:flags-mentioned,sandbox:unproven,signatures:unverified" in out
+    )
+
+
+def test_doctor_signal_line_is_append_only_tokens() -> None:
+    """영수증과 같은 규약이다. 줄 끝에 정규식을 앵커하지 않게 토큰 나열로 둔다."""
+    from packet_ask.doctor import format_doctor_signals_line
+
+    line = format_doctor_signals_line()
+    assert line.startswith("packet-ask doctor signals=")
+    assert "\n" not in line
+    assert line.isascii()
+
+
+def test_doctor_verification_signal_matches_real_behaviour() -> None:
+    """`verification: flags-mentioned` 는 기전이 있다는 긍정 서술이다.
+
+    부정문 키와 달리 이 값은 구현이 회귀하면 기계 판독 가능한 거짓이 된다.
+    실제로 help 텍스트의 플래그 언급만 보고, 없으면 실행 후보에서 빠지는지
+    함께 고정한다.
+    """
+    from packet_ask.doctor import DOCTOR_SIGNALS, has_cli_flag
+
+    assert DOCTOR_SIGNALS["verification"] == "flags-mentioned"
+    complete = (
+        "--bare\n-p\n--tools\n--permission-mode\n--no-session-persistence\n"
+        "--setting-sources\n--mcp-config\n--strict-mcp-config\n"
+    )
+    assert has_cli_flag(complete, "--bare") is True
+    assert claude_supports_isolated_print(complete) is True
+    # 언급이 사라지면 실행 후보에서 빠진다. 언급만 본다는 것이 그 뜻이다.
+    assert claude_supports_isolated_print(complete.replace("--bare\n", "")) is False
+
+
+def test_doctor_does_not_create_a_sandbox_or_check_signatures() -> None:
+    """`sandbox: unproven` / `signatures: unverified` 가 실제 코드와 맞는지 본다.
+
+    doctor 가 언젠가 진짜 샌드박스나 서명 검증을 하게 되면 이 테스트가 먼저
+    깨져서 상수를 같이 고치도록 만든다.
+    """
+    import inspect as _inspect
+
+    from packet_ask import doctor as _doctor
+    from packet_ask.doctor import DOCTOR_SIGNALS
+
+    assert DOCTOR_SIGNALS["sandbox"] == "unproven"
+    assert DOCTOR_SIGNALS["signatures"] == "unverified"
+    source = _inspect.getsource(_doctor)
+    # 샌드박스를 만드는 호출도, 서명·해시를 확인하는 호출도 없다.
+    for absent in ("sandbox-exec", "codesign", "hashlib", "sha256"):
+        assert absent not in source
+    # 자식에게 주는 것은 최소 환경일 뿐이고 그것은 격리 기제가 아니다.
+    assert "minimal_child_env(probe)" in source

@@ -25,7 +25,7 @@ from packet_ask.keysource import (
     credential_status,
     store_macos_keychain,
 )
-from packet_ask.doctor import inspect_providers
+from packet_ask.doctor import format_doctor_signals_line, inspect_providers
 from packet_ask.deadline import Deadline
 from packet_ask.errors import PacketAskError
 from packet_ask.install_skills import install_skills
@@ -424,13 +424,16 @@ def _run_install_skills(force: bool) -> int:
 
 
 def _run_doctor() -> int:
-    """프로바이더 상태를 출력한다."""
+    """프로바이더 상태와 그 판정의 한계를 함께 출력한다."""
     for item in inspect_providers():
         launch = "launch" if item.mode == "launch" and item.can_launch else "paste-only"
         print(
             f"{item.name} | source={item.source} | mode={item.mode} | "
             f"installed={item.installed} | {launch} | {item.note}"
         )
+    # 위 줄들은 전부 성공 신호다. 무엇을 확인하지 않았는지가 같이 나가지
+    # 않으면 "설치됨"이 "안전함"으로 읽힌다.
+    print(format_doctor_signals_line())
     return codes.SUCCESS
 
 
