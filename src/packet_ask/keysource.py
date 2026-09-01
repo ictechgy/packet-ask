@@ -187,9 +187,27 @@ def _read_macos_keychain(provider: str) -> str | None:
             env=_security_env(),
             timeout=_KEYCHAIN_TIMEOUT_SECONDS,
         )
-    except (OSError, subprocess.TimeoutExpired, UnicodeError):
-        return None
+    except subprocess.TimeoutExpired as exc:
+        raise PacketAskError(
+            message("keychain_timeout", provider=provider),
+            codes.PROVIDER_MISSING,
+        ) from exc
+    except UnicodeError as exc:
+        raise PacketAskError(
+            message("credential_invalid", provider=provider),
+            codes.PROVIDER_MISSING,
+        ) from exc
+    except OSError as exc:
+        raise PacketAskError(
+            message("keychain_read_failed", provider=provider),
+            codes.PROVIDER_MISSING,
+        ) from exc
     if result.returncode != 0:
+        if _keychain_item_exists(provider):
+            raise PacketAskError(
+                message("keychain_unavailable", provider=provider),
+                codes.PROVIDER_MISSING,
+            )
         return None
     return _validate_key(result.stdout, provider)
 
@@ -264,7 +282,7 @@ def resolve_provider_key(provider: str, source: str = "auto") -> str:
         raise PacketAskError(message("missing_key", name=env_name), codes.PROVIDER_MISSING)
     if source == "keychain":
         raise PacketAskError(
-            message("keychain_unavailable", provider=provider),
+            message("keychain_missing", provider=provider),
             codes.PROVIDER_MISSING,
         )
     raise PacketAskError(message("credential_prompt_failed"), codes.USAGE)

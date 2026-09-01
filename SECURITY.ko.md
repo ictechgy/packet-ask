@@ -36,7 +36,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 - 도구 소유 프로바이더 프로필 디렉터리는 최종 경로 심링크를 거절합니다. Kimi 세션 정리 실패는 숨기지 않고 보고합니다.
 - Kimi 성공 output은 session cleanup 성공 전까지 보류합니다. provider·output-guard·signal 실패가 이미 있으면 동시에 발생한 Kimi cleanup 실패는 고정 비민감 warning만 내고 primary failure를 바꾸지 않습니다.
 - Kimi config·실행·session cleanup은 0600 non-inheritable advisory run lock을 공유합니다. lock 획득은 30초로 제한하며 경쟁 실행은 `KIMI_CODE_HOME` 변경이나 Kimi launch 전에 실패합니다.
-- worktree discovery, diff 수집, packet-local Git 초기화는 하나의 bounded runner를 쓰며 timeout·출력 초과·interrupt에서 process group을 종료합니다. task 범위 SIGTERM/SIGHUP handler는 생성한 process group 또는 packet이 등록될 때까지 signal 전달을 미룬 뒤 같은 child·packet cleanup 경로를 재사용합니다.
+- worktree discovery, diff 수집, packet-local Git 초기화는 하나의 bounded runner를 쓰며 timeout·출력 초과·interrupt에서 process group을 종료합니다. task 범위 SIGINT/SIGTERM/SIGHUP handler는 생성한 process group 또는 packet이 등록될 때까지 signal 전달을 미룬 뒤 같은 child·packet cleanup 경로를 재사용합니다.
 - 임시 packet을 제거한 뒤에만 성공 출력을 내보냅니다. cleanup 실패는 기존 provider 실패 코드를 바꾸지 않습니다.
 - 선택 `--progress`는 고정 launch phase와 음이 아닌 경과 ms만 출력합니다. 기본은 off이며 실제 stderr fd에서는 작은 write 전 0초 writable check를 하고 최종 timing/output 전에 멈춥니다.
 - receipt와 manifest의 redaction metadata는 음이 아닌 정수 count allowlist만 직렬화하며 내부 report 필드는 포함하지 않습니다.

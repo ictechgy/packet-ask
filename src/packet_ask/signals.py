@@ -11,7 +11,7 @@ from types import FrameType
 
 def _task_signals() -> tuple[signal.Signals, ...]:
     """현재 플랫폼에서 packet cleanup에 연결할 종료 signal 목록."""
-    names = ("SIGTERM", "SIGHUP")
+    names = ("SIGINT", "SIGTERM", "SIGHUP")
     return tuple(getattr(signal, name) for name in names if hasattr(signal, name))
 
 

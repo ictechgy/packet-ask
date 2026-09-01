@@ -184,6 +184,9 @@ variable wins, then the canonical macOS Keychain item is tried. `env`,
 `prompt` requires an interactive terminal and never persists the value. Status
 checks Keychain item existence without retrieving its password. Resolved keys
 from every source are included in raw and terminal-normalized output guards.
+Task-time reads use fixed non-sensitive messages to distinguish a missing item,
+an inaccessible item, a timeout, an invalid value, and an indeterminate local
+read failure; JSON errors and code-level classification remain generic.
 These sources are selected through an immutable builtin backend registry;
 `auto` contains only `env` then `keychain`. There is no user backend
 registration, arbitrary command, key-file, or third-party settings adapter.
@@ -236,7 +239,7 @@ label = "Gemini CLI"
 ## Exit codes
 
 `10`–`14` mean the vendor process was never started. Task termination preserves
-the conventional signal exit status: SIGHUP is 129 and SIGTERM is 143.
+the conventional signal exit status: SIGHUP is 129, SIGINT is 130, and SIGTERM is 143.
 
 | Code | Meaning |
 |---:|---|
