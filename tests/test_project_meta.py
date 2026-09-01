@@ -160,3 +160,39 @@ def test_smoke_test_script_exists() -> None:
     assert "packet-ask" in text
     assert "SKILL.md" in text
     assert "pytest" not in text
+
+
+SCOPED_AGENTS_PATHS = (
+    "src/packet_ask/AGENTS.md",
+    "tests/AGENTS.md",
+    "docs/AGENTS.md",
+    ".github/AGENTS.md",
+)
+
+
+def test_agents_guidance_exists_at_every_declared_scope() -> None:
+    """지침은 AGENTS.md 로 관리하고 서브트리별로 나눈다."""
+    assert (ROOT / "AGENTS.md").is_file()
+    for relative in SCOPED_AGENTS_PATHS:
+        assert (ROOT / relative).is_file(), relative
+
+
+def test_claude_md_points_at_agents_md_instead_of_duplicating_it() -> None:
+    """CLAUDE.md 는 포인터로만 둔다. 지침이 두 곳으로 갈라지면 하나가 낡는다."""
+    text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "AGENTS.md" in text
+    for relative in SCOPED_AGENTS_PATHS:
+        assert relative in text, relative
+    # 규칙 본문이 흘러들면 길어진다. 포인터는 짧게 유지한다.
+    assert len(text.splitlines()) < 40
+
+
+def test_scoped_agents_links_resolve() -> None:
+    """인덱스 링크가 옮겨진 파일을 조용히 가리키지 않게 한다."""
+    for source in ("AGENTS.md", "CLAUDE.md", *SCOPED_AGENTS_PATHS):
+        base = (ROOT / source).parent
+        text = (ROOT / source).read_text(encoding="utf-8")
+        for target in re.findall(r"\]\(([^)]+)\)", text):
+            if target.startswith("http"):
+                continue
+            assert (base / target).resolve().exists(), f"{source} -> {target}"

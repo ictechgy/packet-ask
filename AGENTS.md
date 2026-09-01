@@ -1,0 +1,90 @@
+# Agent Instructions
+
+이 저장소에서 일하는 모든 에이전트가 먼저 읽는 파일이다. 하위 디렉터리의
+`AGENTS.md` 는 그 서브트리 안에서 이 파일을 덮어쓴다.
+
+## 이 도구가 무엇인가
+
+로컬 CLI **packet-ask** 는 MAIN(지금 세션)을 실제 워크트리에 두고, SUB 벤더
+CLI 에는 **의도적으로 고른 뒤 스크럽한 패킷만** 넘긴다.
+
+유출 없음도 학습 금지도 주장하지 않는다. 이 문장은 마케팅 문구가 아니라
+설계 제약이다. 어떤 변경도 이 도구가 실제보다 더 많이 보장하는 것처럼
+읽히게 만들면 안 된다.
+
+## 절대 하지 않는 것
+
+아래는 합의된 거절 목록이다. **다시 제안하지 말 것.**
+
+- 커스텀 HTTP 클라이언트. 공식 CLI 원샷만 쓴다.
+- 부모 프로세스의 `ANTHROPIC_BASE_URL` 등 환경 변수 변경.
+- 사용자 TOML 에서 실행 파일·argv·env 지정. 사용자 overlay 는 paste 별명뿐이다.
+- 워커 팜, 병렬 팬아웃, 재시도.
+- `--all` 이나 암묵적 전체 레포·원격 URL 수집.
+- SUB 에게 구현·패치 적용·장애 대응 위임.
+- 클립보드 연동, 레포 전체 랭킹, 패킷 자동 분할, tree-sitter 압축.
+
+## 언어와 커밋
+
+- 대화·주석·커밋 본문은 한국어. 식별자는 영어.
+- 커밋은 Conventional Commits. 한 커밋에 문서와 동작 변경을 섞지 않는다.
+- 브랜치는 `feature/` `fix/` `refactor/` `chore/` `release/`.
+- **`main` 에 직접 커밋하지 않는다.** `gh pr merge` 가 로컬 `main` 을 체크아웃
+  하면 태그만 달고 바로 작업 브랜치로 떠난다.
+
+## 작업 순서
+
+1. `git fetch origin && git checkout -b <타입>/<주제> origin/main`
+2. 동작을 바꾸기 전에 **실패하는 테스트를 먼저** 넣는다.
+3. 구현하고 `uv run pytest` 를 통과시킨다.
+4. PR 을 열고 독립 리뷰를 받는다.
+5. 반영·기각을 커밋 메시지에 근거와 함께 남긴다.
+
+## 리뷰 규약
+
+- **자기 승인 금지.** 동작을 바꿨으면 별도 리뷰 패스를 거친다.
+- 이 저장소의 관례는 packet-ask 자신으로 자기 diff 를 리뷰시키는 것이다.
+
+  ```bash
+  uv run --offline packet-ask review --provider glm --credential-source keychain \
+    --diff origin/main...HEAD --progress --question-stdin < <질문파일>
+  ```
+
+- **SUB 답변을 그대로 채택하지 않는다.** 리뷰어는 diff 만 본다. "확인 필요"
+  류 지적은 반드시 로컬에서 재현하고, 기각한 건은 기각 근거를 남긴다.
+- 질문은 `--question-stdin` 으로 넘긴다. `--question` 은 argv 라 프로세스
+  목록과 셸 히스토리에 보인다.
+
+## 검증
+
+머지 전에 아래가 전부 통과해야 한다. lint 도구는 쓰지 않는다.
+
+```bash
+uv run pytest
+uv build
+release_version=$(uv version --short)
+uv run --isolated --no-project --with "dist/packet_ask-${release_version}-py3-none-any.whl" tests/smoke.py
+uv run --isolated --no-project --with "dist/packet_ask-${release_version}.tar.gz" tests/smoke.py
+```
+
+"통과할 것이다"가 아니라 **실행한 출력**으로 완료를 보고한다. 실패했으면
+실패했다고 말한다.
+
+## 범위 규율
+
+- 한 배치를 합의 없이 넓히지 않는다. 요청받지 않은 리팩터링을 끼워 넣지 않는다.
+- 기존 코드를 고치기 전에 그 코드의 의도와 맥락을 먼저 파악한다.
+- 새 파일을 만들기 전에 비슷한 역할의 기존 파일이 있는지 확인한다.
+- `HANDOFF.md` 와 `.serena/` 와 `.omc/` 는 `.gitignore` 대상이다. 커밋하지 않는다.
+  `HANDOFF.md` 는 다음 에이전트를 위한 로컬 노트이니 배치를 끝내면 갱신한다.
+
+## Scoped Guidance Index
+
+아래 파일들은 해당 디렉터리 아래에서 작업할 때 자동으로 활성화된다. 링크는
+찾아보기용이고, 권위는 파일의 위치에서 나온다.
+
+- [src/packet_ask/AGENTS.md](src/packet_ask/AGENTS.md) — 구현 불변식, 출력
+  계약, 메시지 카탈로그, 종료 코드.
+- [tests/AGENTS.md](tests/AGENTS.md) — TDD 순서, 계약 테스트, 수집 함정.
+- [docs/AGENTS.md](docs/AGENTS.md) — 설계 불변식 번호, 문서 언어 규칙.
+- [.github/AGENTS.md](.github/AGENTS.md) — CI 핀, 릴리스, Trusted Publishing.
