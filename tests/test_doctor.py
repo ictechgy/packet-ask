@@ -21,7 +21,7 @@ def clear_help_cache() -> Iterator[None]:
 
 def test_claude_help_with_required_flags() -> None:
     """필수 플래그가 있으면 실행 후보가 된다."""
-    help_text = "--bare\n-p\n--tools\n--permission-mode\n--no-session-persistence\n--setting-sources\n"
+    help_text = "--bare\n-p\n--tools\n--permission-mode\n--no-session-persistence\n--setting-sources\n--mcp-config\n--strict-mcp-config\n"
     assert claude_supports_isolated_print(help_text) is True
 
 
@@ -29,6 +29,13 @@ def test_claude_help_missing_bare() -> None:
     """--bare 가 없으면 실행 후보가 아니다."""
     help_text = "--tools\n--no-session-persistence\n--setting-sources\n"
     assert claude_supports_isolated_print(help_text) is False
+
+
+def test_claude_help_requires_strict_explicit_mcp_flags() -> None:
+    """빈 MCP config만 쓰려면 config와 strict flag가 모두 필요하다."""
+    base = "--bare\n-p\n--tools\n--permission-mode\n--no-session-persistence\n--setting-sources\n"
+    assert claude_supports_isolated_print(base + "--mcp-config\n") is False
+    assert claude_supports_isolated_print(base + "--strict-mcp-config\n") is False
 
 
 def test_kimi_detects_prompt_flag() -> None:
@@ -112,7 +119,7 @@ def test_help_text_is_cached_by_path_and_mtime(
 
     def fake_run(_path: Path) -> str:
         calls.append(1)
-        flags = "--bare\n-p\n--tools\n--permission-mode\n--no-session-persistence\n--setting-sources\n"
+        flags = "--bare\n-p\n--tools\n--permission-mode\n--no-session-persistence\n--setting-sources\n--mcp-config\n--strict-mcp-config\n"
         return flags
 
     monkeypatch.setattr("packet_ask.doctor._run_help", fake_run)
@@ -187,7 +194,7 @@ def test_inspect_providers_probes_shared_claude_once(
 
     def fake_run(path: Path) -> str:
         probed.append([str(path)])
-        flags = "--bare\n-p\n--tools\n--permission-mode\n--no-session-persistence\n--setting-sources\n"
+        flags = "--bare\n-p\n--tools\n--permission-mode\n--no-session-persistence\n--setting-sources\n--mcp-config\n--strict-mcp-config\n"
         return flags
 
     monkeypatch.setattr("packet_ask.doctor._run_help", fake_run)

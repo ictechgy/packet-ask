@@ -94,10 +94,13 @@ _EN = {
         "macOS Keychain item, or explicitly use --credential-source prompt."
     ),
     "keychain_unsupported": "macOS Keychain is not available on this platform.",
+    "keychain_missing": "The packet-ask {provider} Keychain item is missing.",
     "keychain_unavailable": (
-        "The packet-ask {provider} Keychain item is missing, inaccessible, or access was denied. "
+        "The packet-ask {provider} Keychain item exists but is inaccessible or access was denied. "
         "Headless use requires an item saved with --access command."
     ),
+    "keychain_timeout": "Reading the packet-ask {provider} Keychain item timed out.",
+    "keychain_read_failed": "The packet-ask {provider} Keychain item could not be read.",
     "credential_prompt": "{provider} credential for this run: ",
     "credential_prompt_tty": "Credential prompt requires an interactive terminal.",
     "credential_prompt_failed": "Could not read the credential securely.",
@@ -223,10 +226,13 @@ _KO = {
         "Keychain 항목을 저장하거나 --credential-source prompt를 명시하세요."
     ),
     "keychain_unsupported": "이 플랫폼에서는 macOS Keychain을 사용할 수 없습니다.",
+    "keychain_missing": "packet-ask {provider} Keychain 항목이 없습니다.",
     "keychain_unavailable": (
-        "packet-ask {provider} Keychain 항목이 없거나 접근할 수 없거나 접근이 거절됐습니다. "
+        "packet-ask {provider} Keychain 항목은 있지만 접근할 수 없거나 접근이 거절됐습니다. "
         "headless 사용에는 --access command로 저장한 항목이 필요합니다."
     ),
+    "keychain_timeout": "packet-ask {provider} Keychain 항목 읽기가 시간 초과됐습니다.",
+    "keychain_read_failed": "packet-ask {provider} Keychain 항목을 읽지 못했습니다.",
     "credential_prompt": "이번 실행의 {provider} credential: ",
     "credential_prompt_tty": "credential prompt에는 대화형 터미널이 필요합니다.",
     "credential_prompt_failed": "credential을 안전하게 읽지 못했습니다.",

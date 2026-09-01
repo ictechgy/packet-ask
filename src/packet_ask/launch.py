@@ -327,6 +327,7 @@ def _claude_isolation_env(home: Path) -> dict[str, str]:
         "DISABLE_TELEMETRY": "1",
         "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        "ENABLE_CLAUDEAI_MCP_SERVERS": "false",
         "DISABLE_ERROR_REPORTING": "1",
         "CLAUDE_CONFIG_DIR": str(home / "claude-config"),
     }
@@ -354,6 +355,9 @@ def glm_argv() -> list[str]:
         "--no-session-persistence",
         "--setting-sources",
         "",
+        "--mcp-config",
+        '{"mcpServers":{}}',
+        "--strict-mcp-config",
     ]
 
 

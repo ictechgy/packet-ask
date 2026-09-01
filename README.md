@@ -21,7 +21,7 @@ MIT licensed. See [LICENSE](LICENSE).
 - Kimi runs: a `kimi` CLI on the allowlist path
 - `paste` / `grok` / `agy` print a packet and do not launch a vendor
 
-Credentials come from a dedicated environment variable, a packet-ask-owned macOS Keychain item, or an explicitly requested one-run prompt. **This tool does not read `.env`, ZCode, Claude Code, arbitrary key files, or key commands.** Never put key values on the command line; they land in shell history. Variable names are in [.env.example](.env.example), and the complete source contract is in [docs/key-sources.md](docs/key-sources.md). The executable allowlist is in [SECURITY.md](SECURITY.md). `doctor` only checks that bounded help text mentions required flags. It does not prove a no-tools sandbox.
+Credentials come from a dedicated environment variable, a packet-ask-owned macOS Keychain item, or an explicitly requested one-run prompt. **This tool does not read `.env`, ZCode, Claude Code, arbitrary key files, or key commands.** Never put key values on the command line; they land in shell history. Variable names are in [.env.example](.env.example), and the complete source contract is in [docs/key-sources.md](docs/key-sources.md). The executable allowlist is in [SECURITY.md](SECURITY.md). Claude-family launches use official bare mode, an empty built-in tool set, and strict explicit empty MCP configuration. `doctor` only checks that bounded help text mentions those required flags; it does not prove an OS sandbox.
 
 ## Install
 
@@ -176,7 +176,7 @@ non-inheritable advisory lock held through config creation, provider execution,
 and session cleanup. A second run that cannot acquire it within 30 seconds fails
 before touching the shared profile or launching a vendor.
 
-GLM uses the official `claude` binary. **It does not change the parent shell `ANTHROPIC_BASE_URL`.** Only the child environment gets the [Z.ai Claude Code endpoint](https://docs.z.ai/scenario-example/develop-tools/claude) and the resolved dedicated GLM credential. GLM and Claude child environments also set `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, and `DISABLE_ERROR_REPORTING`. That reduces local session residue. It does not prove the vendor stores nothing.
+GLM uses the official `claude` binary. **It does not change the parent shell `ANTHROPIC_BASE_URL`.** Only the child environment gets the [Z.ai Claude Code endpoint](https://docs.z.ai/scenario-example/develop-tools/claude) and the resolved dedicated GLM credential. GLM and Claude use Claude Code's documented `--bare` and `--tools ""`, plus an inline empty `--mcp-config` with `--strict-mcp-config`; the child also disables claude.ai MCP servers. Child environments set `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, and `DISABLE_ERROR_REPORTING`. That reduces tool/config and local-session exposure. It does not prove an OS sandbox or that the vendor stores nothing.
 
 Task commands default to `--credential-source auto`: the dedicated environment
 variable wins, then the canonical macOS Keychain item is tried. `env`,
@@ -184,6 +184,9 @@ variable wins, then the canonical macOS Keychain item is tried. `env`,
 `prompt` requires an interactive terminal and never persists the value. Status
 checks Keychain item existence without retrieving its password. Resolved keys
 from every source are included in raw and terminal-normalized output guards.
+Task-time reads use fixed non-sensitive messages to distinguish a missing item,
+an inaccessible item, a timeout, an invalid value, and an indeterminate local
+read failure; JSON errors and code-level classification remain generic.
 These sources are selected through an immutable builtin backend registry;
 `auto` contains only `env` then `keychain`. There is no user backend
 registration, arbitrary command, key-file, or third-party settings adapter.
@@ -236,7 +239,7 @@ label = "Gemini CLI"
 ## Exit codes
 
 `10`–`14` mean the vendor process was never started. Task termination preserves
-the conventional signal exit status: SIGHUP is 129 and SIGTERM is 143.
+the conventional signal exit status: SIGHUP is 129, SIGINT is 130, and SIGTERM is 143.
 
 | Code | Meaning |
 |---:|---|

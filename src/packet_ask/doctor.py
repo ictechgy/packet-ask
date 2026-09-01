@@ -42,7 +42,16 @@ def has_cli_flag(help_text: str, flag: str) -> bool:
 
 def claude_supports_isolated_print(help_text: str) -> bool:
     """Claude Code help에 격리 원샷에 필요한 플래그가 있는지 본다."""
-    needed = ("--bare", "-p", "--tools", "--permission-mode", "--no-session-persistence", "--setting-sources")
+    needed = (
+        "--bare",
+        "-p",
+        "--tools",
+        "--permission-mode",
+        "--no-session-persistence",
+        "--setting-sources",
+        "--mcp-config",
+        "--strict-mcp-config",
+    )
     return all(has_cli_flag(help_text, flag) for flag in needed)
 
 

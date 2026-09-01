@@ -21,7 +21,7 @@ MIT 라이선스입니다. 전문은 [LICENSE](LICENSE)를 보세요.
 - Kimi 실행: allowlist 경로의 `kimi` CLI
 - `paste` / `grok` / `agy` 는 벤더를 띄우지 않고 패킷만 출력합니다
 
-credential은 전용 환경변수, packet-ask 소유 macOS Keychain 항목, 명시한 일회성 prompt 중 하나에서 받습니다. **`.env`, ZCode, Claude Code, 임의 key 파일이나 key command는 읽지 않습니다.** 키 값을 명령행에 직접 넣으면 셸 히스토리에 남으므로 금지합니다. 변수 이름만 [.env.example](.env.example)에 있고 전체 source 계약은 [docs/key-sources.md](docs/key-sources.md)에 있습니다. 실행 파일 allowlist는 [SECURITY.md](SECURITY.md)를 보세요. `doctor`는 제한된 help 출력에 필요한 플래그 이름이 있는지만 보며 무도구 샌드박스를 증명하지 않습니다.
+credential은 전용 환경변수, packet-ask 소유 macOS Keychain 항목, 명시한 일회성 prompt 중 하나에서 받습니다. **`.env`, ZCode, Claude Code, 임의 key 파일이나 key command는 읽지 않습니다.** 키 값을 명령행에 직접 넣으면 셸 히스토리에 남으므로 금지합니다. 변수 이름만 [.env.example](.env.example)에 있고 전체 source 계약은 [docs/key-sources.md](docs/key-sources.md)에 있습니다. 실행 파일 allowlist는 [SECURITY.md](SECURITY.md)를 보세요. Claude 계열 launch는 공식 bare mode, 빈 built-in tool set, strict explicit empty MCP config를 함께 씁니다. `doctor`는 제한된 help 출력에 해당 플래그 이름이 있는지만 보며 OS sandbox를 증명하지 않습니다.
 
 ## 설치
 
@@ -170,14 +170,16 @@ lock으로 config 생성부터 provider 실행·session cleanup까지 직렬화�
 실행이 30초 안에 lock을 얻지 못하면 shared profile이나 vendor를 건드리기 전에
 실패합니다.
 
-GLM은 공식 `claude` 바이너리를 쓰되, **부모 셸의 `ANTHROPIC_BASE_URL` 은 바꾸지 않습니다.** 자식 환경에만 [Z.ai Claude Code 연동](https://docs.z.ai/scenario-example/develop-tools/claude) 엔드포인트와 resolve한 전용 GLM credential을 넣습니다. GLM과 Claude 자식 환경에는 `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_ERROR_REPORTING` 도 넣습니다. 로컬 세션 잔여를 줄이기 위한 것이며, 벤더가 아무것도 저장하지 않음을 증명하지 않습니다.
+GLM은 공식 `claude` 바이너리를 쓰되, **부모 셸의 `ANTHROPIC_BASE_URL` 은 바꾸지 않습니다.** 자식 환경에만 [Z.ai Claude Code 연동](https://docs.z.ai/scenario-example/develop-tools/claude) 엔드포인트와 resolve한 전용 GLM credential을 넣습니다. GLM과 Claude는 Claude Code의 공식 `--bare`, `--tools ""`와 inline empty `--mcp-config`, `--strict-mcp-config`를 함께 쓰고 자식의 claude.ai MCP server도 끕니다. 자식 환경에는 `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_ERROR_REPORTING`도 넣습니다. tool/config와 로컬 세션 노출을 줄이기 위한 것이며 OS sandbox나 벤더 무저장을 증명하지 않습니다.
 
 task 명령의 기본값은 `--credential-source auto`입니다. 전용 환경변수가
 우선이고, 그다음 canonical macOS Keychain 항목을 봅니다. `env`, `keychain`,
 `prompt`를 명시하면 그 source만 쓰고 fallback하지 않습니다. `prompt`는
 대화형 터미널에서만 동작하고 값을 저장하지 않습니다. status는 Keychain
 password를 읽지 않고 항목 존재만 확인합니다. 어느 source에서 고른 키든
-원문·터미널 정규화 출력의 반사 검사를 거칩니다.
+원문·터미널 정규화 출력의 반사 검사를 거칩니다. task-time read는 고정된
+비민감 문구로 missing, inaccessible, timeout, invalid와 indeterminate local
+read failure를 구분하고 JSON 오류와 code-level 분류는 계속 generic입니다.
 source 선택은 immutable builtin backend registry를 사용하며 `auto`에는
 `env` 다음 `keychain`만 들어갑니다. 사용자 backend registration, 임의 command,
 key file, 타사 설정 adapter는 없습니다.
@@ -231,7 +233,7 @@ label = "Gemini CLI"
 ## 종료 코드
 
 `10`–`14`는 벤더 프로세스를 시작하지 않았다는 뜻입니다. task 종료 signal은
-관례적인 상태를 유지해 SIGHUP은 129, SIGTERM은 143입니다.
+관례적인 상태를 유지해 SIGHUP은 129, SIGINT는 130, SIGTERM은 143입니다.
 
 | 코드 | 의미 |
 |---:|---|

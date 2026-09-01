@@ -24,10 +24,10 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 - credential resolve는 immutable builtin backend registry만 사용합니다. `auto`는 env 다음 Keychain으로 고정되며 사용자는 backend·key command·key file·executable·타사 설정 adapter를 등록할 수 없습니다.
 - Keychain은 shell 없이 고정 `/usr/bin/security` argv와 최소 환경으로 접근합니다. status는 password를 읽지 않고 존재만 보며, `credentials set`은 `security -w`가 직접 물어 key를 argv·shell history에 넣지 않습니다.
 - Keychain `--access command`는 background agent 사용을 위해 `/usr/bin/security`를 신뢰하며 key의 at-rest 보호만 제공합니다. 같은 사용자 권한의 다른 프로세스에 대한 경계는 아닙니다. `--access prompt`는 어떤 앱도 신뢰하지 않아 headless session에서 쓸 수 없을 수 있습니다.
-- `doctor`는 `--help`에 필요 플래그 이름이 있는지 확인합니다. 실제 무도구·OS 샌드박스를 증명하지 않습니다. help 프로브에는 하나의 deadline, 합산 출력 상한, 프로세스 그룹 종료를 적용합니다. 런치는 고른 바이너리만 프로브합니다. `doctor`는 카탈로그 전체를 돌되 성공한 `--help`를 canonical 경로·device·inode·mtime·크기로 프로세스 동안 캐시합니다.
+- Claude 계열 launch는 공식 `--bare`, `--tools ""`, inline empty `--mcp-config`와 `--strict-mcp-config`를 함께 쓰고 자식의 claude.ai MCP server도 끕니다. `doctor`는 `--help`에 해당 필수 플래그 이름이 있는지 확인합니다. 실제 무도구·OS 샌드박스를 증명하지 않습니다. help 프로브에는 하나의 deadline, 합산 출력 상한, 프로세스 그룹 종료를 적용합니다. 런치는 고른 바이너리만 프로브합니다. `doctor`는 카탈로그 전체를 돌되 성공한 `--help`를 canonical 경로·device·inode·mtime·크기로 프로세스 동안 캐시합니다.
 - builtin launcher와 doctor probe 종류는 immutable code registry에서만 고릅니다. 사용자 alias에는 adapter ID가 없으며 executable·argv·env·launcher·probe·hook을 등록하거나 선택할 수 없습니다.
 - 사용자 alias label/notes는 길이를 제한하고 출력 전에 terminal·bidi·line·paragraph control을 거절합니다. 정상 언어·emoji shaping의 ZWNJ/ZWJ는 허용합니다.
-- GLM과 Claude 자식 환경에는 `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `DISABLE_ERROR_REPORTING=1` 을 넣습니다. 벤더가 플래그를 무시할 수 있습니다. 이 CLI는 `~/.claude/projects/` 를 지우지 않습니다.
+- GLM과 Claude 자식 환경에는 `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `ENABLE_CLAUDEAI_MCP_SERVERS=false`, `DISABLE_ERROR_REPORTING=1` 을 넣습니다. 벤더가 값을 무시할 수 있습니다. 이 CLI는 `~/.claude/projects/` 를 지우지 않습니다.
 - 벤더 stdout에 전용 키 값이 있거나 출력이 너무 크면 폐기하고 종료 코드 22를 반환합니다.
 - 벤더 stdin·stdout·stderr는 하나의 bounded nonblocking deadline을 공유합니다. 명시 파일, stdin 질문, git diff 수집도 설정한 한도에서 읽기를 멈춥니다.
 - 실제 fd 질문 stdin과 모든 Git preflight 호출은 설정 가능한 monotonic deadline 하나를 공유합니다(기본 30초). 각 Git 호출의 개별 30초 상한도 유지합니다. 일반 파일 read와 CPU redaction은 size-bounded지만 이 deadline이 강제 중단하지는 않습니다.
@@ -36,7 +36,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 - 도구 소유 프로바이더 프로필 디렉터리는 최종 경로 심링크를 거절합니다. Kimi 세션 정리 실패는 숨기지 않고 보고합니다.
 - Kimi 성공 output은 session cleanup 성공 전까지 보류합니다. provider·output-guard·signal 실패가 이미 있으면 동시에 발생한 Kimi cleanup 실패는 고정 비민감 warning만 내고 primary failure를 바꾸지 않습니다.
 - Kimi config·실행·session cleanup은 0600 non-inheritable advisory run lock을 공유합니다. lock 획득은 30초로 제한하며 경쟁 실행은 `KIMI_CODE_HOME` 변경이나 Kimi launch 전에 실패합니다.
-- worktree discovery, diff 수집, packet-local Git 초기화는 하나의 bounded runner를 쓰며 timeout·출력 초과·interrupt에서 process group을 종료합니다. task 범위 SIGTERM/SIGHUP handler는 생성한 process group 또는 packet이 등록될 때까지 signal 전달을 미룬 뒤 같은 child·packet cleanup 경로를 재사용합니다.
+- worktree discovery, diff 수집, packet-local Git 초기화는 하나의 bounded runner를 쓰며 timeout·출력 초과·interrupt에서 process group을 종료합니다. task 범위 SIGINT/SIGTERM/SIGHUP handler는 생성한 process group 또는 packet이 등록될 때까지 signal 전달을 미룬 뒤 같은 child·packet cleanup 경로를 재사용합니다.
 - 임시 packet을 제거한 뒤에만 성공 출력을 내보냅니다. cleanup 실패는 기존 provider 실패 코드를 바꾸지 않습니다.
 - 선택 `--progress`는 고정 launch phase와 음이 아닌 경과 ms만 출력합니다. 기본은 off이며 실제 stderr fd에서는 작은 write 전 0초 writable check를 하고 최종 timing/output 전에 멈춥니다.
 - receipt와 manifest의 redaction metadata는 음이 아닌 정수 count allowlist만 직렬화하며 내부 report 필드는 포함하지 않습니다.
