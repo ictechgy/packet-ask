@@ -177,7 +177,9 @@ task 명령의 기본값은 `--credential-source auto`입니다. 전용 환경�
 `prompt`를 명시하면 그 source만 쓰고 fallback하지 않습니다. `prompt`는
 대화형 터미널에서만 동작하고 값을 저장하지 않습니다. status는 Keychain
 password를 읽지 않고 항목 존재만 확인합니다. 어느 source에서 고른 키든
-원문·터미널 정규화 출력의 반사 검사를 거칩니다.
+원문·터미널 정규화 출력의 반사 검사를 거칩니다. task-time read는 고정된
+비민감 문구로 missing, inaccessible, timeout, invalid를 구분하고 JSON 오류는
+계속 generic envelope를 유지합니다.
 source 선택은 immutable builtin backend registry를 사용하며 `auto`에는
 `env` 다음 `keychain`만 들어갑니다. 사용자 backend registration, 임의 command,
 key file, 타사 설정 adapter는 없습니다.
@@ -231,7 +233,7 @@ label = "Gemini CLI"
 ## 종료 코드
 
 `10`–`14`는 벤더 프로세스를 시작하지 않았다는 뜻입니다. task 종료 signal은
-관례적인 상태를 유지해 SIGHUP은 129, SIGTERM은 143입니다.
+관례적인 상태를 유지해 SIGHUP은 129, SIGINT는 130, SIGTERM은 143입니다.
 
 | 코드 | 의미 |
 |---:|---|
