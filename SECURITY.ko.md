@@ -27,7 +27,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 - Claude 계열 launch는 공식 `--bare`, `--tools ""`, inline empty `--mcp-config`와 `--strict-mcp-config`를 함께 쓰고 자식의 claude.ai MCP server도 끕니다. `doctor`는 `--help`에 해당 필수 플래그 이름이 있는지 확인합니다. 실제 무도구·OS 샌드박스를 증명하지 않습니다. help 프로브에는 하나의 deadline, 합산 출력 상한, 프로세스 그룹 종료를 적용합니다. 런치는 고른 바이너리만 프로브합니다. `doctor`는 카탈로그 전체를 돌되 성공한 `--help`를 경로·mtime·크기로 프로세스 동안 캐시합니다.
 - builtin launcher와 doctor probe 종류는 immutable code registry에서만 고릅니다. 사용자 alias에는 adapter ID가 없으며 executable·argv·env·launcher·probe·hook을 등록하거나 선택할 수 없습니다.
 - 사용자 alias label/notes는 길이를 제한하고 출력 전에 terminal·bidi·line·paragraph control을 거절합니다. 정상 언어·emoji shaping의 ZWNJ/ZWJ는 허용합니다.
-- GLM과 Claude 자식 환경에는 `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `DISABLE_ERROR_REPORTING=1` 을 넣습니다. 벤더가 플래그를 무시할 수 있습니다. 이 CLI는 `~/.claude/projects/` 를 지우지 않습니다.
+- GLM과 Claude 자식 환경에는 `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `ENABLE_CLAUDEAI_MCP_SERVERS=false`, `DISABLE_ERROR_REPORTING=1` 을 넣습니다. 벤더가 값을 무시할 수 있습니다. 이 CLI는 `~/.claude/projects/` 를 지우지 않습니다.
 - 벤더 stdout에 전용 키 값이 있거나 출력이 너무 크면 폐기하고 종료 코드 22를 반환합니다.
 - 벤더 stdin·stdout·stderr는 하나의 bounded nonblocking deadline을 공유합니다. 명시 파일, stdin 질문, git diff 수집도 설정한 한도에서 읽기를 멈춥니다.
 - 실제 fd 질문 stdin과 모든 Git preflight 호출은 설정 가능한 monotonic deadline 하나를 공유합니다(기본 30초). 각 Git 호출의 개별 30초 상한도 유지합니다. 일반 파일 read와 CPU redaction은 size-bounded지만 이 deadline이 강제 중단하지는 않습니다.

@@ -576,12 +576,15 @@ def test_glm_print_flag_does_not_eat_tools() -> None:
     from packet_ask.launch import glm_argv
 
     args = glm_argv()
+    assert "--bare" in args
+    assert args[args.index("-p") + 1] == ""
     assert "--tools" in args
     assert args[args.index("--tools") + 1] == ""
     if "-p" in args:
         assert args[args.index("-p") + 1] != "--tools"
     else:
         assert "--print" in args
+    assert args[args.index("--setting-sources") + 1] == ""
     assert args[args.index("--mcp-config") + 1] == '{"mcpServers":{}}'
     assert "--strict-mcp-config" in args
 
