@@ -124,3 +124,122 @@ def test_ledger_failure_blocks_the_vendor(
     finally:
         blocked.chmod(0o700)
     assert code == codes.CONFINEMENT
+
+
+def test_short_writes_still_produce_one_whole_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """os.write 가 짧게 써도 줄이 잘리지 않아야 대장을 믿을 수 있다."""
+    from packet_ask import ledger as ledger_module
+
+    target = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    real_write = os.write
+
+    def short_write(descriptor: int, data: bytes) -> int:
+        """한 번에 1바이트만 쓰는 최악의 커널을 흉내낸다."""
+        return real_write(descriptor, data[:1])
+
+    monkeypatch.setattr(ledger_module.os, "write", short_write)
+    append_ledger_entry({"provider": "paste", "bytes": 7}, worktree=None)
+    monkeypatch.undo()
+    line = target.read_text(encoding="utf-8").strip()
+    assert json.loads(line) == {"provider": "paste", "bytes": 7}
+
+
+def test_ledger_entry_keys_are_frozen(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """누군가 dict(receipt) 로 '친절하게' 리팩터링하는 드리프트를 기계로 막는다."""
+    from packet_ask.ledger import build_ledger_entry
+
+    entry = build_ledger_entry(
+        "review",
+        {
+            "provider": "paste",
+            "selector": "files",
+            "paths": ["a.py"],
+            "bytes": 10,
+            "sha256_packet_md": "a" * 64,
+            "redaction": {"emails": 1, "rule_label": "internal-name"},
+            "timeout_seconds": 1200,
+            "timeout_source": "auto",
+            "timeout_applies": False,
+            "guarantees": {"leakage": "not-guaranteed"},
+            "question": "이 필드가 생겨도 새면 안 된다",
+        },
+    )
+    assert set(entry) == {
+        "timestamp", "mode", "provider", "selector", "paths", "bytes",
+        "sha256_packet_md", "redaction", "timeout_seconds", "timeout_source",
+        "timeout_applies",
+    }
+    # receipt 에 새 필드가 생겨도 대장으로 흐르지 않는다.
+    assert "question" not in entry
+    assert "guarantees" not in entry
+    # redaction 하위 라벨도 정수 count 가 아니면 남지 않는다.
+    assert entry["redaction"] == {"emails": 1}
+
+
+def test_worktree_check_survives_a_case_insensitive_filesystem(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """문자열 relative_to 는 macOS APFS 에서 조용히 뚫린다. inode 로 봐야 한다."""
+    repo = _init_repo(tmp_path / "repo")
+    # 실제 대소문자 비구분 여부와 무관하게, 같은 디렉터리를 다른 경로로 가리키는
+    # 심링크로 동일한 우회 조건을 만든다.
+    alias = tmp_path / "alias"
+    alias.symlink_to(repo)
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(alias / "egress.jsonl"))
+    with pytest.raises(PacketAskError) as excinfo:
+        append_ledger_entry({"provider": "paste"}, worktree=repo)
+    assert excinfo.value.code == codes.CONFINEMENT
+
+
+def test_existing_world_readable_file_is_forced_to_0600(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """O_CREAT mode 는 생성 때만 쓰인다. 이미 있던 0644 에 이력을 쌓으면 안 된다."""
+    target = tmp_path / "egress.jsonl"
+    target.write_text("", encoding="utf-8")
+    target.chmod(0o644)
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    append_ledger_entry({"provider": "paste"}, worktree=None)
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+
+
+def test_oversized_entry_fails_instead_of_recording(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """상한을 넘으면 잘라 적지 않고 실패한다. 잘린 대장은 거짓 감사다."""
+    target = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    with pytest.raises(PacketAskError) as excinfo:
+        append_ledger_entry({"paths": ["x" * 70_000]}, worktree=None)
+    assert excinfo.value.code == codes.CONFINEMENT
+    assert not target.exists()
+
+
+def test_ledger_failure_means_zero_egress(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """이 변경의 핵심 보장. exit code 만 보면 이미 나간 뒤의 회귀를 못 잡는다."""
+    repo = _init_repo(tmp_path / "repo")
+    blocked = tmp_path / "nodir"
+    blocked.mkdir()
+    blocked.chmod(0o500)
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(blocked / "sub" / "egress.jsonl"))
+    monkeypatch.chdir(repo)
+    try:
+        code = main(
+            ["review", "--provider", "paste", "--files", "src/app.py",
+             "--question", "이 변경을 리뷰해줘"]
+        )
+    finally:
+        blocked.chmod(0o700)
+    captured = capsys.readouterr()
+    assert code == codes.CONFINEMENT
+    # paste 의 egress 는 stdout 출력이다. 한 바이트도 나가면 안 된다.
+    assert captured.out == ""
+    assert "UNTRUSTED PROVIDER OUTPUT" not in captured.out
+    assert "print(1)" not in captured.out
+    # 영수증도 대장 뒤에 나오므로 찍히지 않는다.
+    assert "packet-ask receipt" not in captured.err

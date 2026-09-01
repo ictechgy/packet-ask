@@ -148,13 +148,18 @@ drives this CLI, the agent picks `--files`, so there is no surface left for a
 human to ask what actually went out.
 
 Set `PACKET_ASK_LEDGER` to an absolute path and every task run appends one JSON
-line before the vendor starts: timestamp, mode, provider, selector, relative
+line before the vendor starts. The line records a run that reached the point of
+egress, not a confirmed delivery — a vendor that fails afterwards still leaves
+an entry, which is the safe direction for an audit surface. Each line holds: timestamp, mode, provider, selector, relative
 paths, bytes, packet digest, redaction counts, and the resolved timeout. The
 question and the file bodies are never written.
 
 The path must be absolute, must not be inside the git worktree, must not be a
-symlink, and must be owned by the current user. The file is opened `0600` with
-`O_APPEND` and `O_NOFOLLOW`. **If the entry cannot be written, the vendor does
+symlink, and must be owned by the current user. The worktree check compares
+device and inode, not path strings, so a case-insensitive filesystem does not
+bypass it. The file is opened `O_APPEND`, `O_NOFOLLOW`, and `O_NONBLOCK`, and
+its mode is forced to `0600` before the first write even if the file already
+existed. **If the entry cannot be written, the vendor does
 not run** and the command exits 13. A ledger that silently skips entries is
 worse than none. Leave the variable unset to keep the feature off.
 

@@ -53,7 +53,7 @@ paste 전용 내장: `grok`, `agy` (무도구 원샷 계약 확인 전).
 37. task와 inspect는 `PacketInputs`로 question/policy를 먼저 확정하고 공통 packet pipeline context가 worktree·scope·budget·cache/GC·build 및 success/failure cleanup을 소유한다. provider lookup과 공개 output은 context 밖/본문에서 기존 순서를 유지한다.
 38. inspect `--breakdown`은 cached scrub 결과로 question/framing/item byte와 항목별 public redaction count만 additive 공개한다. task `--progress`는 opt-in 30초 heartbeat로 fixed phase/elapsed만 0초 writable check 뒤 stderr에 쓰고 provider 종료 시 join한다.
 39. 성공 표면은 자신의 한계를 같이 공개한다. receipt 와 inspect summary 에 코드 상수 `GUARANTEES`(leakage/vendor_training/vendor_local_copy/cwd_sandbox/redaction/doctor/policy_gate)를 additive 로 싣고, 사람이 읽는 receipt 한 줄에는 고정 축약을 붙인다. 산출값이 아니라 상수다. 부정문 키는 그래서 과잉 약속으로 드리프트하지 않는다. 기전 존재를 주장하는 redaction/doctor/policy_gate 는 상수가 기전보다 오래 살아남으면 기계 판독 가능한 거짓이 되므로 실제 동작 테스트에 묶는다. 목록은 전부가 아니다. 27의 실패 봉투는 넓히지 않는다. 실패는 아무것도 보내지 않은 상태라 상쇄할 잘못된 안심이 없다.
-40. 영수증은 stderr 로 한 번 나가고 사라진다. 스킬 배포에서 스코프를 고르는 것은 MAIN 이므로 사람이 나중에 무엇이 나갔는지 물을 표면이 없다. `PACKET_ASK_LEDGER` 가 설정되면 런치 전에 append-only JSONL 한 줄을 남긴다. 절대 경로만 받고 워크트리 안·심링크·다른 uid 소유·비정규 파일을 거절하며 0600 O_APPEND O_NOFOLLOW 로 연다. 질문과 파일 본문은 기록하지 않는다. 기록에 실패하면 벤더를 실행하지 않는다. 조용히 빠뜨리는 대장은 없느니만 못하다.
+40. 영수증은 stderr 로 한 번 나가고 사라진다. 스킬 배포에서 스코프를 고르는 것은 MAIN 이므로 사람이 나중에 무엇이 나갔는지 물을 표면이 없다. `PACKET_ASK_LEDGER` 가 설정되면 런치 전에 append-only JSONL 한 줄을 남긴다. 절대 경로만 받고 워크트리 안·심링크·다른 uid 소유·비정규 파일을 거절한다. 워크트리 검사는 device·inode 조상 탐색이라 대소문자 비구분 파일시스템에서 뚫리지 않는다. O_APPEND·O_NOFOLLOW·O_NONBLOCK 으로 열고 이미 있던 파일이어도 첫 쓰기 전에 0600 을 강제하며 부분 쓰기를 끝까지 채운다. 기록은 egress 지점 도달을 뜻하지 전달 확인이 아니다. 질문과 파일 본문은 기록하지 않는다. 기록에 실패하면 벤더를 실행하지 않는다. 조용히 빠뜨리는 대장은 없느니만 못하다.
 
 ## 금지
 

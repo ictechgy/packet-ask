@@ -30,7 +30,7 @@ from packet_ask.deadline import Deadline
 from packet_ask.errors import PacketAskError
 from packet_ask.install_skills import install_skills
 from packet_ask.launch import launch_claude, launch_glm, launch_kimi
-from packet_ask.ledger import append_ledger_entry, build_ledger_entry
+from packet_ask.ledger import append_ledger_entry, build_ledger_entry, ledger_path
 from packet_ask.lifecycle import reap_stale_packets
 from packet_ask.providers import lookup_provider, load_catalog, resolve_provider_adapter
 from packet_ask.output import wrap_untrusted
@@ -539,6 +539,8 @@ def _run_task_guarded(
 ) -> int:
     """종료 signal도 기존 process-group·packet cleanup 경로로 보낸다."""
     started = time.monotonic()
+    # scrub·cache 를 다 돌고 나서 설정 오류로 죽지 않도록 먼저 검증한다.
+    ledger_path()
     deadline = Deadline.after(args.preflight_timeout)
     mode = args.command
     require_review_scope = args.command == "review"
