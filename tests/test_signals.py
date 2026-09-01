@@ -34,7 +34,7 @@ def _init_repo(root: Path) -> Path:
 
 @pytest.mark.parametrize(
     ("item", "expected"),
-    [(signal.SIGTERM, 143), (signal.SIGHUP, 129)],
+    [(signal.SIGINT, 130), (signal.SIGTERM, 143), (signal.SIGHUP, 129)],
 )
 def test_task_signal_handler_uses_shell_exit_code_and_restores(
     item: signal.Signals, expected: int
@@ -52,7 +52,7 @@ def test_task_signal_handler_uses_shell_exit_code_and_restores(
 
 @pytest.mark.parametrize(
     ("item", "expected"),
-    [(signal.SIGTERM, 143), (signal.SIGHUP, 129)],
+    [(signal.SIGINT, 130), (signal.SIGTERM, 143), (signal.SIGHUP, 129)],
 )
 def test_signal_after_packet_build_cleans_assigned_packet(
     item: signal.Signals,
@@ -197,10 +197,50 @@ def test_provider_spawn_publication_is_signal_atomic(
     assert holder["process"].poll() is not None
 
 
-def test_git_spawn_publication_is_signal_atomic(
+def test_provider_spawn_publication_defers_sigint(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Git Popen 반환 직후 HUP도 proc 등록 뒤 기존 group cleanup으로 전달한다."""
+    """Popen 반환 직후 Ctrl-C도 proc 할당 뒤 130 cleanup 경로로 전달한다."""
+    import subprocess
+
+    provider = tmp_path / "provider.sh"
+    provider.write_text("#!/bin/sh\nsleep 60\n", encoding="utf-8")
+    provider.chmod(0o700)
+    holder: dict[str, subprocess.Popen[str]] = {}
+    real_spawn = launch._spawn_isolated
+
+    def spawn_then_interrupt(*args: object, **kwargs: object) -> subprocess.Popen[str]:
+        process = real_spawn(*args, **kwargs)  # type: ignore[arg-type]
+        holder["process"] = process
+        os.kill(os.getpid(), signal.SIGINT)
+        return process
+
+    monkeypatch.setattr(launch, "_spawn_isolated", spawn_then_interrupt)
+    with task_signal_handlers():
+        with pytest.raises(SystemExit) as exc:
+            launch.run_isolated_command(
+                provider,
+                [],
+                "",
+                tmp_path,
+                launch.isolated_env(tmp_path / "home", {}),
+                5,
+            )
+    assert exc.value.code == 130
+    assert holder["process"].poll() is not None
+
+
+@pytest.mark.parametrize(
+    ("item", "expected"),
+    [(signal.SIGINT, 130), (signal.SIGHUP, 129)],
+)
+def test_git_spawn_publication_is_signal_atomic(
+    item: signal.Signals,
+    expected: int,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Git Popen 반환 직후 INT/HUP도 proc 등록 뒤 group cleanup으로 전달한다."""
     import subprocess
 
     executable = tmp_path / "git"
@@ -212,7 +252,7 @@ def test_git_spawn_publication_is_signal_atomic(
     def spawn_then_signal(*args: object, **kwargs: object) -> subprocess.Popen[bytes]:
         process = real_popen(*args, **kwargs)  # type: ignore[arg-type]
         holder["process"] = process
-        os.kill(os.getpid(), signal.SIGHUP)
+        os.kill(os.getpid(), item)
         return process
 
     monkeypatch.setattr(scope, "_git_executable", lambda: str(executable))
@@ -220,14 +260,21 @@ def test_git_spawn_publication_is_signal_atomic(
     with task_signal_handlers():
         with pytest.raises(SystemExit) as exc:
             scope.run_bounded_git(tmp_path, [], 4096)
-    assert exc.value.code == 129
+    assert exc.value.code == expected
     assert holder["process"].poll() is not None
 
 
+@pytest.mark.parametrize(
+    ("item", "expected"),
+    [(signal.SIGINT, 130), (signal.SIGTERM, 143)],
+)
 def test_help_spawn_publication_is_signal_atomic(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    item: signal.Signals,
+    expected: int,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """help probe spawn 직후 TERM도 process group을 남기지 않는다."""
+    """help probe spawn 직후 INT/TERM도 process group을 남기지 않는다."""
     import subprocess
 
     executable = tmp_path / "claude"
@@ -239,14 +286,14 @@ def test_help_spawn_publication_is_signal_atomic(
     def spawn_then_signal(*args: object, **kwargs: object) -> subprocess.Popen[bytes]:
         process = real_popen(*args, **kwargs)  # type: ignore[arg-type]
         holder["process"] = process
-        os.kill(os.getpid(), signal.SIGTERM)
+        os.kill(os.getpid(), item)
         return process
 
     monkeypatch.setattr(doctor.subprocess, "Popen", spawn_then_signal)
     with task_signal_handlers():
         with pytest.raises(SystemExit) as exc:
             doctor._run_help(executable)
-    assert exc.value.code == 143
+    assert exc.value.code == expected
     assert holder["process"].poll() is not None
 
 
@@ -259,7 +306,7 @@ def test_spawn_does_not_leave_task_signals_blocked_in_child(tmp_path: Path) -> N
         f"#!{sys.executable}\n"
         "import signal\n"
         "blocked = signal.pthread_sigmask(signal.SIG_BLOCK, set())\n"
-        "print(int(signal.SIGTERM in blocked or signal.SIGHUP in blocked))\n",
+        "print(int(signal.SIGINT in blocked or signal.SIGTERM in blocked or signal.SIGHUP in blocked))\n",
         encoding="utf-8",
     )
     executable.chmod(0o700)

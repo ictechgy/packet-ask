@@ -94,6 +94,129 @@ def test_keychain_reader_uses_fixed_binary_and_minimal_environment(
     assert "parent-secret" not in env.values()
 
 
+def test_keychain_missing_is_distinct_from_inaccessible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """존재하지 않는 canonical item은 access denied와 다른 고정 문구를 쓴다."""
+    monkeypatch.setattr("packet_ask.keysource._macos_keychain_supported", lambda: True)
+    monkeypatch.setattr("packet_ask.keysource._keychain_account", lambda: "local-user")
+    monkeypatch.setattr(
+        "packet_ask.keysource.subprocess.run",
+        lambda args, **_kwargs: subprocess.CompletedProcess(args, 44, "", ""),
+    )
+    with pytest.raises(PacketAskError) as exc:
+        resolve_provider_key("glm", "keychain")
+    assert exc.value.code == codes.PROVIDER_MISSING
+    assert "missing" in str(exc.value)
+
+
+def test_keychain_existing_but_denied_is_inaccessible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """password read 실패 뒤 metadata가 있으면 missing으로 오진하지 않는다."""
+    monkeypatch.setattr("packet_ask.keysource._macos_keychain_supported", lambda: True)
+    monkeypatch.setattr("packet_ask.keysource._keychain_account", lambda: "local-user")
+
+    def fake_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args, 51 if "-w" in args else 0, "", "")
+
+    monkeypatch.setattr("packet_ask.keysource.subprocess.run", fake_run)
+    with pytest.raises(PacketAskError) as exc:
+        resolve_provider_key("glm", "keychain")
+    assert exc.value.code == codes.PROVIDER_MISSING
+    assert "inaccessible" in str(exc.value)
+
+
+def test_keychain_timeout_has_fixed_non_sensitive_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """timeout은 raw command/error 없이 별도 고정 문구로 보고한다."""
+    monkeypatch.setattr("packet_ask.keysource._macos_keychain_supported", lambda: True)
+    monkeypatch.setattr("packet_ask.keysource._keychain_account", lambda: "local-user")
+    monkeypatch.setattr(
+        "packet_ask.keysource.subprocess.run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            subprocess.TimeoutExpired(["security"], 30)
+        ),
+    )
+    with pytest.raises(PacketAskError) as exc:
+        resolve_provider_key("glm", "keychain")
+    assert exc.value.code == codes.PROVIDER_MISSING
+    assert "timed out" in str(exc.value)
+    assert "security" not in str(exc.value)
+
+
+def test_keychain_spawn_failure_does_not_claim_item_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """security 실행 실패는 item 존재 여부를 추측하지 않는 고정 문구를 쓴다."""
+    monkeypatch.setattr("packet_ask.keysource._macos_keychain_supported", lambda: True)
+    monkeypatch.setattr("packet_ask.keysource._keychain_account", lambda: "local-user")
+    monkeypatch.setattr(
+        "packet_ask.keysource.subprocess.run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("private path")),
+    )
+    with pytest.raises(PacketAskError) as exc:
+        resolve_provider_key("glm", "keychain")
+    assert exc.value.code == codes.PROVIDER_MISSING
+    assert "could not be read" in str(exc.value)
+    assert "private path" not in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [OSError("private path"), subprocess.TimeoutExpired(["security"], 10)],
+)
+def test_keychain_existence_probe_is_total(
+    monkeypatch: pytest.MonkeyPatch,
+    error: BaseException,
+) -> None:
+    """metadata probe 자체 실패는 raw 예외 대신 unavailable bool로 끝난다."""
+    monkeypatch.setattr("packet_ask.keysource._macos_keychain_supported", lambda: True)
+    monkeypatch.setattr("packet_ask.keysource._keychain_account", lambda: "local-user")
+    monkeypatch.setattr(
+        "packet_ask.keysource.subprocess.run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(error),
+    )
+    assert credential_status("glm").keychain_item == "missing"
+
+
+def test_auto_preserves_existing_but_inaccessible_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """auto도 access denial을 generic missing으로 덮지 않고 provider 전에 멈춘다."""
+    monkeypatch.delenv("PACKET_ASK_GLM_KEY", raising=False)
+    monkeypatch.setattr("packet_ask.keysource._macos_keychain_supported", lambda: True)
+    monkeypatch.setattr("packet_ask.keysource._keychain_account", lambda: "local-user")
+
+    def fake_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args, 51 if "-w" in args else 0, "", "")
+
+    monkeypatch.setattr("packet_ask.keysource.subprocess.run", fake_run)
+    with pytest.raises(PacketAskError) as exc:
+        resolve_provider_key("glm", "auto")
+    assert "inaccessible" in str(exc.value)
+
+
+def test_keychain_non_utf8_password_is_invalid_without_echo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """decode 실패는 값·codec 예외를 노출하지 않고 invalid로 분류한다."""
+    monkeypatch.setattr("packet_ask.keysource._macos_keychain_supported", lambda: True)
+    monkeypatch.setattr("packet_ask.keysource._keychain_account", lambda: "local-user")
+    monkeypatch.setattr(
+        "packet_ask.keysource.subprocess.run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid")
+        ),
+    )
+    with pytest.raises(PacketAskError) as exc:
+        resolve_provider_key("glm", "keychain")
+    assert exc.value.code == codes.PROVIDER_MISSING
+    assert "invalid" in str(exc.value)
+    assert "\\xff" not in str(exc.value)
+
+
 def test_explicit_env_does_not_fallback_to_keychain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
