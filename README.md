@@ -141,6 +141,23 @@ only a fixed code, kind, and message.
 The receipt line is an append-only token sequence. Parse it by whitespace and
 `key=value`; do not anchor a regex to the end of the line.
 
+## Egress ledger
+
+The receipt goes to stderr once and is gone with the scrollback. When a skill
+drives this CLI, the agent picks `--files`, so there is no surface left for a
+human to ask what actually went out.
+
+Set `PACKET_ASK_LEDGER` to an absolute path and every task run appends one JSON
+line before the vendor starts: timestamp, mode, provider, selector, relative
+paths, bytes, packet digest, redaction counts, and the resolved timeout. The
+question and the file bodies are never written.
+
+The path must be absolute, must not be inside the git worktree, must not be a
+symlink, and must be owned by the current user. The file is opened `0600` with
+`O_APPEND` and `O_NOFOLLOW`. **If the entry cannot be written, the vendor does
+not run** and the command exits 13. A ledger that silently skips entries is
+worse than none. Leave the variable unset to keep the feature off.
+
 ## Usage
 
 ```bash

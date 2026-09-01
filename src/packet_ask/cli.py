@@ -30,6 +30,7 @@ from packet_ask.deadline import Deadline
 from packet_ask.errors import PacketAskError
 from packet_ask.install_skills import install_skills
 from packet_ask.launch import launch_claude, launch_glm, launch_kimi
+from packet_ask.ledger import append_ledger_entry, build_ledger_entry
 from packet_ask.lifecycle import reap_stale_packets
 from packet_ask.providers import lookup_provider, load_catalog, resolve_provider_adapter
 from packet_ask.output import wrap_untrusted
@@ -95,6 +96,7 @@ class PreparedPacket:
     selector: str
     preflight_ms: int
     packet_started: float
+    worktree: Path
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -574,6 +576,12 @@ def _run_task_guarded(
             timeout_applies=spec.mode == "launch",
         )
         packet_ms = _ms_since(prepared.packet_started)
+        # 런치 전에 남긴다. 여기서 실패하면 벤더가 시작되지 않는다. 조용히
+        # 기록을 빠뜨리는 대장은 없느니만 못하다.
+        append_ledger_entry(
+            build_ledger_entry(mode, receipt),
+            prepared.worktree,
+        )
         print(format_receipt_line(receipt), file=sys.stderr)
         result = _finish_task(
             args,
@@ -660,6 +668,7 @@ def _packet_pipeline(
             selector,
             preflight_ms,
             packet_started,
+            worktree,
         )
     except BaseException:
         if packet is not None and parent is not None:

@@ -135,6 +135,21 @@ receipt 한 줄 끝에 `guarantees=leakage:not-guaranteed,cwd_sandbox:none,redac
 receipt 한 줄은 append-only 토큰 나열입니다. 공백과 `key=value` 로 파싱하고 줄 끝에
 정규식 앵커를 걸지 마세요.
 
+## 발송 대장
+
+영수증은 stderr 로 한 번 나가고 스크롤백과 함께 사라집니다. 스킬이 이 CLI 를 몰면
+`--files` 를 고르는 것은 에이전트이므로, 사람이 나중에 무엇이 실제로 나갔는지 물을
+표면이 남지 않습니다.
+
+`PACKET_ASK_LEDGER` 에 절대 경로를 지정하면 모든 task 실행이 벤더 시작 **전에** JSON
+한 줄을 덧붙입니다. 시각, mode, provider, selector, 상대 경로, byte, packet digest,
+redaction count, 결정된 timeout 이 들어갑니다. 질문과 파일 본문은 기록하지 않습니다.
+
+경로는 절대 경로여야 하고, git 워크트리 안이면 안 되고, 심링크여도 안 되며, 현재
+사용자 소유여야 합니다. 파일은 `0600` `O_APPEND` `O_NOFOLLOW` 로 엽니다. **기록하지
+못하면 벤더를 실행하지 않고** 13 으로 끝냅니다. 조용히 빠뜨리는 대장은 없느니만
+못합니다. 변수를 비워 두면 기능은 꺼져 있습니다.
+
 ## 사용
 
 ```bash
