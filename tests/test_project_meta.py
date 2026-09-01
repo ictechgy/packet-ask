@@ -45,6 +45,7 @@ def test_gitignore_covers_dotenv_but_keeps_example() -> None:
     assert ".envrc" in lines
     assert "HANDOFF.md" in lines
     assert ".serena/" in lines
+    assert ".omc/" in lines
     assert "!.env.example" in lines
     assert lines.index("!.env.example") > lines.index(".env.*")
     example = (ROOT / ".env.example").read_text(encoding="utf-8")
