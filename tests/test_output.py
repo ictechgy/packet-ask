@@ -153,3 +153,94 @@ def test_progress_line_has_only_fixed_phase_and_nonnegative_elapsed() -> None:
     """heartbeat는 provider/path/key 없이 fixed metadata만 가진다."""
     assert format_progress_line(-1) == "packet-ask progress phase=launch elapsed_ms=0"
     assert format_progress_line(123) == "packet-ask progress phase=launch elapsed_ms=123"
+
+
+def test_guarantees_are_fixed_constants_not_computed() -> None:
+    """한계 공개는 산출값이 아니라 코드 상수여야 과잉 약속으로 드리프트하지 않는다."""
+    from types import MappingProxyType
+
+    from packet_ask.receipt import GUARANTEES
+
+    assert isinstance(GUARANTEES, MappingProxyType)
+    assert dict(GUARANTEES) == {
+        "leakage": "not-guaranteed",
+        "vendor_training": "not-restricted",
+        "vendor_local_copy": "uncontrolled",
+        "cwd_sandbox": "none",
+        "redaction": "denylist",
+        "doctor": "help-text-only",
+        "policy_gate": "lexical-tripwire",
+    }
+    with pytest.raises(TypeError):
+        GUARANTEES["leakage"] = "guaranteed"  # type: ignore[index]
+
+
+def test_failure_envelope_stays_exactly_fixed() -> None:
+    """한계 공개는 성공 신호를 상쇄하려는 것이다. 실패 봉투는 design 27 대로 그대로 둔다."""
+    import json as _json
+
+    from packet_ask import codes
+    from packet_ask.receipt import json_error_envelope
+
+    failure = _json.loads(json_error_envelope(codes.POLICY))
+    assert set(failure) == {"schema", "ok", "error"}
+    assert "guarantees" not in failure
+
+
+def test_receipt_line_states_limits_inline() -> None:
+    """stderr 한 줄에도 가장 오독되는 세 가지가 고정 문자열로 붙는다."""
+    from packet_ask.receipt import format_receipt_line
+
+    line = format_receipt_line(
+        {
+            "provider": "paste",
+            "selector": "files",
+            "paths": ["a.py"],
+            "bytes": 10,
+            "sha256_packet_md": "a" * 64,
+        }
+    )
+    # 반전 해석이 불가능해야 한다. "leak:no" 는 "유출 없음"으로 읽힌다.
+    assert " guarantees=leakage:not-guaranteed,cwd_sandbox:none,redaction:denylist" in line
+    assert "leak:no" not in line
+
+
+def test_positive_guarantee_keys_match_real_behaviour() -> None:
+    """부정문 키와 달리 redaction/doctor/policy_gate 는 '기전이 있다'는 긍정 서술이다.
+
+    구현이 회귀했는데 상수가 그대로 실리면 기계 판독 가능한 거짓 계약이 된다.
+    값만 고정하지 말고 각 기전이 실제로 살아 있는지 함께 고정한다.
+    """
+    from packet_ask import codes as _codes
+    from packet_ask.errors import PolicyError
+    from packet_ask.policy import assert_allowed_task
+    from packet_ask.receipt import GUARANTEES
+    from packet_ask.redact import scrub_text
+
+    # redaction: denylist — 알려진 패턴은 실제로 지워진다.
+    assert GUARANTEES["redaction"] == "denylist"
+    scrubbed, _report = scrub_text("token = 'ghp_" + "a" * 24 + "'")
+    assert "ghp_" not in scrubbed
+
+    # policy_gate: lexical-tripwire — 어휘 기반 게이트가 실제로 존재한다.
+    assert GUARANTEES["policy_gate"] == "lexical-tripwire"
+    with pytest.raises(PolicyError):
+        assert_allowed_task("review", "이 기능을 구현해줘")
+    # 그리고 어휘일 뿐이라 표현을 바꾸면 통과한다. 이것이 tripwire 라는 뜻이다.
+    assert_allowed_task("review", "이 기능의 설계를 검토만 해줘")
+    assert _codes.POLICY == 10
+
+
+def test_doctor_probe_is_help_text_only() -> None:
+    """doctor: help-text-only — 프로브 argv 가 --help 하나뿐임을 고정한다."""
+    import inspect as _inspect
+
+    from packet_ask import doctor as _doctor
+    from packet_ask.receipt import GUARANTEES
+
+    assert GUARANTEES["doctor"] == "help-text-only"
+    source = _inspect.getsource(_doctor)
+    # 프로브 argv 는 --help 하나뿐이고, 자식 spawn 지점도 하나뿐이어야 한다.
+    # 내용 있는 벤더 호출이 추가되면 둘 중 하나가 깨진다.
+    assert '[str(path), "--help"]' in source
+    assert source.count("subprocess.Popen(") == 1

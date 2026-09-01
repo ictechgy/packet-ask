@@ -114,6 +114,27 @@ canonical dotted 국내 mobile 번호는 scrub하고 혼합 separator는 fail-cl
 무인 실행은 timeout을 명시하는 편이 좋습니다. paste/dry-run receipt에도
 계산값을 참고용으로 표시하지만 provider deadline은 적용되지 않습니다.
 
+
+## 명시된 한계
+
+성공 표면은 자신의 한계를 같이 공개합니다. `receipt` 와 `inspect` summary 에 고정
+`guarantees` 객체(`leakage: not-guaranteed`, `vendor_training: not-restricted`,
+`vendor_local_copy: uncontrolled`, `cwd_sandbox: none`, `redaction: denylist`,
+`doctor: help-text-only`, `policy_gate: lexical-tripwire`)가 실리고, 사람이 읽는
+receipt 한 줄 끝에 `guarantees=leakage:not-guaranteed,cwd_sandbox:none,redaction:denylist`
+가 붙습니다.
+
+산출값이 아니라 코드 상수입니다. 부정문 키는 그래서 약속으로 변질되지 않습니다.
+기전이 존재한다고 주장하는 세 키(`redaction`, `doctor`, `policy_gate`)는 실제 동작에
+테스트로 묶여 있습니다. 기전보다 오래 살아남은 상수는 기계 판독 가능한 거짓이기
+때문입니다.
+
+**이 목록은 전부가 아닙니다.** 가장 자주 오독되는 한계를 적은 것이지 모든 위험을
+적은 것이 아닙니다. 실패 봉투는 그대로 고정 code/kind/message 만 담습니다.
+
+receipt 한 줄은 append-only 토큰 나열입니다. 공백과 `key=value` 로 파싱하고 줄 끝에
+정규식 앵커를 걸지 마세요.
+
 ## 사용
 
 ```bash
