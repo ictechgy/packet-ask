@@ -20,6 +20,7 @@ from packet_ask.errors import BudgetError, PacketAskError
 from packet_ask.keysource import CredentialStatus
 from packet_ask.lifecycle import PACKET_LEASE_NAME, STALE_PACKET_SECONDS, close_packet_lease
 from packet_ask.packet import build_packet
+from packet_ask.text import message
 
 
 def _init_repo(root: Path) -> Path:
@@ -302,12 +303,34 @@ def test_include_files_is_never_silently_dropped(
     argv: list[str],
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """research 외 mode의 --include-files 는 조용히 버려지지 않고 거절한다."""
     repo = _init_repo(tmp_path)
     (repo / "README.md").write_text("readme\n", encoding="utf-8")
     monkeypatch.chdir(repo)
-    assert main([*argv, "--question", "이 범위를 넓게 봐줘"]) == codes.USAGE
+    code = main([*argv, "--question", "이 범위를 넓게 봐줘"])
+    captured = capsys.readouterr()
+    assert code == codes.USAGE
+    # argparse 도 인자 오류에 2를 내므로 메시지까지 봐야 가드 적중이 증명된다.
+    assert message("include_files_mode") in captured.err
+
+
+def test_review_include_files_keeps_its_own_message(tmp_path: Path) -> None:
+    """일반 가드를 위로 올려도 review 전용 문구가 조용히 바뀌지 않게 고정한다."""
+    args = argparse.Namespace(
+        command="review",
+        files=[],
+        include_files=[Path("a.py")],
+        max_files=25,
+        max_bytes=256 * 1024,
+        staged=False,
+        diff=None,
+        unstaged=False,
+    )
+    with pytest.raises(PacketAskError) as excinfo:
+        cli._collect_scope(args, tmp_path)
+    assert str(excinfo.value) == message("review_include_files")
 
 
 def test_claude_without_dedicated_key(
