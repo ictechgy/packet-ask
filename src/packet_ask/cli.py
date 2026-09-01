@@ -692,7 +692,11 @@ def _cleanup_packet(packet: Packet, parent: Path) -> None:
 
 def _task_provider(args: argparse.Namespace) -> str:
     """dry-run을 포함한 task provider만 고른다."""
-    provider = args.provider or "paste"
+    # argparse required 는 인자 존재만 본다. 빈 값을 조용히 paste 로 만들면
+    # claude 를 지정했다고 믿은 호출자가 출력만 받고 끝난다.
+    provider = (args.provider or "").strip()
+    if not provider:
+        raise PacketAskError(message("provider_required"), codes.USAGE)
     if args.dry_run:
         provider = "paste"
     return provider

@@ -220,16 +220,42 @@ def test_undocumented_task_commands_are_gone(command: str) -> None:
 
 
 def test_task_commands_are_exactly_review_and_research() -> None:
-    """CLI task 표면이 문서화된 두 mode 와 일치하는지 고정한다."""
+    """CLI 표면 전체를 고정해 문서에 없는 task 커맨드가 다시 들어오지 못하게 한다."""
+    parser = _parser()
+    # argparse 내부 구조 의존. 아래 format_help 단언이 공개 API 교차 검증이다.
     actions = [
-        action
-        for action in _parser()._subparsers._group_actions  # type: ignore[union-attr]
+        action for action in parser._actions
         if isinstance(action, argparse._SubParsersAction)
     ]
-    commands = set(actions[0].choices)
-    assert {"review", "research"} <= commands
-    assert "brainstorm" not in commands
-    assert "paste" not in commands
+    assert set(actions[0].choices) == {
+        "review",
+        "research",
+        "inspect",
+        "doctor",
+        "providers",
+        "install-skills",
+        "credentials",
+    }
+    help_text = parser.format_help()
+    assert "brainstorm" not in help_text
+    assert "paste" not in help_text
+
+
+def test_empty_provider_is_not_a_silent_paste(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """빈 --provider 는 조용히 paste 로 떨어지지 않고 usage 로 거절한다."""
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    for provider in ("", "   "):
+        code = main(
+            ["review", "--provider", provider, "--files", "src/app.py",
+             "--question", "이 변경을 리뷰해줘"]
+        )
+        assert code == codes.USAGE
+        assert message("provider_required") in capsys.readouterr().err
 
 
 def test_provider_is_required_for_every_task_command() -> None:
