@@ -46,7 +46,8 @@ scope, or task authority.
 
 - `Packet` owns its rendered text, UTF-8 bytes, and digest. Receipt and launch
   consumers reuse them rather than rereading and rehashing `packet.md`.
-- User paste aliases are cached by path, mtime, size, and selected language.
+- User paste aliases are cached by canonical path, device, inode, mtime, size,
+  and selected language.
   Successful parses are cached; changed files invalidate the entry.
 - Failed provider `--help` probes are not cached for the process lifetime.
 - Provider `--help` stdout and stderr share one byte cap and deadline. Timeout,

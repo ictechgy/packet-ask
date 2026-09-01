@@ -107,6 +107,26 @@ def test_relative_overlay_cache_is_bound_to_resolved_path(
     assert "first" not in second_ids
 
 
+def test_user_alias_cache_invalidates_when_inode_changes(tmp_path: Path) -> None:
+    """같은 path·mtime·size의 교체 overlay를 stale cache로 숨기지 않는다."""
+    path = tmp_path / "providers.toml"
+    replacement = tmp_path / "replacement.toml"
+    first = 'version = 1\n[providers.first]\nlabel = "One"\n'
+    second = 'version = 1\n[providers.other]\nlabel = "Two"\n'
+    assert len(first.encode("utf-8")) == len(second.encode("utf-8"))
+    path.write_text(first, encoding="utf-8")
+    original = path.stat()
+    providers._USER_ALIAS_CACHE.clear()
+    assert "first" in {item.provider_id for item in load_catalog(user_file=path)}
+    replacement.write_text(second, encoding="utf-8")
+    os.utime(replacement, ns=(original.st_atime_ns, original.st_mtime_ns))
+    replacement.replace(path)
+    ids = {item.provider_id for item in load_catalog(user_file=path)}
+    assert "other" in ids
+    assert "first" not in ids
+    assert len(providers._USER_ALIAS_CACHE) == 1
+
+
 def test_user_toml_adds_paste_alias(tmp_path: Path) -> None:
     """사용자 TOML 은 paste 별명만 추가한다."""
     path = tmp_path / "providers.toml"

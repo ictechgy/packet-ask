@@ -8,7 +8,12 @@ import pytest
 
 from packet_ask import codes
 from packet_ask.errors import PacketAskError
-from packet_ask.paths import packet_cache_dir, resolve_trusted_executable, trusted_bin_dirs
+from packet_ask.paths import (
+    packet_cache_dir,
+    resolve_trusted_executable,
+    trusted_bin_dirs,
+    trusted_executable_candidate_exists,
+)
 
 
 def test_packet_cache_dir_uses_override_and_is_private(
@@ -163,6 +168,57 @@ def test_world_writable_binary_is_rejected(
     monkeypatch.setattr("packet_ask.paths.trusted_bin_dirs", lambda: [trusted])
     monkeypatch.delenv("PACKET_ASK_KIMI_BIN", raising=False)
     assert resolve_trusted_executable("kimi") is None
+
+
+def test_group_writable_executable_directory_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """실행 파일이 private여도 entry directory를 다른 주체가 바꾸면 거절한다."""
+    trusted = tmp_path / "trusted"
+    trusted.mkdir()
+    trusted.chmod(0o775)
+    binary = trusted / "kimi"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(0o700)
+    monkeypatch.setattr("packet_ask.paths.trusted_bin_dirs", lambda: [trusted])
+    assert resolve_trusted_executable("kimi") is None
+    assert trusted_executable_candidate_exists("kimi") is True
+
+
+def test_trusted_symlink_resolves_to_private_canonical_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Homebrew 형태 symlink는 안전한 target이면 canonical path로 허용한다."""
+    trusted = tmp_path / "trusted"
+    target_dir = tmp_path / "versions" / "1"
+    trusted.mkdir()
+    target_dir.mkdir(parents=True)
+    trusted.chmod(0o755)
+    target_dir.chmod(0o755)
+    target = target_dir / "claude"
+    target.write_text("#!/bin/sh\n", encoding="utf-8")
+    target.chmod(0o700)
+    (trusted / "claude").symlink_to(target)
+    monkeypatch.setattr("packet_ask.paths.trusted_bin_dirs", lambda: [trusted])
+    assert resolve_trusted_executable("claude") == target.resolve()
+
+
+def test_symlink_to_group_writable_target_directory_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """entry dir만 안전하고 canonical target dir이 writable인 우회도 거절한다."""
+    trusted = tmp_path / "trusted"
+    target_dir = tmp_path / "writable"
+    trusted.mkdir()
+    target_dir.mkdir()
+    trusted.chmod(0o755)
+    target_dir.chmod(0o775)
+    target = target_dir / "claude"
+    target.write_text("#!/bin/sh\n", encoding="utf-8")
+    target.chmod(0o700)
+    (trusted / "claude").symlink_to(target)
+    monkeypatch.setattr("packet_ask.paths.trusted_bin_dirs", lambda: [trusted])
+    assert resolve_trusted_executable("claude") is None
 
 
 def test_trusted_bin_dirs_include_local_and_system() -> None:

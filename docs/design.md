@@ -22,7 +22,7 @@ paste 전용 내장: `grok`, `agy` (무도구 원샷 계약 확인 전).
 6. 플래그를 확인하지 못하면 paste만 한다.
 7. 사용자 개시, 한 건, 재시도 없음, 병렬 없음. review 는 --files/--diff/--staged/--unstaged 중 하나를 요구한다. research 는 로컬 diff 를 받지 않는다.
 8. 출력은 untrusted 봉투로 반환하고 패킷을 삭제한다.
-9. 런치는 고른 프로바이더만 `--help` 한다. help stdout/stderr는 합산 상한과 하나의 deadline 아래 읽고 실패 시 프로세스 그룹을 끝낸다. `doctor`는 카탈로그 전체를 보되 성공한 같은 바이너리는 경로·mtime·크기로 캐시한다.
+9. 런치는 고른 프로바이더만 `--help` 한다. help stdout/stderr는 합산 상한과 하나의 deadline 아래 읽고 실패 시 프로세스 그룹을 끝낸다. `doctor`는 카탈로그 전체를 보되 성공한 같은 바이너리는 canonical 경로·device·inode·mtime·크기로 캐시한다.
 10. GLM/Claude 자식에 오토메모리·부가 트래픽·에러 리포팅을 끈다. 벤더가 무시하면 잔여가 남을 수 있다.
 11. 성공 시 stderr에 영수증과 밀리초 구간을 쓰고, `--json` 에 `timing` 을 넣는다. 비밀 값은 넣지 않는다.
 12. 명시 파일·질문 stdin·git 출력은 예산까지만 읽는다. 최종 `packet.md` 전체가 `--max-bytes` 안에 있어야 한다.
@@ -35,7 +35,7 @@ paste 전용 내장: `grok`, `agy` (무도구 원샷 계약 확인 전).
 19. worktree discovery, diff, packet-local `git init`은 같은 bounded Git runner를 써 deadline·출력 상한·interrupt group kill을 공유한다.
 20. provider 성공 stdout과 timing은 packet cleanup 뒤에만 공개한다. 기존 실패가 있으면 cleanup 경고가 원래 종료 코드를 가리지 않는다.
 21. 공개 redaction metadata는 허용된 음이 아닌 정수 count만 직렬화한다.
-22. `Packet`은 렌더링 text/bytes/digest를 소유하고 receipt·launch가 재사용한다. user provider overlay는 path·mtime·size·언어로 캐시한다.
+22. `Packet`은 렌더링 text/bytes/digest를 소유하고 receipt·launch가 재사용한다. user provider overlay는 canonical path·device·inode·mtime·size·언어로 캐시한다.
 23. `--timeout` 생략 시 최종 packet bytes로 64KiB 이하 1200초, 128KiB 이하 1500초, 초과 1800초를 고른다. 명시값은 clamp하지 않는다.
 24. receipt에 `timeout_seconds`/`timeout_source`/`timeout_applies`를 additive 공개하고 기존 `timing` 4-key 계약은 유지한다.
 25. 새 packet은 directory advisory lock과 0600 lease marker를 process 동안 보유한다. 다음 실행은 current-user 0700 direct child 중 lock을 얻을 수 있고 marker가 24시간 지난 packet만 fd-relative로 비우며 marker는 마지막에 지운다.
