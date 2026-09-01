@@ -11,6 +11,9 @@
 
 from __future__ import annotations
 
+import errno
+import os
+import stat
 from pathlib import Path, PurePosixPath
 
 from packet_ask.errors import ScopeError
@@ -24,11 +27,25 @@ MAX_SURFACE_ENTRIES = 1000
 def load_surface(worktree: Path) -> tuple[str, ...] | None:
     """선언 파일을 읽는다. 없으면 None 이고 강제는 꺼져 있다."""
     path = worktree / SURFACE_FILENAME
-    if path.is_symlink():
-        raise ScopeError(message("surface_symlink"))
-    if not path.is_file():
+    try:
+        # O_NOFOLLOW 로 열어 검사와 사용 사이의 심링크 교체를 없앤다.
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
         return None
-    raw = path.read_bytes()[: MAX_SURFACE_BYTES + 1]
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise ScopeError(message("surface_symlink")) from exc
+        raise ScopeError(message("surface_encoding")) from exc
+    try:
+        info = os.fstat(descriptor)
+        if stat.S_ISDIR(info.st_mode):
+            return None
+        if not stat.S_ISREG(info.st_mode):
+            raise ScopeError(message("surface_symlink"))
+        # 상한 밖은 읽지 않는다. 커밋된 거대 파일을 통째로 메모리에 올리지 않는다.
+        raw = os.read(descriptor, MAX_SURFACE_BYTES + 1)
+    finally:
+        os.close(descriptor)
     if len(raw) > MAX_SURFACE_BYTES:
         raise ScopeError(message("surface_bytes"))
     try:
@@ -41,7 +58,8 @@ def load_surface(worktree: Path) -> tuple[str, ...] | None:
 def _parse_surface(text: str) -> tuple[str, ...]:
     """빈 줄과 주석을 걸러 정규 상대 경로 접두어만 남긴다."""
     entries: list[str] = []
-    for line in text.splitlines():
+    # BOM 은 strip() 대상이 아니다. 남겨두면 첫 선언이 조용히 죽는다.
+    for line in text.lstrip("\ufeff").splitlines():
         entry = line.strip()
         if not entry or entry.startswith("#"):
             continue
@@ -79,6 +97,9 @@ def assert_within_surface(relatives: list[str], surface: tuple[str, ...]) -> Non
 def _is_declared(relative: str, surface: tuple[str, ...]) -> bool:
     """경로가 선언된 접두어와 같거나 그 아래인지 본다. 문자열 접두어가 아니다."""
     parts = PurePosixPath(relative).parts
+    # 호출자가 이미 정규화하지만 이 모듈이 자기 불변식을 스스로 지킨다.
+    if any(part in {".", ".."} for part in parts) or PurePosixPath(relative).is_absolute():
+        return False
     for entry in surface:
         declared = PurePosixPath(entry).parts
         if parts[: len(declared)] == declared:

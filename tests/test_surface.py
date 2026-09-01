@@ -110,17 +110,56 @@ def test_override_is_recorded_not_silent(
     assert json.loads(captured.out)["receipt"]["surface"] == "overridden"
 
 
-def test_diff_selectors_are_not_surface_checked(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_diff_paths_are_surface_checked_too(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """diff 는 사람 작업의 발자국이라 선언 밖 변경도 리뷰할 수 있다."""
+    """선언 밖 diff 도 거절한다.
+
+    `--diff <임의 ref>` 는 워크트리를 하나도 건드리지 않고 과거 내용을 꺼낼 수
+    있으므로 "diff 는 사람 작업의 발자국"이라는 면제 논거가 성립하지 않는다.
+    """
     repo = _init_repo(tmp_path / "repo")
     _declare(repo, "src\n")
     (repo / "private" / "notes.txt").write_text("changed\n", encoding="utf-8")
     monkeypatch.chdir(repo)
+    code = main(
+        ["review", "--provider", "paste", "--unstaged", "--question", "이 변경을 리뷰해줘"]
+    )
+    captured = capsys.readouterr()
+    assert code == codes.SCOPE
+    assert captured.out == ""
+    assert "changed" not in captured.out
+
+
+def test_declared_diff_still_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """선언 안의 변경을 리뷰하는 평범한 흐름은 그대로 동작한다."""
+    repo = _init_repo(tmp_path / "repo")
+    _declare(repo, "src\n")
+    (repo / "src" / "app.py").write_text("print(2)\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
     assert main(
         ["review", "--provider", "paste", "--unstaged", "--question", "이 변경을 리뷰해줘"]
     ) == codes.SUCCESS
+
+
+def test_history_diff_cannot_bypass_the_declaration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """워크트리 흔적 0 으로 과거 내용을 꺼내는 경로를 막는다."""
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "private" / "notes.txt").write_text("second\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-c", "user.email=d@e", "-c", "user.name=D", "commit", "-m", "second"],
+        cwd=repo, check=True, capture_output=True,
+    )
+    _declare(repo, "src\n")
+    monkeypatch.chdir(repo)
+    assert main(
+        ["review", "--provider", "paste", "--diff", "HEAD~1", "--question", "이 변경을 리뷰해줘"]
+    ) == codes.SCOPE
 
 
 @pytest.mark.parametrize(
@@ -157,3 +196,48 @@ def test_inspect_reports_surface_without_a_vendor(
     code = main(["inspect", "review", "--files", "src/app.py", "--json", "--question", "t"])
     assert code == codes.SUCCESS
     assert json.loads(capsys.readouterr().out)["summary"]["surface"] == "enforced"
+
+
+def test_research_include_files_is_surface_checked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """README 는 두 파일 플래그를 모두 거절한다고 적었다. research 경로도 고정한다."""
+    repo = _init_repo(tmp_path / "repo")
+    _declare(repo, "src\n")
+    monkeypatch.chdir(repo)
+    assert main(
+        ["research", "--provider", "paste", "--include-files", "private/notes.txt",
+         "--question", "이 주제를 조사해줘"]
+    ) == codes.SCOPE
+
+
+def test_ledger_records_the_surface_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """우회 사실이 대장에도 남아야 사후 감사가 가능하다."""
+    repo = _init_repo(tmp_path / "repo")
+    _declare(repo, "src\n")
+    target = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    monkeypatch.chdir(repo)
+    assert main(
+        ["review", "--provider", "paste", "--files", "private/notes.txt",
+         "--outside-surface", "--question", "이 변경을 리뷰해줘"]
+    ) == codes.SUCCESS
+    assert json.loads(target.read_text(encoding="utf-8").strip())["surface"] == "overridden"
+
+
+def test_a_bom_does_not_silently_kill_the_first_declaration(tmp_path: Path) -> None:
+    """BOM 은 strip 대상이 아니라 첫 선언을 영원히 매칭 안 되게 만든다."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _declare(repo, "\ufeffsrc\n")
+    assert load_surface(repo) == ("src",)
+
+
+def test_candidate_dot_segments_never_match(tmp_path: Path) -> None:
+    """호출자가 정규화하더라도 이 모듈이 자기 불변식을 지킨다."""
+    from packet_ask.surface import assert_within_surface
+
+    with pytest.raises(ScopeError):
+        assert_within_surface(["src/../private/notes.txt"], ("src",))

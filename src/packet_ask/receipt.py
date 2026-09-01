@@ -131,7 +131,7 @@ def format_receipt_line(receipt: dict[str, Any]) -> str:
         f"packet-ask receipt provider={receipt['provider']} "
         f"selector={receipt['selector']} paths={paths} "
         f"bytes={receipt['bytes']} sha256={digest}{timeout}"
-        f" surface={receipt.get('surface', 'absent')}"
+        f" surface={receipt['surface']}"
         f" guarantees={_RECEIPT_LINE_GUARANTEES}"
     )
 

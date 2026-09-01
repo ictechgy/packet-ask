@@ -95,6 +95,7 @@ def test_receipt_escapes_control_characters_in_paths() -> None:
     """조작된 파일명이 receipt에 새 줄이나 ANSI를 만들지 않는다."""
     receipt = {
         "provider": "paste",
+        "surface": "absent",
         "selector": "files",
         "paths": ["src/bad\n\x1b[2J.py"],
         "bytes": 10,
@@ -198,6 +199,7 @@ def test_receipt_line_states_limits_inline() -> None:
             "paths": ["a.py"],
             "bytes": 10,
             "sha256_packet_md": "a" * 64,
+            "surface": "absent",
         }
     )
     # 반전 해석이 불가능해야 한다. "leak:no" 는 "유출 없음"으로 읽힌다.

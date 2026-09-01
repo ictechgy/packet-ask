@@ -165,13 +165,27 @@ declaration, and an empty declaration are all rejected.
 `--outside-surface` overrides the check for one run, and the receipt, `inspect`
 summary, and ledger all record `surface: overridden` instead of `enforced`.
 
-Diff selectors are not surface-checked. A diff is a footprint of the human's own
-work, and blocking review of a change outside the declared prefixes is not what
-this control is for.
+Diff paths are checked too. `--diff <ref>` can reach history without touching
+the worktree at all, so exempting diffs would leave a channel that changes
+nothing a reviewer would see.
+
+### What it does not do
 
 This is not a leak-prevention allowlist and it is not a sandbox. Its only
 mechanism is that widening the scope requires editing a committed file, so the
-edit shows up in `git status` and lands in the review you already do.
+edit shows up in `git status` or as a new commit and lands in the review you
+already do.
+
+- A declaration is about **paths, not contents**. Declaring `src` does not mean
+  `src` holds no secrets; the redaction denylist still applies and still is a
+  denylist.
+- A hard link inside a declared prefix that points at a file outside it is
+  accepted, because a hard link *is* the file and there is no original to
+  prefer. Creating one is itself a visible worktree change.
+- Content injected into an ordinary diff is not caught. The edit is visible, but
+  far less salient than a change to the declaration file.
+- A malformed declaration fails closed and `--outside-surface` does not bypass
+  it. Fix the file.
 
 ## Egress ledger
 
