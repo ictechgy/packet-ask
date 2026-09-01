@@ -21,7 +21,7 @@ MIT licensed. See [LICENSE](LICENSE).
 - Kimi runs: a `kimi` CLI on the allowlist path
 - `paste` / `grok` / `agy` print a packet and do not launch a vendor
 
-Credentials come from a dedicated environment variable, a packet-ask-owned macOS Keychain item, or an explicitly requested one-run prompt. **This tool does not read `.env`, ZCode, Claude Code, arbitrary key files, or key commands.** Never put key values on the command line; they land in shell history. The same applies to the question: `--question` is argv and is visible in shell history and the process table, so prefer `--question-stdin`. Variable names are in [.env.example](.env.example), and the complete source contract is in [docs/key-sources.md](docs/key-sources.md). The executable allowlist is in [SECURITY.md](SECURITY.md). Claude-family launches use official bare mode, an empty built-in tool set, and strict explicit empty MCP configuration. `doctor` only checks that bounded help text mentions those required flags; it does not prove an OS sandbox.
+Credentials come from a dedicated environment variable, a packet-ask-owned macOS Keychain item, or an explicitly requested one-run prompt. **This tool does not read `.env`, ZCode, Claude Code, arbitrary key files, or key commands.** Never put key values on the command line; they land in shell history. The same applies to the question: `--question` is argv and is visible in the process table and in shell history, so prefer `--question-stdin`. Stdin keeps the question out of argv, but it does not control what an interactive shell records; read a sensitive question from a file rather than a typed heredoc. Variable names are in [.env.example](.env.example), and the complete source contract is in [docs/key-sources.md](docs/key-sources.md). The executable allowlist is in [SECURITY.md](SECURITY.md). Claude-family launches use official bare mode, an empty built-in tool set, and strict explicit empty MCP configuration. `doctor` only checks that bounded help text mentions those required flags; it does not prove an OS sandbox.
 
 ## Install
 
@@ -128,7 +128,7 @@ packet-ask credentials status
 # Store through the interactive macOS Keychain prompt; no key in argv/history
 packet-ask credentials set glm --store macos-keychain --access command
 
-# Question on stdin; nothing sensitive in argv or shell history
+# Question on stdin; it stays out of argv and the process table
 packet-ask review --provider paste --files src/app.py --question-stdin <<'EOF'
 Find race conditions in this code
 EOF

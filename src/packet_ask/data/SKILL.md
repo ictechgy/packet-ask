@@ -23,15 +23,17 @@ MAIN is **the agent running this session**. SUB receives only the packet `packet
 
 ## Do
 
-Pass the question on stdin. `--question` puts it in shell history and the
-process table; `--question-stdin` does not.
+Pass the question on stdin. `--question` is argv, so it shows up in the
+process table and in shell history. `--question-stdin` keeps it out of argv;
+it does not control what an interactive shell records, so read a sensitive
+question from a file rather than a typed heredoc.
 
 ```bash
 packet-ask providers
 packet-ask doctor
 packet-ask credentials status
 
-# Default form. Write the question to stdin, not argv.
+# Default form. The question goes to stdin, never to argv.
 packet-ask review --provider <id> --files <paths> --question-stdin <<'EOF'
 <question>
 EOF
