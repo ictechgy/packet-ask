@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Mapping
 
 from packet_ask import codes
 from packet_ask.packet import Packet
@@ -11,6 +12,22 @@ from packet_ask.redact import public_redaction_counts
 from packet_ask.scope import ScopedFile
 
 SCHEMA = "packet-ask.v1"
+
+# 사람은 SECURITY.md 를 읽지만 MAIN 은 영수증·JSON·exit code 를 읽는다.
+# 한계가 기계 표면에 없으면 성공 신호가 문서의 부정문보다 크게 읽힌다.
+# 산출값이 아니라 코드 상수여야 구현이 변해도 과잉 약속으로 드리프트하지 않는다.
+GUARANTEES: Mapping[str, str] = MappingProxyType(
+    {
+        "leakage": "not-guaranteed",
+        "vendor_training": "not-restricted",
+        "vendor_local_copy": "uncontrolled",
+        "cwd_sandbox": "none",
+        "redaction": "denylist",
+        "doctor": "help-text-only",
+        "policy_gate": "lexical-tripwire",
+    }
+)
+_RECEIPT_LINE_GUARANTEES = "leak:no,sandbox:no,scrub:denylist"
 
 _ERRORS = {
     codes.INTERNAL: ("internal", "The command failed internally."),
@@ -50,6 +67,7 @@ def build_receipt(
         "timeout_seconds": timeout_seconds,
         "timeout_source": timeout_source,
         "timeout_applies": timeout_applies,
+        "guarantees": dict(GUARANTEES),
     }
 
 
@@ -71,6 +89,7 @@ def build_packet_summary(
         "bytes": len(packet.payload_bytes()),
         "redaction": public_redaction_counts(packet.report),
         "sha256_packet_md": packet.payload_digest(),
+        "guarantees": dict(GUARANTEES),
     }
     if include_breakdown:
         summary["breakdown"] = packet.inspection_breakdown()
@@ -104,6 +123,7 @@ def format_receipt_line(receipt: dict[str, Any]) -> str:
         f"packet-ask receipt provider={receipt['provider']} "
         f"selector={receipt['selector']} paths={paths} "
         f"bytes={receipt['bytes']} sha256={digest}{timeout}"
+        f" guarantees={_RECEIPT_LINE_GUARANTEES}"
     )
 
 

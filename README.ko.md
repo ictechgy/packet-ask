@@ -114,6 +114,14 @@ canonical dotted 국내 mobile 번호는 scrub하고 혼합 separator는 fail-cl
 무인 실행은 timeout을 명시하는 편이 좋습니다. paste/dry-run receipt에도
 계산값을 참고용으로 표시하지만 provider deadline은 적용되지 않습니다.
 
+
+성공 표면은 자신의 한계를 같이 공개합니다. `receipt` 와 `inspect` summary 에 고정
+`guarantees` 객체(`leakage: not-guaranteed`, `vendor_training: not-restricted`,
+`vendor_local_copy: uncontrolled`, `cwd_sandbox: none`, `redaction: denylist`,
+`doctor: help-text-only`, `policy_gate: lexical-tripwire`)가 실리고, 사람이 읽는
+receipt 한 줄 끝에 `guarantees=leak:no,sandbox:no,scrub:denylist` 가 붙습니다.
+산출값이 아니라 코드 상수라서 약속으로 변질되지 않습니다. 실패 봉투는 그대로
+고정 code/kind/message 만 담습니다.
 ## 사용
 
 ```bash

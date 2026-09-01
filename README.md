@@ -119,6 +119,15 @@ real hang, which can still be interrupted with Ctrl+C. CI and unattended runs
 should set an explicit timeout. Paste and dry-run receipts show the resolved
 value as informational, but no provider deadline is applied.
 
+Every success surface states its own limits. `receipt` and `inspect` summaries
+carry a fixed `guarantees` object — `leakage: not-guaranteed`,
+`vendor_training: not-restricted`, `vendor_local_copy: uncontrolled`,
+`cwd_sandbox: none`, `redaction: denylist`, `doctor: help-text-only`,
+`policy_gate: lexical-tripwire` — and the human receipt line ends with
+`guarantees=leak:no,sandbox:no,scrub:denylist`. These are code constants, not
+computed results, so they cannot drift into a promise. The failure envelope is
+unchanged and still carries only a fixed code, kind, and message.
+
 ## Usage
 
 ```bash

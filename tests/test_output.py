@@ -153,3 +153,51 @@ def test_progress_line_has_only_fixed_phase_and_nonnegative_elapsed() -> None:
     """heartbeat는 provider/path/key 없이 fixed metadata만 가진다."""
     assert format_progress_line(-1) == "packet-ask progress phase=launch elapsed_ms=0"
     assert format_progress_line(123) == "packet-ask progress phase=launch elapsed_ms=123"
+
+
+def test_guarantees_are_fixed_constants_not_computed() -> None:
+    """한계 공개는 산출값이 아니라 코드 상수여야 과잉 약속으로 드리프트하지 않는다."""
+    from types import MappingProxyType
+
+    from packet_ask.receipt import GUARANTEES
+
+    assert isinstance(GUARANTEES, MappingProxyType)
+    assert dict(GUARANTEES) == {
+        "leakage": "not-guaranteed",
+        "vendor_training": "not-restricted",
+        "vendor_local_copy": "uncontrolled",
+        "cwd_sandbox": "none",
+        "redaction": "denylist",
+        "doctor": "help-text-only",
+        "policy_gate": "lexical-tripwire",
+    }
+    with pytest.raises(TypeError):
+        GUARANTEES["leakage"] = "guaranteed"  # type: ignore[index]
+
+
+def test_failure_envelope_stays_exactly_fixed() -> None:
+    """한계 공개는 성공 신호를 상쇄하려는 것이다. 실패 봉투는 design 27 대로 그대로 둔다."""
+    import json as _json
+
+    from packet_ask import codes
+    from packet_ask.receipt import json_error_envelope
+
+    failure = _json.loads(json_error_envelope(codes.POLICY))
+    assert set(failure) == {"schema", "ok", "error"}
+    assert "guarantees" not in failure
+
+
+def test_receipt_line_states_limits_inline() -> None:
+    """stderr 한 줄에도 가장 오독되는 세 가지가 고정 문자열로 붙는다."""
+    from packet_ask.receipt import format_receipt_line
+
+    line = format_receipt_line(
+        {
+            "provider": "paste",
+            "selector": "files",
+            "paths": ["a.py"],
+            "bytes": 10,
+            "sha256_packet_md": "a" * 64,
+        }
+    )
+    assert " guarantees=leak:no,sandbox:no,scrub:denylist" in line

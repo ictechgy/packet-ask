@@ -107,6 +107,7 @@ def test_inspect_json_reports_public_redaction_counts(
         "bytes",
         "redaction",
         "sha256_packet_md",
+        "guarantees",
     }
     assert summary["mode"] == "review"
     assert summary["selector"] == "files"
