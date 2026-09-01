@@ -51,6 +51,8 @@ How personal Kimi Code or GLM Coding Plan subscriptions handle data is defined b
 - It does not prove Claude auto-memory is off. The child env flags are best-effort vendor switches.
 - The implementation/incident wording gate is lexical and best-effort; it does not prove semantic intent.
 - It does not inspect ZCode, Claude Code, `.env`, arbitrary key files, password-manager stores, or user-defined key commands. External managers must inject the dedicated environment variable.
+- It does not control what the vendor CLI keeps on this machine. A launched or pasted packet can be written to the vendor's own home directory as a session transcript. Deleting the packet directory does not remove that copy, and the receipt does not cover it.
+- It does not hide a question passed as `--question`. Argv is visible in the process table and in shell history. `--question-stdin` keeps the question out of argv, but it does not control what an interactive shell records.
 
 ## Keys and profiles
 

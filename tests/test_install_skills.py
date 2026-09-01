@@ -20,6 +20,10 @@ def test_install_skills_writes_claude_codex_grok(tmp_path: Path) -> None:
     assert "UNTRUSTED PROVIDER OUTPUT" in text
     assert "user-invocable: true" in text
     assert "MAIN" in text
+    # MAIN 이 질문을 argv로 흘리지 않고 0.4.0 packet shape 플래그를 알도록 고정한다.
+    assert "--question-stdin" in text
+    assert "--line-numbers" in text
+    assert "--selected-tree" in text
 
 
 def test_install_skills_refuses_to_overwrite_custom(tmp_path: Path) -> None:
