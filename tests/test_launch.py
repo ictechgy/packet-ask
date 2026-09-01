@@ -582,6 +582,8 @@ def test_glm_print_flag_does_not_eat_tools() -> None:
         assert args[args.index("-p") + 1] != "--tools"
     else:
         assert "--print" in args
+    assert args[args.index("--mcp-config") + 1] == '{"mcpServers":{}}'
+    assert "--strict-mcp-config" in args
 
 
 def test_glm_passes_key_in_child_env(
@@ -624,6 +626,7 @@ def test_glm_passes_key_in_child_env(
     assert "--tools" in argv
     assert env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
     assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
+    assert env["ENABLE_CLAUDEAI_MCP_SERVERS"] == "false"
     assert env["DISABLE_ERROR_REPORTING"] == "1"
     assert env["DISABLE_TELEMETRY"] == "1"
 
@@ -718,11 +721,14 @@ def test_claude_sub_uses_dedicated_key_without_z_ai(
     assert env["HOME"] == str(tmp_path)
     assert env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
     assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
+    assert env["ENABLE_CLAUDEAI_MCP_SERVERS"] == "false"
     assert env["DISABLE_ERROR_REPORTING"] == "1"
     argv = captured["argv"]
     assert isinstance(argv, list)
     assert "--tools" in argv
     assert "--no-session-persistence" in argv
+    assert argv[argv.index("--mcp-config") + 1] == '{"mcpServers":{}}'
+    assert "--strict-mcp-config" in argv
 
 
 def test_kimi_passes_key_in_env_not_file(
