@@ -1,6 +1,6 @@
 [project]
 name = "packet-ask"
-version = "0.5.1"
+version = "0.6.0"
 description = "Send only a scrubbed packet to personal coding-subscription subagents."
 readme = "README.md"
 license = "MIT"
