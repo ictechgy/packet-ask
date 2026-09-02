@@ -66,6 +66,7 @@ User `~/.config/packet-ask/providers.toml` may add paste aliases only.
 - Credential source defaults to `auto`: dedicated env, then packet-ask-owned macOS Keychain. It never reads another app's settings.
 - Provider timeout defaults to a generous final-packet-size tier (1200/1500/1800 seconds). An explicit `--timeout` is used exactly.
 - `--preview` builds and verifies the packet, prints the launch plan, and stops. It reports the provider mode, the credential source kind, the `--max-bytes` remainder, and `launch: not-started`. It never reads a credential value, writes no ledger line, and is rejected together with `--dry-run`. Use it before a run that would otherwise wait out a 1200-1800 second timeout.
+- `--effort {low,medium,high,xhigh,max}` selects vendor reasoning depth on `glm` and `claude`. Measured on one packet: low 108 s, medium 214 s, high 444 s, max 751 s — about 2x per step up to `high`, then 1.7x. Omit it for the vendor default, which was not measured under control. Use `low` for a quick check and `max` when the answer is worth a 15-minute wait. The auto timeout rises with it (1200/1800/2700 s), so you rarely need `--timeout`. `paste` and `kimi` reject the flag.
 - `--progress` is opt-in and emits only a fixed launch phase and elapsed milliseconds every 30 seconds.
 - Real-fd question stdin and Git preflight share a 30-second default `--preflight-timeout`; this is separate from the provider timeout.
 - GLM: `PACKET_ASK_GLM_KEY` or Keychain service `packet-ask-glm`

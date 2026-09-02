@@ -57,6 +57,7 @@ def build_receipt(
     timeout_source: str,
     timeout_applies: bool,
     surface: str,
+    effort: str | None = None,
 ) -> dict[str, Any]:
     """비밀 값 없이 보낸 범위를 요약한다."""
     paths = _packet_paths(files, diff_text)
@@ -73,6 +74,11 @@ def build_receipt(
         "timeout_source": timeout_source,
         "timeout_applies": timeout_applies,
         "surface": surface,
+        # `timeout_seconds` + `timeout_source` 와 같은 짝이다. 값과 출처를 한
+        # 필드에 섞으면 enum 도메인에 sentinel 이 들어가고, 나중에 출처가
+        # 늘어날 때 값 도메인을 깨야 한다.
+        "effort": effort,
+        "effort_source": "explicit" if effort else "vendor-default",
         "guarantees": dict(GUARANTEES),
     }
 
@@ -148,6 +154,7 @@ def format_preview_line(preview: dict[str, Any]) -> str:
         f"({preview['timeout_source']},{applies}) "
         f"credential={preview['credential_source']}:{preview['credential_state']} "
         f"launch={preview['launch']} "
+        f"effort={preview['effort'] or 'none'}({preview['effort_source']}) "
         f"surface={preview['surface']}"
         f" guarantees={_RECEIPT_LINE_GUARANTEES}"
     )
@@ -191,6 +198,8 @@ def format_receipt_line(receipt: dict[str, Any]) -> str:
         f"selector={receipt['selector']} paths={paths} "
         f"bytes={receipt['bytes']} sha256={digest}{timeout}"
         f" surface={receipt['surface']}"
+        f" effort={receipt.get('effort') or 'none'}"
+        f"({receipt.get('effort_source', 'vendor-default')})"
         f" guarantees={_RECEIPT_LINE_GUARANTEES}"
     )
 

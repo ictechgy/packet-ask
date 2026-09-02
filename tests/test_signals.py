@@ -121,7 +121,7 @@ def test_sigterm_during_provider_kills_group_and_cleans_packet(
             os.kill(os.getpid(), signal.SIGTERM)
         return real_select(*args, **kwargs)
 
-    def execute(_provider: str, packet, timeout: int, _source: str) -> str:  # noqa: ANN001
+    def execute(_provider: str, packet, timeout: int, _source: str, _effort=None) -> str:  # noqa: ANN001
         monkeypatch.setattr(launch.select, "select", terminate)
         return launch.run_isolated_command(
             provider,
