@@ -1,4 +1,4 @@
-"""휠과 sdist가 CLI와 스킬 원문을 포함하는지 확인한다."""
+"""휠과 sdist가 무엇을 싣고 무엇을 안 싣는지 확인한다."""
 
 from __future__ import annotations
 
@@ -29,6 +29,12 @@ def main() -> None:
     skill = files("packet_ask.data").joinpath("SKILL.md").read_text(encoding="utf-8")
     if "packet-ask" not in skill:
         raise SystemExit("wheel/sdist 에 SKILL.md 가 없습니다.")
+    # 에이전트 지침은 기여자 문서다. 실리면 지침만 고쳐도 배포물이 바뀌어
+    # 매번 배포 여부를 다시 판단하게 된다. 설치된 산출물에서 직접 본다.
+    # 메타 테스트는 `dist/` 가 없으면 skip 하고 CI 는 빌드보다 테스트를 먼저
+    # 돌린다. 그래서 실제 배포물을 지키는 것은 이 단언이다.
+    if files("packet_ask").joinpath("AGENTS.md").is_file():
+        raise SystemExit("wheel/sdist 에 AGENTS.md 가 실렸습니다.")
     print("ok")
 
 
