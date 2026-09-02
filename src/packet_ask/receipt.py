@@ -57,10 +57,12 @@ def build_receipt(
     timeout_source: str,
     timeout_applies: bool,
     surface: str,
-    effort: str | None = None,
-    effort_source: str = "vendor-default",
+    effort: str | None,
+    effort_source: str,
 ) -> dict[str, Any]:
     """비밀 값 없이 보낸 범위를 요약한다."""
+    if (effort is None) != (effort_source == "vendor-default"):
+        raise ValueError("effort and effort_source disagree")
     paths = _packet_paths(files, diff_text)
     payload = packet.payload_bytes()
     redaction = public_redaction_counts(packet.report)
@@ -80,6 +82,8 @@ def build_receipt(
         # 늘어날 때 값 도메인을 깨야 한다.
         "effort": effort,
         "effort_source": effort_source,
+        # 값과 출처가 어긋나면 영수증이 거짓을 말한다. 이 배치의 존재 이유가
+        # 출처를 정확히 남기는 것이므로 어긋난 조합은 만들지 않는다.
         "guarantees": dict(GUARANTEES),
     }
 

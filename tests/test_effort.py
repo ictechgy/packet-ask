@@ -323,7 +323,9 @@ def test_env_effort_is_rejected_for_providers_that_cannot_take_it(
     argv = _argv("--preview")
     argv[argv.index("glm")] = "paste"
     assert main(argv) == codes.USAGE
-    assert message("effort_unsupported") in capsys.readouterr().err
+    captured = capsys.readouterr()
+    assert message("effort_unsupported") in captured.err
+    assert captured.out == ""
 
 
 def test_env_effort_does_not_reach_the_vendor_child(
@@ -335,3 +337,103 @@ def test_env_effort_does_not_reach_the_vendor_child(
     monkeypatch.setenv("PACKET_ASK_EFFORT", "max")
     env = minimal_child_env(tmp_path)
     assert "PACKET_ASK_EFFORT" not in env
+
+
+def test_env_effort_reaches_the_launcher_not_just_the_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """새 테스트 6개가 전부 `--preview` 라 `_finish_task` 결로를 안 봤다.
+
+    preview 는 `_finish_task` 앞에서 끝난다. 그래서 호출부에서 effort 인자를
+    빼도 507개가 전부 통과했다. `_finish_task` 의 파라미터가 기본값 None 이라
+    조용히 사라진다 — 이 배치가 싸우는 "조용한 기본값" 이 정확히 이 모양이다.
+    """
+    repo = _init_repo(tmp_path / "repo")
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("PACKET_ASK_EFFORT", "xhigh")
+    seen: dict[str, object] = {}
+
+    def capture(packet, timeout, credential_source, effort):  # noqa: ANN001
+        seen["effort"] = effort
+        return "리뷰 결과"
+
+    monkeypatch.setattr("packet_ask.cli.launch_glm", capture)
+    assert main(_argv()) == codes.SUCCESS
+    assert seen["effort"] == "xhigh"
+
+
+def test_effort_levels_and_timeout_tiers_stay_in_lockstep() -> None:
+    """레벨이 tier 에 없으면 `.get(..., 0)` 이 조용히 크기 tier 로 떨어진다.
+
+    argparse `choices` 와 env 검증이 모두 `EFFORT_LEVELS` 를 쓰므로, 레벨을
+    하나 더하면서 tier 를 안 더하면 그 레벨만 deadline 이 안 오른다.
+    """
+    from packet_ask.cli import EFFORT_LEVELS, EFFORT_TIMEOUT_SECONDS
+
+    assert set(EFFORT_LEVELS) == set(EFFORT_TIMEOUT_SECONDS)
+
+
+def test_invalid_env_message_names_every_level() -> None:
+    """메시지가 레벨 목록을 하드코딩한다. 레벨이 바뀌면 메시지가 거짓말을 한다."""
+    from packet_ask.cli import EFFORT_LEVELS
+
+    text = message("effort_env_invalid")
+    for level in EFFORT_LEVELS:
+        assert level in text, level
+
+
+def test_receipt_refuses_a_value_source_mismatch() -> None:
+    """출처를 정확히 남기는 것이 이 배치의 존재 이유다. 어긋난 조합을 막는다."""
+    from packet_ask.receipt import build_receipt
+
+    with pytest.raises(ValueError):
+        build_receipt(
+            "glm", "files", [], None, _FakeBuiltPacket(),
+            timeout_seconds=1200, timeout_source="auto", timeout_applies=True,
+            surface="absent", effort=None, effort_source="explicit",
+        )
+
+
+def test_invalid_env_precedes_the_provider_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """paste + 잘못된 env 에서 어느 메시지가 나오는지 고정한다.
+
+    둘 다 거절이라 결과는 같지만, 순서를 고정하지 않으면 나중에 가드를 옮길 때
+    문구가 조용히 바뀐다. 0.5.1 에서 같은 이유로 순서 의존성을 고정한 적이 있다.
+    """
+    repo = _init_repo(tmp_path / "repo")
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("PACKET_ASK_EFFORT", "ultra")
+    argv = _argv("--preview")
+    argv[argv.index("glm")] = "paste"
+    assert main(argv) == codes.USAGE
+    captured = capsys.readouterr()
+    assert message("effort_env_invalid") in captured.err
+    assert message("effort_unsupported") not in captured.err
+    assert captured.out == ""
+
+
+def test_env_effort_does_not_reach_the_launcher_env(tmp_path: Path, monkeypatch) -> None:
+    """런처가 실제로 쓰는 함수까지 내려가서 본다.
+
+    `minimal_child_env` 만 보면 런처가 그것을 쓰는지는 확인하지 못한다.
+    `isolated_env` 가 런처의 실제 호출 지점이다.
+    """
+    from packet_ask.launch import isolated_env
+
+    monkeypatch.setenv("PACKET_ASK_EFFORT", "max")
+    env = isolated_env(tmp_path, {})
+    assert "PACKET_ASK_EFFORT" not in env
+
+
+class _FakeBuiltPacket:
+    """receipt 단위 테스트용 최소 packet."""
+
+    report = None
+
+    def payload_bytes(self) -> bytes:
+        return b"packet"
+
+    def payload_digest(self) -> str:
+        return "a" * 64

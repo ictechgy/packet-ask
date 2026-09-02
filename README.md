@@ -139,7 +139,13 @@ time. `--effort` wins over it, and `effort_source` records which one applied
 answer why one run took 751 seconds, and that record is the difference between
 a default and a silent default. An invalid value is rejected with exit 2 rather
 than falling back to the vendor default; `argparse` validates the flag only, so
-a typo in the variable would otherwise disappear. A blank value means unset. Only the Claude-family launch providers (`glm`, `claude`) accept it;
+a typo in the variable would otherwise disappear. A blank value means unset.
+
+Note the blast radius: the variable applies to every task run, and `review` and
+`research` share the same path. With it set, a `--provider paste` run is
+rejected with exit 2 rather than ignoring the default. That is consistent with
+the flag, but a variable lives in a shell profile and is easy to forget, so
+unset it or pass `--effort` deliberately when you switch to `paste`. Only the Claude-family launch providers (`glm`, `claude`) accept it;
 `paste` and `kimi` reject it instead of dropping it silently.
 
 Measured on one packet and one question against `glm`:
