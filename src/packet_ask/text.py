@@ -10,6 +10,10 @@ _EN = {
     "research_files": "research uses --include-files instead of --files.",
     "research_diff": "research does not send local diffs. Use --include-files only.",
     "review_include_files": "review uses --files instead of --include-files.",
+    "preview_dry_run": (
+        "Use --preview or --dry-run, not both. --dry-run prints the packet; "
+        "--preview never does."
+    ),
     "provider_required": "--provider must name a provider.",
     "surface_outside": "A selected path is outside .packet-ask-surface. Declare it there, or pass --outside-surface.",
     "surface_entry": "Each .packet-ask-surface line must be a relative path prefix without globs.",
@@ -151,6 +155,10 @@ _KO = {
     "research_files": "research는 --files 대신 --include-files 를 쓰세요.",
     "research_diff": "research는 로컬 diff를 보내지 않습니다. --include-files 만 허용합니다.",
     "review_include_files": "review는 --include-files 대신 --files 를 쓰세요.",
+    "preview_dry_run": (
+        "--preview 와 --dry-run 은 함께 쓸 수 없습니다. --dry-run 은 패킷을 "
+        "출력하고 --preview 는 절대 출력하지 않습니다."
+    ),
     "provider_required": "--provider 에 프로바이더 이름을 지정하세요.",
     "surface_outside": "선택한 경로가 .packet-ask-surface 밖입니다. 거기에 선언하거나 --outside-surface 를 쓰세요.",
     "surface_entry": ".packet-ask-surface 의 각 줄은 글롭 없는 상대 경로 접두어여야 합니다.",

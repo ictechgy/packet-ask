@@ -56,6 +56,11 @@ exit code 만 보는 테스트는 자주 헛통과한다. argparse 도 인자 �
   flake 가 있었다.
 - 권한으로 실패를 만드는 테스트(`chmod 0o500`)는 root 로 돌리면 통과해
   버린다. CI 사용자 권한을 전제한다.
+- **런치 경로를 뮤테이션할 때는 런처를 패치한 테스트 하나만 돌린다.** task
+  경로의 가드를 지우면 남은 테스트가 진짜 벤더를 띄운다. `--provider glm` 을
+  쓰면서 `packet_ask.cli.launch_glm` 을 패치하지 않은 테스트가 auto timeout
+  1200초를 물고 붙잡힌다. 실제로 겪었다. `-k` 로 범위를 좁히거나 provider 를
+  `paste` 로 둔다.
 
 ## 실행
 

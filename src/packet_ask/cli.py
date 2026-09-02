@@ -32,13 +32,21 @@ from packet_ask.install_skills import install_skills
 from packet_ask.launch import launch_claude, launch_glm, launch_kimi
 from packet_ask.ledger import append_ledger_entry, build_ledger_entry, ledger_path
 from packet_ask.lifecycle import reap_stale_packets
-from packet_ask.providers import lookup_provider, load_catalog, resolve_provider_adapter
+from packet_ask.providers import (
+    ProviderSpec,
+    load_catalog,
+    lookup_provider,
+    resolve_provider_adapter,
+)
 from packet_ask.output import wrap_untrusted
 from packet_ask.packet import Packet, build_packet
 from packet_ask.policy import assert_allowed_task
 from packet_ask.errors import BudgetError
 from packet_ask.paths import packet_cache_dir
 from packet_ask.receipt import (
+    build_preview,
+    format_preview_line,
+    json_preview_envelope,
     build_packet_summary,
     build_receipt,
     format_packet_summary_line,
@@ -185,6 +193,7 @@ def _add_task_parser(sub: argparse._SubParsersAction, name: str, help_text: str)
         default="auto",
     )
     item.add_argument("--outside-surface", action="store_true")
+    item.add_argument("--preview", action="store_true")
     item.add_argument("--dry-run", action="store_true")
     item.add_argument("--progress", action="store_true")
     item.add_argument("--line-numbers", action="store_true")
@@ -612,6 +621,21 @@ def _run_task_guarded(
             timeout_applies=spec.mode == "launch",
             surface=prepared.surface,
         )
+        if args.preview:
+            # 대장 이전에 끝낸다. 대장 한 줄은 egress 지점 도달을 뜻하는데
+            # 미리보기는 거기에 도달하지 않는다. 나가지 않은 것이 섞이면
+            # "무엇이 나갔나" 라는 대장의 질문이 무의미해진다.
+            return _emit_preview(
+                args,
+                build_preview(
+                    receipt,
+                    mode=mode,
+                    provider_mode=spec.mode,
+                    credential_source=args.credential_source,
+                    credential_state=_credential_state(spec, args.credential_source),
+                    max_bytes=args.max_bytes,
+                ),
+            )
         packet_ms = _ms_since(prepared.packet_started)
         # 런치 전에 남긴다. 여기서 실패하면 벤더가 시작되지 않는다. 조용히
         # 기록을 빠뜨리는 대장은 없느니만 못하다.
@@ -738,10 +762,38 @@ def _cleanup_packet(packet: Packet, parent: Path) -> None:
         raise
 
 
+def _credential_state(spec: ProviderSpec, source: str) -> str:
+    """키 값을 읽지 않고 어느 통로가 준비돼 있는지만 본다.
+
+    미리보기가 값을 읽으면 실행만큼 위험해진다. 존재 확인까지만 한다.
+    """
+    if spec.mode != "launch":
+        return "not-required"
+    if source == "prompt":
+        return "interactive"
+    status = credential_status(spec.provider_id)
+    if source == "env":
+        return "env" if status.environment == "set" else "missing"
+    if source == "keychain":
+        return "keychain" if status.keychain_item == "available" else "missing"
+    return status.auto_candidate
+
+
+def _emit_preview(args: argparse.Namespace, preview: dict[str, Any]) -> int:
+    """런치하지 않은 계획만 공개한다. 본문도 키도 담지 않는다."""
+    if getattr(args, "json", False):
+        sys.stdout.write(json_preview_envelope(preview))
+    else:
+        print(format_preview_line(preview))
+    return codes.SUCCESS
+
+
 def _task_provider(args: argparse.Namespace) -> str:
     """dry-run을 포함한 task provider만 고른다."""
     # argparse required 는 인자 존재만 본다. 빈 값을 조용히 paste 로 만들면
     # claude 를 지정했다고 믿은 호출자가 출력만 받고 끝난다.
+    if getattr(args, "preview", False) and args.dry_run:
+        raise PacketAskError(message("preview_dry_run"), codes.USAGE)
     provider = (args.provider or "").strip()
     if not provider:
         raise PacketAskError(message("provider_required"), codes.USAGE)
