@@ -127,7 +127,15 @@ canonical dotted 국내 mobile 번호는 scrub하고 혼합 separator는 fail-cl
 `--effort`는 벤더가 얼마나 깊이 생각할지를 고릅니다. opt-in 이고 생략하면 벤더
 기본값이 쓰입니다. 값과 출처는 `timeout_seconds` + `timeout_source` 선례대로
 나눕니다. 고르지 않으면 `effort` 는 null 이고 `effort_source` 가
-`vendor-default` 입니다. Claude
+`vendor-default` 입니다.
+
+`PACKET_ASK_EFFORT` 로 기본값을 둘 수 있습니다. 매번 플래그를 치지 않아도
+됩니다. `--effort` 가 이기고, 어느 쪽이 적용됐는지는 `effort_source` 에
+남습니다(`explicit`, `env`, `vendor-default`). 이 기록이 없으면 "왜 이 실행이
+751초 걸렸나" 를 나중에 풀 수 없고, 그것이 기본값과 **조용한** 기본값의
+차이입니다. 잘못된 값은 벤더 기본값으로 떨어지지 않고 exit 2 로 거절합니다.
+`argparse` 는 플래그만 검사하므로 변수의 오타는 그냥 두면 사라집니다. 빈 값은
+설정하지 않은 것으로 봅니다. Claude
 계열 런치 프로바이더(`glm`, `claude`)만 받습니다. `paste`와 `kimi`는 조용히
 버리지 않고 거절합니다.
 

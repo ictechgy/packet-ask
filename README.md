@@ -131,7 +131,15 @@ false positives, so this is still a denylist rather than a no-leak guarantee.
 `--effort` selects how hard the vendor thinks. It is opt-in; omitting it leaves
 the vendor default. Value and origin are split the way `timeout_seconds` and
 `timeout_source` already are: `effort` is null and `effort_source` is
-`vendor-default`. Only the Claude-family launch providers (`glm`, `claude`) accept it;
+`vendor-default`.
+
+`PACKET_ASK_EFFORT` sets a default so you do not have to type the flag every
+time. `--effort` wins over it, and `effort_source` records which one applied
+(`explicit`, `env`, or `vendor-default`). Without that record you cannot later
+answer why one run took 751 seconds, and that record is the difference between
+a default and a silent default. An invalid value is rejected with exit 2 rather
+than falling back to the vendor default; `argparse` validates the flag only, so
+a typo in the variable would otherwise disappear. A blank value means unset. Only the Claude-family launch providers (`glm`, `claude`) accept it;
 `paste` and `kimi` reject it instead of dropping it silently.
 
 Measured on one packet and one question against `glm`:
