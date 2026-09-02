@@ -48,12 +48,18 @@
 ## 배포 뒤
 
 ```bash
-uv tool install packet-ask@latest --force --refresh
+uv tool install "packet-ask==X.Y.Z" --force --refresh
 packet-ask install-skills --force
 ```
 
-`uv tool upgrade` 는 exact pin 때문에 먹지 않고, `--force` 만으로는 PyPI
-인덱스 캐시 때문에 옛 버전이 다시 깔린다. **`--refresh` 를 같이 준다.**
+**버전을 명시한다.** `uv tool upgrade` 는 exact pin 때문에 먹지 않고,
+`--force` 만으로는 PyPI 인덱스 캐시 때문에 옛 버전이 다시 깔린다. 그리고
+`@latest --force --refresh` 도 배포 **직후에는** 인덱스 전파가 안 끝나서 옛
+버전을 깔았다. 실측했다. 방금 올린 버전을 명시하는 편이 확실하다.
+
+설치 뒤 배포본으로 이번 배치의 기능을 **하나씩 실행해 본다.** 로컬에서
+통과한 것과 배포된 wheel 이 같다는 보장은 build·smoke 까지이고, 실제 CLI
+표면은 별개다.
 
 ## 함정
 
