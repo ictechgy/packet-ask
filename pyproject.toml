@@ -33,6 +33,13 @@ packet-ask = "packet_ask:main"
 requires = ["uv_build>=0.10.9,<0.11.0"]
 build-backend = "uv_build"
 
+# 에이전트 지침은 기여자 문서이지 런타임 데이터가 아니다. `src/packet_ask/`
+# 안에 있어 기본값으로는 wheel·sdist 에 실렸고, 그래서 지침만 고쳐도 배포물이
+# 바뀌어 패치 릴리스를 부르곤 했다. 배포물에서 뺀다. `data/SKILL.md` 는
+# `install-skills` 가 쓰는 실제 런타임 데이터이므로 그대로 싣는다.
+[tool.uv.build-backend]
+source-exclude = ["src/packet_ask/AGENTS.md"]
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",

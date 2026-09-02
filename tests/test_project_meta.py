@@ -196,3 +196,53 @@ def test_scoped_agents_links_resolve() -> None:
             if target.startswith("http"):
                 continue
             assert (base / target).resolve().exists(), f"{source} -> {target}"
+
+
+def test_agents_guidance_is_excluded_from_the_distribution() -> None:
+    """에이전트 지침은 기여자 문서이지 런타임 데이터가 아니다.
+
+    `src/packet_ask/AGENTS.md` 는 패키지 디렉터리 안에 있어 기본값으로는
+    wheel 과 sdist 에 실렸다. 그러면 지침만 고쳐도 배포물 내용이 바뀌어
+    패치 릴리스를 부른다. 실제로 0.6.0 때는 "배포 불필요" 로, 0.7.1 때는
+    배포로 갈렸다. 배포물에서 빼서 그 판단이 다시 필요 없게 한다.
+
+    `data/SKILL.md` 는 `install-skills` 가 쓰는 실제 런타임 데이터이므로
+    같이 빠지면 안 된다.
+    """
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    excluded = data["tool"]["uv"]["build-backend"]["source-exclude"]
+    assert "src/packet_ask/AGENTS.md" in excluded
+    assert not any("SKILL" in pattern for pattern in excluded)
+
+
+def test_built_distribution_ships_skill_but_not_agents_guidance() -> None:
+    """설정이 아니라 실제 산출물을 본다.
+
+    `source-exclude` 키만 단언하면 백엔드가 그 키를 다르게 해석하거나
+    글롭이 빗나가도 통과한다. 빌드된 wheel·sdist 를 직접 연다.
+    """
+    import tarfile
+    import zipfile
+
+    dist = ROOT / "dist"
+    version = data_version()
+    wheel = dist / f"packet_ask-{version}-py3-none-any.whl"
+    sdist = dist / f"packet_ask-{version}.tar.gz"
+    if not wheel.is_file() or not sdist.is_file():
+        import pytest
+
+        pytest.skip("uv build 산출물이 없다. `uv build` 뒤에 돈다.")
+
+    wheel_names = zipfile.ZipFile(wheel).namelist()
+    with tarfile.open(sdist) as archive:
+        sdist_names = archive.getnames()
+
+    for names in (wheel_names, sdist_names):
+        assert not [name for name in names if name.endswith("AGENTS.md")]
+        assert [name for name in names if name.endswith("data/SKILL.md")]
+
+
+def data_version() -> str:
+    """pyproject 의 배포 버전."""
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    return str(data["project"]["version"])
