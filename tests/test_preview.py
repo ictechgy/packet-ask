@@ -39,7 +39,9 @@ def test_preview_never_launches_a_provider(
     def fail_launch(*_args: object, **_kwargs: object) -> str:
         raise AssertionError("preview must not launch a provider")
 
-    monkeypatch.setattr("packet_ask.cli.launch_glm", fail_launch)
+    # 하나만 막으면 dispatch 가 바뀌었을 때 가드를 놓친다. 셋 다 막는다.
+    for launcher in ("launch_glm", "launch_claude", "launch_kimi"):
+        monkeypatch.setattr(f"packet_ask.cli.{launcher}", fail_launch)
     assert main(_preview(repo)) == codes.SUCCESS
     out = capsys.readouterr()
     assert out.out.startswith("packet-ask preview ")
@@ -73,14 +75,25 @@ def test_preview_writes_no_ledger_entry(
     한 줄이라도 남기면 "무엇이 나갔나" 라는 대장의 질문에 나가지 않은 것이
     섞인다. 그러면 감사 표면으로서의 의미가 사라진다.
     """
-    repo = _init_repo(tmp_path)
+    # 대장은 워크트리 밖이어야 한다. 저장소를 하위 디렉터리로 만들어야
+    # tmp_path 가 실제로 바깥이 된다. 이전에는 tmp_path 자체가 저장소라
+    # 경로가 애초에 거절될 값이었고, preview 가 그 검사 앞에서 반환하는 바람에
+    # 테스트가 헛통과했다. 아래 양성 대조가 그것을 잡는다.
+    repo = _init_repo(tmp_path / "repo")
     monkeypatch.chdir(repo)
-    ledger = tmp_path / "outside" / "ledger.jsonl"
-    ledger.parent.mkdir()
+    ledger = tmp_path / "ledger.jsonl"
     monkeypatch.setenv("PACKET_ASK_LEDGER", str(ledger))
 
     assert main(_preview(repo)) == codes.SUCCESS
     assert not ledger.exists()
+
+    # 양성 대조. env 이름이 틀렸으면 위 단언은 아무것도 증명하지 않는다.
+    # 같은 env 로 preview 없이 돌리면 반드시 한 줄이 남아야 한다.
+    argv = [item for item in _preview(repo) if item != "--preview"]
+    argv[argv.index("glm")] = "paste"
+    assert main(argv) == codes.SUCCESS
+    assert ledger.exists()
+    assert len(ledger.read_text(encoding="utf-8").strip().splitlines()) == 1
 
 
 def test_preview_reports_the_launch_plan_without_secrets(
@@ -113,6 +126,8 @@ def test_preview_reports_the_launch_plan_without_secrets(
     # 키 값도 패킷 본문도 실리지 않는다.
     assert "x" * 40 not in json.dumps(data)
     assert "print(1)" not in json.dumps(data)
+    # 새 표면이므로 질문 본문 부재를 간접 추정에 맡기지 않고 직접 단언한다.
+    assert "리뷰해줘" not in json.dumps(data, ensure_ascii=False)
 
 
 def test_preview_names_a_missing_credential_before_the_wait(
