@@ -506,3 +506,37 @@ def test_real_korean_mobile_numbers_still_fail_closed() -> None:
     ):
         with pytest.raises(RedactionError):
             verify_scrubbed(leftover, home="/home/nobody")
+
+
+def test_parenthesised_mobile_is_scrubbed_not_merely_refused() -> None:
+    """검증만 잡고 스크럽이 못 지우면 그 패킷은 영영 못 보낸다.
+
+    검증은 일부러 스크럽보다 넓다(`redact.py` 주석). 그래서 스크럽이 못 지우는
+    형식을 검증이 잡으면 fail-closed 로 멈추는 것 자체는 의도대로다. 문제는
+    괄호가 흔한 한국 표기인데 스크럽이 구분자로 `[-\\s]` 만 받아서, 사용자에게
+    "원문을 고쳐라" 말고 길이 없다는 것이다. 지울 수 있으면 보낼 수 있다.
+    """
+    scrubbed, report = scrub_text("연락처(010)1234-5678", home="/home/nobody")
+    assert report.phones == 1
+    assert "1234" not in scrubbed
+    assert scrubbed == "연락처[REDACTED PHONE]"
+    verify_scrubbed(scrubbed, home="/home/nobody")
+
+
+def test_parentheses_do_not_widen_the_phone_pattern_into_code() -> None:
+    """괄호 허용이 평범한 코드를 번호로 읽으면 안 된다.
+
+    이 테스트는 짝괄호와 한쪽괄호(`\\(?...\\)?`)를 구분하지 못한다. 둘의 실제
+    동작이 같기 때문이다. 뒤쪽 대안이 여는 괄호 다음부터 매치를 시작할 수 있어
+    `\\(?` 가 더하는 것이 없다. 뮤테이션으로 확인했다. 짝으로 쓴 것은 의도
+    표현이지 이 테스트가 강제해서가 아니다.
+    """
+    for benign in (
+        "def f(x): return x[1016789]",
+        "shape=(1, 0, 1, 6)",
+        "call(0)1234-5678",
+        "range(10)",
+    ):
+        scrubbed, report = scrub_text(benign, home="/home/nobody")
+        assert report.phones == 0, benign
+        assert scrubbed == benign
