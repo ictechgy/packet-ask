@@ -30,6 +30,10 @@
   이것은 산출값이 아니라 코드 상수다. 기전 존재를 주장하는
   `redaction` / `doctor` / `policy_gate` 값은 실제 동작 테스트에 묶여 있으니
   구현을 바꾸면 그 테스트도 같이 본다.
+- `doctor` 출력 끝에는 `doctor.DOCTOR_SIGNALS` 상수가 한 줄로 붙는다. 같은
+  이유의 같은 규약이다. `verification` 은 기전 존재 주장이라 동작 테스트에,
+  `sandbox` / `signatures` 는 doctor 가 그것을 하지 않는다는 소스 단언에
+  묶여 있다.
 - `packet-ask.v1` 은 additive 다. 키를 더할 수는 있어도 지우거나 이름을
   바꾸지 않는다. 사람이 읽는 영수증 한 줄도 append-only 토큰 나열이다.
 

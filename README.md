@@ -138,8 +138,21 @@ machine-readable falsehood.
 misread, not every risk. The failure envelope is unchanged and still carries
 only a fixed code, kind, and message.
 
-The receipt line is an append-only token sequence. Parse it by whitespace and
-`key=value`; do not anchor a regex to the end of the line.
+`doctor` states its own verification level the same way. After the provider
+rows it prints one fixed line:
+
+```
+packet-ask doctor signals=verification:flags-mentioned,sandbox:none,signatures:not-checked
+```
+
+`doctor` runs before any receipt exists, so this is where the offset has to
+arrive. `verification: flags-mentioned` is pinned to real behavior; the other
+two say what `doctor` never attempted. It builds no sandbox and checks no
+signature or hash.
+
+Both lines are append-only token sequences. Parse them by whitespace and
+`key=value`; do not anchor a regex to the end of the line. They are machine
+surfaces and do not change with `PACKET_ASK_LANG`.
 
 ## Disclosure surface
 

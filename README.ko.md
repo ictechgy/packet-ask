@@ -132,8 +132,20 @@ receipt 한 줄 끝에 `guarantees=leakage:not-guaranteed,cwd_sandbox:none,redac
 **이 목록은 전부가 아닙니다.** 가장 자주 오독되는 한계를 적은 것이지 모든 위험을
 적은 것이 아닙니다. 실패 봉투는 그대로 고정 code/kind/message 만 담습니다.
 
-receipt 한 줄은 append-only 토큰 나열입니다. 공백과 `key=value` 로 파싱하고 줄 끝에
-정규식 앵커를 걸지 마세요.
+`doctor` 도 같은 방식으로 자신의 검증 수준을 밝힙니다. 프로바이더 줄 뒤에 고정된 한
+줄이 나옵니다.
+
+```
+packet-ask doctor signals=verification:flags-mentioned,sandbox:none,signatures:not-checked
+```
+
+`doctor` 는 receipt 가 생기기 전에 돌아갑니다. 상쇄가 도착해야 할 자리가 여기입니다.
+`verification: flags-mentioned` 는 실제 동작에 묶여 있고, 나머지 둘은 `doctor` 가
+애초에 시도하지 않은 것입니다. 샌드박스를 만들지 않고 서명이나 해시를 확인하지
+않습니다.
+
+두 줄 모두 append-only 토큰 나열입니다. 공백과 `key=value` 로 파싱하고 줄 끝에
+정규식 앵커를 걸지 마세요. 기계 표면이라 `PACKET_ASK_LANG` 과 무관하게 같습니다.
 
 ## 공개 표면 선언
 

@@ -316,3 +316,158 @@ def test_help_probe_timeout_kills_descendant_after_leader_exits(
         time.sleep(0.05)
     else:
         pytest.fail("help probe descendant survived process-group cleanup")
+
+
+def test_doctor_signals_are_fixed_constants_not_computed() -> None:
+    """doctor 한계 공개도 산출값이 아니라 코드 상수여야 드리프트하지 않는다.
+
+    `GUARANTEES` 와 같은 이유다. 검사 로직이 바뀌어도 상수는 스스로 강해지지
+    않아야 한다.
+    """
+    from types import MappingProxyType
+
+    from packet_ask.doctor import DOCTOR_SIGNALS
+
+    assert isinstance(DOCTOR_SIGNALS, MappingProxyType)
+    assert dict(DOCTOR_SIGNALS) == {
+        "verification": "flags-mentioned",
+        "sandbox": "none",
+        "signatures": "not-checked",
+    }
+    with pytest.raises(TypeError):
+        DOCTOR_SIGNALS["sandbox"] = "enforced"  # type: ignore[index]
+
+
+def test_doctor_output_states_its_own_limits(capsys: pytest.CaptureFixture[str]) -> None:
+    """한계는 그것을 근거로 판단하기 전에 도착해야 한다.
+
+    `guarantees` 는 성공한 task 의 영수증에만 붙는다. 그런데 사람이 이 도구를
+    믿을지 정하는 첫 표면은 설치 직후의 `doctor` 다. 상쇄해야 할 신호보다
+    상쇄가 늦게 오면 안 된다.
+    """
+    from packet_ask.cli import main
+
+    from packet_ask.doctor import format_doctor_signals_line
+
+    assert main(["doctor"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    # 프로바이더 줄이 전부 성공 신호다. 상쇄는 그 뒤에 와야 하므로 위치까지
+    # 고정한다. 존재만 보면 루프 위로 옮겨도 통과한다.
+    assert lines[-1] == format_doctor_signals_line()
+    assert len(lines) > 1
+
+
+def test_doctor_signal_line_is_append_only_tokens() -> None:
+    """영수증과 같은 규약이다. 줄 끝에 정규식을 앵커하지 않게 토큰 나열로 둔다.
+
+    줄 내용이 매핑의 삽입 순서를 따르므로 정확한 문자열로 고정한다. 상수를
+    알파벳 정렬하는 리팩터 하나가 append-only 표면의 기존 토큰 순서를 바꾸고
+    README 의 예시와 어긋나게 만든다. 순서 무시 비교만으로는 그것을 못 잡는다.
+    """
+    from packet_ask.doctor import format_doctor_signals_line
+
+    line = format_doctor_signals_line()
+    assert line == (
+        "packet-ask doctor signals="
+        "verification:flags-mentioned,sandbox:none,signatures:not-checked"
+    )
+    assert "\n" not in line
+    assert line.isascii()
+
+
+def test_doctor_verification_signal_matches_real_behaviour() -> None:
+    """`verification: flags-mentioned` 는 기전이 있다는 긍정 서술이다.
+
+    부정문 키와 달리 이 값은 구현이 회귀하면 기계 판독 가능한 거짓이 된다.
+    실제로 help 텍스트의 플래그 언급만 보고, 없으면 실행 후보에서 빠지는지
+    함께 고정한다.
+    """
+    from packet_ask.doctor import DOCTOR_SIGNALS, has_cli_flag
+
+    assert DOCTOR_SIGNALS["verification"] == "flags-mentioned"
+    complete = (
+        "--bare\n-p\n--tools\n--permission-mode\n--no-session-persistence\n"
+        "--setting-sources\n--mcp-config\n--strict-mcp-config\n"
+    )
+    assert has_cli_flag(complete, "--bare") is True
+    assert claude_supports_isolated_print(complete) is True
+    # 언급이 사라지면 실행 후보에서 빠진다. 언급만 본다는 것이 그 뜻이다.
+    assert claude_supports_isolated_print(complete.replace("--bare\n", "")) is False
+
+
+def test_missing_flag_mention_removes_launch_candidacy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """술어 함수가 아니라 `inspect_provider` 결로까지 고정한다.
+
+    술어만 단언하면 launch 게이트가 이 함수를 우회하도록 리팩터되거나 게이트
+    없는 신규 launch 프로바이더가 추가돼도 테스트가 전부 녹색인 채
+    `verification: flags-mentioned` 만 기계 판독 가능한 거짓이 된다. 기존
+    `can_launch is False` 단언은 실행파일 미신뢰 경로뿐이고 이 경로가 아니었다.
+    """
+    from packet_ask.doctor import DOCTOR_SIGNALS
+    from packet_ask.text import message
+
+    complete = (
+        "--bare\n-p\n--tools\n--permission-mode\n--no-session-persistence\n"
+        "--setting-sources\n--mcp-config\n--strict-mcp-config\n"
+    )
+    assert DOCTOR_SIGNALS["verification"] == "flags-mentioned"
+
+    monkeypatch.setattr("packet_ask.doctor._help_text", lambda _name: complete)
+    assert doctor.inspect_provider("glm").can_launch is True
+
+    # help 는 정상인데 언급 하나가 사라지면 paste 로 강등된다.
+    monkeypatch.setattr(
+        "packet_ask.doctor._help_text",
+        lambda _name: complete.replace("--strict-mcp-config\n", ""),
+    )
+    degraded = doctor.inspect_provider("glm")
+    assert degraded.installed is True
+    assert degraded.can_launch is False
+    assert degraded.note == message("launch_flags_missing")
+
+    # kimi 도 같은 게이트를 지난다. Claude 계열만 묶여 있으면 안 된다.
+    monkeypatch.setattr(
+        "packet_ask.doctor._help_text",
+        lambda _name: "--quiet\n--agent-file\n--work-dir\n--skills-dir\n",
+    )
+    assert doctor.inspect_provider("kimi").can_launch is True
+    monkeypatch.setattr(
+        "packet_ask.doctor._help_text",
+        lambda _name: "--quiet\n--agent-file\n--work-dir\n",
+    )
+    assert doctor.inspect_provider("kimi").can_launch is False
+
+
+def test_doctor_does_not_create_a_sandbox_or_check_signatures() -> None:
+    """`sandbox: none` / `signatures: not-checked` 가 실제 코드와 맞는지 본다.
+
+    doctor 가 언젠가 진짜 샌드박스나 서명 검증을 하게 되면 이 테스트가 먼저
+    깨져서 상수를 같이 고치도록 만든다.
+    """
+    import inspect as _inspect
+
+    from packet_ask import doctor as _doctor
+    from packet_ask.doctor import DOCTOR_SIGNALS
+
+    assert DOCTOR_SIGNALS["sandbox"] == "none"
+    assert DOCTOR_SIGNALS["signatures"] == "not-checked"
+    source = _inspect.getsource(_doctor)
+    # 샌드박스를 만드는 호출도, 서명·해시를 확인하는 호출도 없다. 이 단언은
+    # doctor.py 모듈 본문 안에서만 유효하다. 기능이 다른 모듈로 옮겨 가면
+    # 잡지 못한다. 다만 그때 어긋나는 방향은 "하는데 안 한다고 밝힘" 이라
+    # 과잉 신뢰를 만들지 않는다.
+    for absent in (
+        "sandbox-exec",
+        "sandbox_init",
+        "landlock",
+        "bwrap",
+        "codesign",
+        "spctl",
+        "gpg",
+        "openssl",
+        "hashlib",
+        "sha256",
+    ):
+        assert absent not in source

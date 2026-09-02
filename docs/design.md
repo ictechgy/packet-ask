@@ -56,6 +56,8 @@ paste 전용 내장: `grok`, `agy` (무도구 원샷 계약 확인 전).
 40. 영수증은 stderr 로 한 번 나가고 사라진다. 스킬 배포에서 스코프를 고르는 것은 MAIN 이므로 사람이 나중에 무엇이 나갔는지 물을 표면이 없다. `PACKET_ASK_LEDGER` 가 설정되면 런치 전에 append-only JSONL 한 줄을 남긴다. 절대 경로만 받고 워크트리 안·심링크·다른 uid 소유·비정규 파일을 거절한다. 워크트리 검사는 device·inode 조상 탐색이라 대소문자 비구분 파일시스템에서 뚫리지 않는다. O_APPEND·O_NOFOLLOW·O_NONBLOCK 으로 열고 이미 있던 파일이어도 첫 쓰기 전에 0600 을 강제하며 부분 쓰기를 끝까지 채운다. 기록은 egress 지점 도달을 뜻하지 전달 확인이 아니다. 질문과 파일 본문은 기록하지 않는다. 기록에 실패하면 벤더를 실행하지 않는다. 조용히 빠뜨리는 대장은 없느니만 못하다.
 41. 설계는 사용자가 고른 패킷이지만 스킬 배포에서 `--files` 를 고르는 것은 MAIN 이다. 워크트리 루트의 사람이 커밋한 `.packet-ask-surface` 가 있으면 명시 파일 목록이 선언된 경로 접두어 안에 있어야 한다. 없으면 강제는 꺼져 있다. 매칭은 문자열이 아니라 경로 구성요소 단위이고, 절대 경로·상위 참조·글롭·제어문자·심링크·빈 선언을 거절한다. `--outside-surface` 로 우회할 수 있으나 receipt·inspect·ledger 에 `overridden` 으로 남는다. diff 경로도 검사한다. `--diff <임의 ref>` 는 워크트리 흔적 없이 과거를 꺼낼 수 있어 면제 논거가 성립하지 않는다. 하드링크와 diff 내용 주입은 잡지 못하며 선언은 경로에 관한 것이지 내용 보증이 아니다. 이것은 유출 방지 allowlist 가 아니라 공개 범위 선언이며, 에이전트가 범위를 넓히려면 커밋된 파일을 고쳐야 해서 그 편집이 git status 나 새 커밋으로 기존 사람 리뷰 루프 위로 올라온다는 것이 유일한 기제다.
 
+42. `doctor` 는 성공 신호만 내는 표면이었다. `GUARANTEES` 는 성공한 task 의 receipt 와 inspect summary 에만 붙는데, 설치 절차가 `install-skills` 다음에 `doctor` 를 부르므로 사람이 이 도구를 믿을지 정하는 첫 화면은 `doctor` 다. 상쇄해야 할 신호보다 상쇄가 늦게 오면 안 된다. 코드 상수 `DOCTOR_SIGNALS`(verification/sandbox/signatures)를 프로바이더 줄 뒤에 append-only 토큰 한 줄로 낸다. 39 와 같은 이유로 산출값이 아니라 상수이며 기계 표면이라 언어 설정과 무관하다. 기전 존재를 주장하는 `verification: flags-mentioned` 는 실제 동작 테스트에 묶고, `sandbox: none` 과 `signatures: not-checked` 는 doctor 가 샌드박스를 만들거나 서명·해시를 확인하지 않는다는 소스 단언에 묶는다. 27 의 실패 봉투는 여기서도 넓히지 않는다.
+
 ## 금지
 
 구현·패치 적용, `--all`, 워크트리 밖, 커스텀 HTTP, 전역 `ANTHROPIC_BASE_URL` 변경, 워커 팜.
