@@ -57,6 +57,7 @@ def build_receipt(
     timeout_source: str,
     timeout_applies: bool,
     surface: str,
+    effort: str | None = None,
 ) -> dict[str, Any]:
     """비밀 값 없이 보낸 범위를 요약한다."""
     paths = _packet_paths(files, diff_text)
@@ -73,6 +74,9 @@ def build_receipt(
         "timeout_source": timeout_source,
         "timeout_applies": timeout_applies,
         "surface": surface,
+        # 생략은 "우리가 고르지 않았다" 이지 null 이 아니다. 벤더 기본값이
+        # 쓰였다는 사실 자체가 기록돼야 나중에 재현할 수 있다.
+        "effort": effort or "vendor-default",
         "guarantees": dict(GUARANTEES),
     }
 
@@ -148,6 +152,7 @@ def format_preview_line(preview: dict[str, Any]) -> str:
         f"({preview['timeout_source']},{applies}) "
         f"credential={preview['credential_source']}:{preview['credential_state']} "
         f"launch={preview['launch']} "
+        f"effort={preview['effort']} "
         f"surface={preview['surface']}"
         f" guarantees={_RECEIPT_LINE_GUARANTEES}"
     )
@@ -191,6 +196,7 @@ def format_receipt_line(receipt: dict[str, Any]) -> str:
         f"selector={receipt['selector']} paths={paths} "
         f"bytes={receipt['bytes']} sha256={digest}{timeout}"
         f" surface={receipt['surface']}"
+        f" effort={receipt.get('effort', 'vendor-default')}"
         f" guarantees={_RECEIPT_LINE_GUARANTEES}"
     )
 

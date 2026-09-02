@@ -76,6 +76,22 @@ AUTO_TIMEOUT_MEDIUM_SECONDS = 1500
 AUTO_TIMEOUT_LARGE_SECONDS = 1800
 DEFAULT_PREFLIGHT_TIMEOUT_SECONDS = 30
 PROGRESS_INTERVAL_SECONDS = 30
+# 실측(같은 패킷·같은 질문, glm/Z.ai): low 108s, medium 214s, high 444s, max 751s.
+# 한 단계마다 약 2배다. 53KB 패킷에서도 low 146s max 903s 로 배수가 유지됐다.
+# 크기는 effort 고정 시 20배 늘어도 1.2~1.35배뿐이라 tier 를 가르는 변수로
+# 약했다. 관측 최악 903초에 3배 안팎 여유를 둔다. xhigh 는 재지 않았고
+# high 와 max 사이일 것이므로 보수적으로 max 와 묶는다.
+EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+EFFORT_TIMEOUT_SECONDS = {
+    "low": 1200,
+    "medium": 1200,
+    "high": 1800,
+    "xhigh": 2700,
+    "max": 2700,
+}
+# Claude 계열만 `--effort` 를 받는다. kimi 는 별도 CLI 이고 paste 는 벤더를
+# 띄우지 않는다. 조용히 버리지 않고 usage 로 거절한다.
+EFFORT_PROVIDERS = frozenset({"glm", "claude"})
 
 
 @dataclass(frozen=True)
@@ -193,6 +209,12 @@ def _add_task_parser(sub: argparse._SubParsersAction, name: str, help_text: str)
         default="auto",
     )
     item.add_argument("--outside-surface", action="store_true")
+    item.add_argument(
+        "--effort",
+        choices=EFFORT_LEVELS,
+        default=None,
+        help="vendor reasoning effort; omitted means the vendor default",
+    )
     item.add_argument("--preview", action="store_true")
     item.add_argument("--dry-run", action="store_true")
     item.add_argument("--progress", action="store_true")
@@ -408,15 +430,28 @@ def _payload_bytes(question: str, files: list[ScopedFile], diff_text: str | None
     return total
 
 
-def _resolve_timeout(requested: int | None, packet_bytes: int) -> tuple[int, str]:
-    """명시값을 존중하고, 생략 시 넉넉한 packet-size tier를 고른다."""
+def _resolve_timeout(
+    requested: int | None,
+    packet_bytes: int,
+    effort: str | None = None,
+) -> tuple[int, str]:
+    """명시값을 존중하고, 생략 시 크기와 effort 중 더 큰 tier 를 고른다.
+
+    둘 중 큰 값을 쓰는 것이 중요하다. effort tier 가 기존 크기 tier 를
+    끌어내리면 큰 패킷의 상한이 조용히 낮아지는 회귀가 된다.
+    """
     if requested is not None:
         return requested, "explicit"
+    return max(_size_tier(packet_bytes), EFFORT_TIMEOUT_SECONDS.get(effort or "", 0)), "auto"
+
+
+def _size_tier(packet_bytes: int) -> int:
+    """최종 packet 바이트 기준 기존 tier."""
     if packet_bytes <= AUTO_TIMEOUT_SMALL_BYTES:
-        return AUTO_TIMEOUT_SMALL_SECONDS, "auto"
+        return AUTO_TIMEOUT_SMALL_SECONDS
     if packet_bytes <= AUTO_TIMEOUT_MEDIUM_BYTES:
-        return AUTO_TIMEOUT_MEDIUM_SECONDS, "auto"
-    return AUTO_TIMEOUT_LARGE_SECONDS, "auto"
+        return AUTO_TIMEOUT_MEDIUM_SECONDS
+    return AUTO_TIMEOUT_LARGE_SECONDS
 
 
 def _assert_packet_budget(question: str, files: list[ScopedFile], diff_text: str | None, max_bytes: int) -> None:
@@ -496,6 +531,7 @@ def _execute_provider(
     packet: Packet,
     timeout: int,
     credential_source: str,
+    effort: str | None = None,
 ) -> str:
     """카탈로그에 있는 프로바이더만 실행한다. paste 모드는 벤더를 띄우지 않는다."""
     spec = lookup_provider(provider)
@@ -510,7 +546,7 @@ def _execute_provider(
     launcher = launchers.get(adapter.launcher_name)
     if launcher is None:
         raise PacketAskError(message("no_adapter"), codes.CONFINEMENT)
-    return launcher(packet, timeout, credential_source)
+    return launcher(packet, timeout, credential_source, effort)
 
 
 def _ms_since(started: float) -> int:
@@ -595,6 +631,7 @@ def _run_task_guarded(
     )
     provider = _task_provider(args)
     spec = lookup_provider(provider)
+    _assert_effort_supported(args.effort, provider)
     if require_review_scope:
         _require_explicit_review_scope(args)
     with _packet_pipeline(
@@ -609,6 +646,7 @@ def _run_task_guarded(
         timeout_seconds, timeout_source = _resolve_timeout(
             args.timeout,
             len(prepared.packet.payload_bytes()),
+            args.effort,
         )
         receipt = build_receipt(
             provider,
@@ -620,6 +658,7 @@ def _run_task_guarded(
             timeout_source=timeout_source,
             timeout_applies=spec.mode == "launch",
             surface=prepared.surface,
+            effort=args.effort,
         )
         if args.preview:
             # 대장 이전에 끝낸다. 대장 한 줄은 egress 지점 도달을 뜻하는데
@@ -762,6 +801,15 @@ def _cleanup_packet(packet: Packet, parent: Path) -> None:
         raise
 
 
+def _assert_effort_supported(effort: str | None, provider: str) -> None:
+    """받지 못하는 프로바이더에 effort 를 조용히 버리지 않는다.
+
+    `--include-files` 가 조용히 버려졌던 것이 이 저장소의 실제 결함이었다.
+    """
+    if effort is not None and provider not in EFFORT_PROVIDERS:
+        raise PacketAskError(message("effort_unsupported"), codes.USAGE)
+
+
 def _credential_state(spec: ProviderSpec, source: str) -> str:
     """키 값을 읽지 않고 어느 통로가 준비돼 있는지만 본다.
 
@@ -819,6 +867,7 @@ def _finish_task(
             packet,
             timeout_seconds,
             args.credential_source,
+            getattr(args, "effort", None),
         )
     wrapped = wrap_untrusted(raw)
     timing = _phase_timing(started, preflight_ms, packet_ms, launch_started)

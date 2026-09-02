@@ -342,9 +342,15 @@ def _glm_child_env(home: Path, key: str) -> dict[str, str]:
     return extra
 
 
-def glm_argv() -> list[str]:
-    """무도구 plan 원샷. -p 의 다음 인자는 빈 프롬프트라 --tools 를 삼키지 않는다."""
-    return [
+def glm_argv(effort: str | None = None) -> list[str]:
+    """무도구 plan 원샷. -p 의 다음 인자는 빈 프롬프트라 --tools 를 삼키지 않는다.
+
+    `effort` 는 열거값이라 argv 주입 표면이 없다. 생략하면 플래그 자체를 넣지
+    않아 벤더 기본값이 그대로 쓰인다. 실측에서 같은 패킷이 low 108초 max 751초로
+    6.9배 갈렸다.
+    """
+    leading = ["--effort", effort] if effort else []
+    return leading + [
         "--bare",
         "-p",
         "",
@@ -370,6 +376,7 @@ def launch_glm(
     packet: Packet,
     timeout: int,
     credential_source: str = "env",
+    effort: str | None = None,
 ) -> str:
     """공식 claude 바이너리를 GLM 엔드포인트로 한 번 호출한다."""
     require_launchable("glm")
@@ -380,7 +387,7 @@ def launch_glm(
     env = isolated_env(home, _glm_child_env(home, key))
     output = run_isolated_command(
         executable,
-        glm_argv(),
+        glm_argv(effort),
         stdin_text,
         packet.root,
         env,
@@ -401,6 +408,7 @@ def launch_claude(
     packet: Packet,
     timeout: int,
     credential_source: str = "env",
+    effort: str | None = None,
 ) -> str:
     """공식 claude 를 Anthropic 엔드포인트로 한 번 호출한다."""
     require_launchable("claude")
@@ -411,7 +419,7 @@ def launch_claude(
     env = isolated_env(home, _claude_child_env(home, key))
     output = run_isolated_command(
         executable,
-        glm_argv(),
+        glm_argv(effort),
         stdin_text,
         packet.root,
         env,
@@ -553,8 +561,16 @@ def launch_kimi(
     packet: Packet,
     timeout: int,
     credential_source: str = "env",
+    effort: str | None = None,
 ) -> str:
-    """공식 kimi CLI를 TUI 없이 한 번 호출한다. 도구는 에이전트 파일로 끈다."""
+    """공식 kimi CLI를 TUI 없이 한 번 호출한다. 도구는 에이전트 파일로 끈다.
+
+    런처 프로토콜을 하나로 두려고 `effort` 를 받지만 kimi 는 이 노브를 갖지
+    않는다. CLI 계층이 이미 거절하므로 여기 도달하면 안 되고, 도달했다면
+    조용히 버리는 대신 멈춘다.
+    """
+    if effort is not None:
+        raise PacketAskError(message("effort_unsupported"), codes.USAGE)
     require_launchable("kimi")
     api_key = _require_kimi_key(credential_source)
     executable = _require_executable("kimi")

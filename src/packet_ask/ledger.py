@@ -61,7 +61,7 @@ def build_ledger_entry(mode: str, receipt: dict[str, Any]) -> dict[str, Any]:
             if isinstance(value, int) and not isinstance(value, bool)
         },
     }
-    for key in ("surface", "timeout_seconds", "timeout_source", "timeout_applies"):
+    for key in ("surface", "effort", "timeout_seconds", "timeout_source", "timeout_applies"):
         if key in receipt:
             entry[key] = receipt[key]
     return entry

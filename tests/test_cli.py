@@ -1189,7 +1189,7 @@ def test_review_passes_explicit_credential_source_to_launch(
     monkeypatch.chdir(repo)
     captured: dict[str, object] = {}
 
-    def fake_launch(packet, timeout, credential_source):  # noqa: ANN001
+    def fake_launch(packet, timeout, credential_source, effort=None):  # noqa: ANN001
         captured["source"] = credential_source
         captured["timeout"] = timeout
         return "reviewed"
@@ -1256,7 +1256,7 @@ def test_medium_packet_auto_timeout_reaches_launch(
     monkeypatch.chdir(repo)
     captured: dict[str, int] = {}
 
-    def fake_launch(packet, timeout, credential_source):  # noqa: ANN001
+    def fake_launch(packet, timeout, credential_source, effort=None):  # noqa: ANN001
         captured["timeout"] = timeout
         return "reviewed"
 
@@ -1286,7 +1286,7 @@ def test_explicit_timeout_reaches_launch_without_clamp(
     monkeypatch.chdir(repo)
     captured: dict[str, int] = {}
 
-    def fake_launch(packet, timeout, credential_source):  # noqa: ANN001
+    def fake_launch(packet, timeout, credential_source, effort=None):  # noqa: ANN001
         captured["timeout"] = timeout
         return "reviewed"
 
@@ -1327,7 +1327,7 @@ def test_builtin_registry_dispatches_each_launch_adapter(
     monkeypatch.chdir(repo)
     called: list[tuple[int, str]] = []
 
-    def fake_launch(_packet, timeout: int, credential_source: str) -> str:  # noqa: ANN001
+    def fake_launch(_packet, timeout: int, credential_source: str, effort: str | None = None) -> str:  # noqa: ANN001
         called.append((timeout, credential_source))
         return "reviewed"
 
