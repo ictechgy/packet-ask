@@ -136,7 +136,7 @@ receipt 한 줄 끝에 `guarantees=leakage:not-guaranteed,cwd_sandbox:none,redac
 줄이 나옵니다.
 
 ```
-packet-ask doctor signals=verification:flags-mentioned,sandbox:unproven,signatures:unverified
+packet-ask doctor signals=verification:flags-mentioned,sandbox:none,signatures:not-checked
 ```
 
 `doctor` 는 receipt 가 생기기 전에 돌아갑니다. 상쇄가 도착해야 할 자리가 여기입니다.

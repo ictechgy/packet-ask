@@ -142,7 +142,7 @@ only a fixed code, kind, and message.
 rows it prints one fixed line:
 
 ```
-packet-ask doctor signals=verification:flags-mentioned,sandbox:unproven,signatures:unverified
+packet-ask doctor signals=verification:flags-mentioned,sandbox:none,signatures:not-checked
 ```
 
 `doctor` runs before any receipt exists, so this is where the offset has to

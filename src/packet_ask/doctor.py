@@ -37,8 +37,8 @@ _HELP_CACHE: dict[tuple[str, int, int, int, int], str | None] = {}
 DOCTOR_SIGNALS: Mapping[str, str] = MappingProxyType(
     {
         "verification": "flags-mentioned",
-        "sandbox": "unproven",
-        "signatures": "unverified",
+        "sandbox": "none",
+        "signatures": "not-checked",
     }
 )
 # 사람 줄과 상수가 갈라지지 않도록 같은 매핑에서 만든다. receipt 한 줄과 달리

@@ -331,8 +331,8 @@ def test_doctor_signals_are_fixed_constants_not_computed() -> None:
     assert isinstance(DOCTOR_SIGNALS, MappingProxyType)
     assert dict(DOCTOR_SIGNALS) == {
         "verification": "flags-mentioned",
-        "sandbox": "unproven",
-        "signatures": "unverified",
+        "sandbox": "none",
+        "signatures": "not-checked",
     }
     with pytest.raises(TypeError):
         DOCTOR_SIGNALS["sandbox"] = "enforced"  # type: ignore[index]
@@ -369,7 +369,7 @@ def test_doctor_signal_line_is_append_only_tokens() -> None:
     line = format_doctor_signals_line()
     assert line == (
         "packet-ask doctor signals="
-        "verification:flags-mentioned,sandbox:unproven,signatures:unverified"
+        "verification:flags-mentioned,sandbox:none,signatures:not-checked"
     )
     assert "\n" not in line
     assert line.isascii()
@@ -441,7 +441,7 @@ def test_missing_flag_mention_removes_launch_candidacy(
 
 
 def test_doctor_does_not_create_a_sandbox_or_check_signatures() -> None:
-    """`sandbox: unproven` / `signatures: unverified` 가 실제 코드와 맞는지 본다.
+    """`sandbox: none` / `signatures: not-checked` 가 실제 코드와 맞는지 본다.
 
     doctor 가 언젠가 진짜 샌드박스나 서명 검증을 하게 되면 이 테스트가 먼저
     깨져서 상수를 같이 고치도록 만든다.
@@ -451,8 +451,8 @@ def test_doctor_does_not_create_a_sandbox_or_check_signatures() -> None:
     from packet_ask import doctor as _doctor
     from packet_ask.doctor import DOCTOR_SIGNALS
 
-    assert DOCTOR_SIGNALS["sandbox"] == "unproven"
-    assert DOCTOR_SIGNALS["signatures"] == "unverified"
+    assert DOCTOR_SIGNALS["sandbox"] == "none"
+    assert DOCTOR_SIGNALS["signatures"] == "not-checked"
     source = _inspect.getsource(_doctor)
     # 샌드박스를 만드는 호출도, 서명·해시를 확인하는 호출도 없다. 이 단언은
     # doctor.py 모듈 본문 안에서만 유효하다. 기능이 다른 모듈로 옮겨 가면
