@@ -58,6 +58,7 @@ def build_receipt(
     timeout_applies: bool,
     surface: str,
     effort: str | None = None,
+    effort_source: str = "vendor-default",
 ) -> dict[str, Any]:
     """비밀 값 없이 보낸 범위를 요약한다."""
     paths = _packet_paths(files, diff_text)
@@ -78,7 +79,7 @@ def build_receipt(
         # 필드에 섞으면 enum 도메인에 sentinel 이 들어가고, 나중에 출처가
         # 늘어날 때 값 도메인을 깨야 한다.
         "effort": effort,
-        "effort_source": "explicit" if effort else "vendor-default",
+        "effort_source": effort_source,
         "guarantees": dict(GUARANTEES),
     }
 

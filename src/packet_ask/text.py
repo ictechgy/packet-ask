@@ -10,9 +10,13 @@ _EN = {
     "research_files": "research uses --include-files instead of --files.",
     "research_diff": "research does not send local diffs. Use --include-files only.",
     "review_include_files": "review uses --files instead of --include-files.",
+    "effort_env_invalid": (
+        "PACKET_ASK_EFFORT must be one of low, medium, high, xhigh, max."
+    ),
     "effort_unsupported": (
-        "--effort is only supported by the Claude-family launch providers "
-        "(glm, claude)."
+        "Reasoning effort is only supported by the Claude-family launch "
+        "providers (glm, claude). It can come from --effort or "
+        "PACKET_ASK_EFFORT."
     ),
     "preview_dry_run": (
         "Use --preview or --dry-run, not both. --dry-run prints the packet; "
@@ -159,8 +163,12 @@ _KO = {
     "research_files": "research는 --files 대신 --include-files 를 쓰세요.",
     "research_diff": "research는 로컬 diff를 보내지 않습니다. --include-files 만 허용합니다.",
     "review_include_files": "review는 --include-files 대신 --files 를 쓰세요.",
+    "effort_env_invalid": (
+        "PACKET_ASK_EFFORT 는 low, medium, high, xhigh, max 중 하나여야 합니다."
+    ),
     "effort_unsupported": (
-        "--effort 는 Claude 계열 런치 프로바이더(glm, claude)만 지원합니다."
+        "추론 effort 는 Claude 계열 런치 프로바이더(glm, claude)만 지원합니다. "
+        "--effort 와 PACKET_ASK_EFFORT 둘 다 해당합니다."
     ),
     "preview_dry_run": (
         "--preview 와 --dry-run 은 함께 쓸 수 없습니다. --dry-run 은 패킷을 "

@@ -93,6 +93,24 @@ EFFORT_TIMEOUT_SECONDS = {
 # Claude 계열만 `--effort` 를 받는다. kimi 는 별도 CLI 이고 paste 는 벤더를
 # 띄우지 않는다. 조용히 버리지 않고 usage 로 거절한다.
 EFFORT_PROVIDERS = frozenset({"glm", "claude"})
+# 매번 치지 않아도 되게 하되 출처를 같이 기록한다. 기록이 없으면 "왜 이 실행이
+# 751초 걸렸나" 를 나중에 풀 수 없고, 그것이 조용한 기본값과 아닌 것의 차이다.
+_EFFORT_ENV = "PACKET_ASK_EFFORT"
+
+
+def _resolve_effort(flag: str | None) -> tuple[str | None, str]:
+    """플래그 > env > 벤더 기본값. `--timeout` 의 explicit > auto 와 같은 결이다."""
+    if flag is not None:
+        return flag, "explicit"
+    raw = os.environ.get(_EFFORT_ENV, "").strip()
+    if not raw:
+        # 빈 값은 "설정하지 않음" 이다. 거절하면 unset 하기가 어려워진다.
+        return None, "vendor-default"
+    if raw not in EFFORT_LEVELS:
+        # argparse choices 는 플래그만 본다. 여기서 안 막으면 오타가 조용히
+        # 벤더 기본값으로 떨어진다.
+        raise PacketAskError(message("effort_env_invalid"), codes.USAGE)
+    return raw, "env"
 
 
 @dataclass(frozen=True)
@@ -632,7 +650,8 @@ def _run_task_guarded(
     )
     provider = _task_provider(args)
     spec = lookup_provider(provider)
-    _assert_effort_supported(args.effort, provider)
+    effort, effort_source = _resolve_effort(args.effort)
+    _assert_effort_supported(effort, provider)
     if require_review_scope:
         _require_explicit_review_scope(args)
     with _packet_pipeline(
@@ -647,7 +666,7 @@ def _run_task_guarded(
         timeout_seconds, timeout_source = _resolve_timeout(
             args.timeout,
             len(prepared.packet.payload_bytes()),
-            args.effort,
+            effort,
         )
         receipt = build_receipt(
             provider,
@@ -659,7 +678,8 @@ def _run_task_guarded(
             timeout_source=timeout_source,
             timeout_applies=spec.mode == "launch",
             surface=prepared.surface,
-            effort=args.effort,
+            effort=effort,
+            effort_source=effort_source,
         )
         if args.preview:
             # 대장 이전에 끝낸다. 대장 한 줄은 egress 지점 도달을 뜻하는데
@@ -692,6 +712,7 @@ def _run_task_guarded(
             started,
             prepared.preflight_ms,
             packet_ms,
+            effort,
         )
     result.timing["total_ms"] = _ms_since(started)
     return _emit_task_result(args, receipt, result)
@@ -859,6 +880,7 @@ def _finish_task(
     started: float,
     preflight_ms: int,
     packet_ms: int,
+    effort: str | None = None,
 ) -> TaskResult:
     """벤더 실행 결과를 준비하되 cleanup 전에는 공개하지 않는다."""
     launch_started = time.monotonic()
@@ -868,7 +890,7 @@ def _finish_task(
             packet,
             timeout_seconds,
             args.credential_source,
-            getattr(args, "effort", None),
+            effort,
         )
     wrapped = wrap_untrusted(raw)
     timing = _phase_timing(started, preflight_ms, packet_ms, launch_started)

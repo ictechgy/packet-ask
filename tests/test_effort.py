@@ -250,3 +250,88 @@ class _FakePacket:
 
     def payload_text(self) -> str:
         return "packet"
+
+
+def test_env_supplies_the_default_effort(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """매번 치지 않아도 되게 하되, 출처가 기록돼야 조용한 기본값이 아니다."""
+    repo = _init_repo(tmp_path / "repo")
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("PACKET_ASK_EFFORT", "high")
+    assert main(_argv("--preview", "--json")) == codes.SUCCESS
+    preview = json.loads(capsys.readouterr().out)["preview"]
+    assert preview["effort"] == "high"
+    assert preview["effort_source"] == "env"
+    assert preview["timeout_seconds"] == 1800
+
+
+def test_flag_wins_over_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--timeout` 이 explicit > auto 인 것과 같은 결이다."""
+    repo = _init_repo(tmp_path / "repo")
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("PACKET_ASK_EFFORT", "max")
+    assert main(_argv("--effort", "low", "--preview", "--json")) == codes.SUCCESS
+    preview = json.loads(capsys.readouterr().out)["preview"]
+    assert preview["effort"] == "low"
+    assert preview["effort_source"] == "explicit"
+
+
+def test_invalid_env_effort_is_rejected_not_ignored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """사용자가 준 값이 쓸 수 없으면 거절한다. 조용한 기본값을 만들지 않는다.
+
+    argparse `choices` 는 플래그만 본다. env 는 별도로 검증하지 않으면
+    오타가 조용히 벤더 기본값으로 떨어진다. `PACKET_ASK_LEDGER` 가 잘못된
+    경로일 때 벤더를 안 띄우는 것과 같은 결이어야 한다.
+    """
+    repo = _init_repo(tmp_path / "repo")
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("PACKET_ASK_EFFORT", "ultra")
+    assert main(_argv("--preview")) == codes.USAGE
+    captured = capsys.readouterr()
+    assert message("effort_env_invalid") in captured.err
+    assert captured.out == ""
+
+
+def test_blank_env_effort_means_unset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """빈 문자열은 "설정하지 않음" 이다. 빈 값을 거절하면 unset 이 어려워진다."""
+    repo = _init_repo(tmp_path / "repo")
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("PACKET_ASK_EFFORT", "   ")
+    assert main(_argv("--preview", "--json")) == codes.SUCCESS
+    preview = json.loads(capsys.readouterr().out)["preview"]
+    assert preview["effort"] is None
+    assert preview["effort_source"] == "vendor-default"
+
+
+def test_env_effort_is_rejected_for_providers_that_cannot_take_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """env 로 들어와도 paste 에 조용히 실리면 안 된다.
+
+    플래그 경로만 막으면 env 가 우회로가 된다.
+    """
+    repo = _init_repo(tmp_path / "repo")
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("PACKET_ASK_EFFORT", "max")
+    argv = _argv("--preview")
+    argv[argv.index("glm")] = "paste"
+    assert main(argv) == codes.USAGE
+    assert message("effort_unsupported") in capsys.readouterr().err
+
+
+def test_env_effort_does_not_reach_the_vendor_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """자식 환경은 화이트리스트다. 벤더가 이 변수를 자기 설정으로 읽으면 안 된다."""
+    from packet_ask.paths import minimal_child_env
+
+    monkeypatch.setenv("PACKET_ASK_EFFORT", "max")
+    env = minimal_child_env(tmp_path)
+    assert "PACKET_ASK_EFFORT" not in env
