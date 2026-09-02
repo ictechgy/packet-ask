@@ -52,10 +52,18 @@ uv tool install "packet-ask==X.Y.Z" --force --refresh
 packet-ask install-skills --force
 ```
 
-**버전을 명시한다.** `uv tool upgrade` 는 exact pin 때문에 먹지 않고,
-`--force` 만으로는 PyPI 인덱스 캐시 때문에 옛 버전이 다시 깔린다. 그리고
-`@latest --force --refresh` 도 배포 **직후에는** 인덱스 전파가 안 끝나서 옛
-버전을 깔았다. 실측했다. 방금 올린 버전을 명시하는 편이 확실하다.
+**설치될 때까지 재시도한다.** `uv tool upgrade` 는 exact pin 때문에 먹지 않고,
+`--force` 만으로는 PyPI 인덱스 캐시 때문에 옛 버전이 다시 깔린다. `--refresh`
+가 그 로컬 캐시를 버린다.
+
+그런데 배포 **직후에는** `--refresh` 도 부족하다. PyPI 의 JSON API 가 새 버전을
+보여준 뒤에도 uv 가 쓰는 simple index 는 아직 반영 전일 수 있다. 이때
+`@latest` 는 옛 버전을 깔고, 버전을 명시하면 `no version of packet-ask==X.Y.Z`
+로 아예 실패한다. 둘 다 실측했다. **버전 명시가 더 확실한 것이 아니라, 실패가
+조용하지 않다는 점만 다르다.** 그래서 명시하는 편을 권한다.
+
+전파는 대개 곧 끝난다. 실패하면 잠시 뒤 같은 명령을 다시 돌리고,
+`uv tool list` 가 새 버전을 보여주는 것으로 확인한다.
 
 설치 뒤 배포본으로 이번 배치의 기능을 **하나씩 실행해 본다.** 로컬에서
 통과한 것과 배포된 wheel 이 같다는 보장은 build·smoke 까지이고, 실제 CLI
