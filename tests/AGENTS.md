@@ -64,6 +64,18 @@ exit code 만 보는 테스트는 자주 헛통과한다. argparse 도 인자 �
   flake 가 있었다.
 - 권한으로 실패를 만드는 테스트(`chmod 0o500`)는 root 로 돌리면 통과해
   버린다. CI 사용자 권한을 전제한다.
+- **같은 버전을 다시 빌드하고 스모크를 돌리면 낡은 산출물을 볼 수 있다.**
+  `uv run --with dist/*.whl` 의 archive 캐시가 로컬 경로 기준이라, 버전을
+  올리지 않고 내용만 바꿔 빌드하면 이전 wheel 이 그대로 설치된다. `--refresh`
+  도 `uv cache clean packet-ask` 도 이 경우를 풀지 못했다. 실제로 겪었고
+  wheel 에 없는 파일이 있다고 나와 한참 헤맸다. 새 임시 경로로 복사해서
+  돌린다. CI 는 매번 새 러너라 해당 없는 로컬 전용 함정이다.
+
+  ```bash
+  T=$(mktemp -d) && cp dist/packet_ask-*.whl "$T/"
+  uv run --isolated --no-project --with "$T"/packet_ask-*.whl tests/smoke.py
+  ```
+
 - **런치 경로를 뮤테이션할 때는 런처를 패치한 테스트 하나만 돌린다.** task
   경로의 가드를 지우면 남은 테스트가 진짜 벤더를 띄운다. `--provider glm` 을
   쓰면서 `packet_ask.cli.launch_glm` 을 패치하지 않은 테스트가 auto timeout
