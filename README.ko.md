@@ -124,8 +124,31 @@ canonical dotted 국내 mobile 번호는 scrub하고 혼합 separator는 fail-cl
 줄이기 위해 알려지지 않은 ASCII attribute형 suffix를 가진 모호한 Unicode
 행렬곱 표현식은 허용하므로, 여전히 no-leak 보장이 아닌 denylist입니다.
 
-`--timeout`을 생략하면 최종 packet 크기로 launch deadline을 고릅니다.
-64 KiB 이하는 1200초, 128 KiB 이하는 1500초, 그보다 크면 1800초입니다.
+`--effort`는 벤더가 얼마나 깊이 생각할지를 고릅니다. opt-in 이고 생략하면 벤더
+기본값이 쓰이며, 영수증에는 null 이 아니라 `vendor-default`로 남습니다. Claude
+계열 런치 프로바이더(`glm`, `claude`)만 받습니다. `paste`와 `kimi`는 조용히
+버리지 않고 거절합니다.
+
+같은 패킷·같은 질문으로 `glm`에서 실측한 값입니다.
+
+| `--effort` | launch 시간 | 53 KiB 패킷 |
+| --- | ---: | ---: |
+| `low` | 108초 | 146초 |
+| `medium` | 214초 | — |
+| `high` | 444초 | — |
+| `max` | 751초 | 903초 |
+
+한 단계마다 약 2배이고, 20배 큰 패킷에서도 배수가 같습니다. 반대로 effort를
+고정하면 바이트가 20배 늘어도 1.20~1.35배뿐입니다. **출력 길이는 신호가
+아닙니다** — `high`가 `medium`보다 짧게 나왔습니다. 시간은 쓰는 데가 아니라
+생각하는 데 들어갑니다. 각 칸은 표본 하나입니다.
+
+`--timeout`을 생략하면 크기 tier와 effort tier 중 **큰 값**을 씁니다
+(`low`/`medium` 1200초, `high` 1800초, `xhigh`/`max` 2700초). 큰 값을 쓰는 것이
+중요합니다. effort tier가 크기 tier를 덮으면 큰 패킷의 상한이 조용히 낮아집니다.
+`xhigh`는 재지 않았고 `high`와 `max` 사이일 것이므로 보수적으로 `max`와
+묶었습니다. 크기 tier는 64 KiB 이하 1200초, 128 KiB 이하 1500초, 그보다 크면
+1800초입니다.
 명시한 `--timeout`은 clamp 없이 그대로 씁니다. 넉넉한 기본값은 성공 호출을
 늦추지 않고 실제 hang의 실패 판정만 늦춥니다. Ctrl+C로 중단할 수 있으며 CI와
 무인 실행은 timeout을 명시하는 편이 좋습니다. paste/dry-run receipt에도

@@ -65,6 +65,8 @@ HOME 을 격리 프로바이더 홈으로 바꾸는 이 도구의 런치 규약�
 
 43. `inspect` 는 provider·credential·timeout·launch 를 일부러 만지지 않는다. 그래서 "지금 무엇이 어디로 나가려 하는가" 한 장이 비어 있었다. task 의 `--preview` 는 같은 pipeline 으로 packet 을 만들고 검증한 뒤 영수증에 provider mode·credential source 종류·`--max-bytes` 잔여·`launch: not-started` 를 더해 출력하고 **벤더를 실행하지 않는다.** 자격증명은 존재만 보고 값을 읽지 않는다. 값을 읽으면 미리보기가 실행만큼 위험해진다. 대장은 남기지 않는다. 한 줄은 egress 지점 도달을 뜻하는데 미리보기는 거기에 도달하지 않으며, 나가지 않은 것이 섞이면 "무엇이 나갔나" 라는 대장의 질문이 무의미해진다. `--dry-run` 과 함께 쓰면 usage 거절이다. `--dry-run` 은 패킷 본문을 내고 `--preview` 는 절대 내지 않으므로 둘 중 하나를 조용히 고를 수 없다. 39 의 성공 표면 규약대로 `guarantees` 를 싣고 27 의 실패 봉투는 넓히지 않는다.
 
+44. 추론 깊이는 노브가 없어 벤더 기본값에 맡겨져 있었다. 실측하니 같은 패킷·같은 질문에서 `low` 108초 `medium` 214초 `high` 444초 `max` 751초로 한 단계마다 약 2배였고, 53KB 패킷에서도 `low` 146초 `max` 903초로 배수가 유지됐다. 반대로 effort 를 고정하면 바이트가 20배 늘어도 1.20~1.35배뿐이다. `--effort {low,medium,high,xhigh,max}` 를 연다. 열거값이라 argv 주입 표면이 없고 생략하면 플래그를 넣지 않아 벤더 기본값이 쓰인다. 영수증에는 `vendor-default` 로 남는다. null 이 아니라 "고르지 않았다" 여야 재현 가능하다. auto timeout 은 크기 tier 와 effort tier 중 **큰 값**을 쓴다. effort 가 크기 tier 를 끌어내리면 큰 패킷 상한이 조용히 낮아지는 회귀다. low/medium 1200, high 1800, xhigh/max 2700 이며 관측 최악 903초에 3배 안팎 여유다. `xhigh` 는 재지 않았고 high 와 max 사이일 것이므로 보수적으로 max 와 묶었다. Claude 계열(glm, claude)만 이 노브를 갖고 paste·kimi 는 usage 로 거절한다. 조용히 버리지 않는다. effort 는 receipt·JSON·대장·`--preview` 에 전부 실린다. 39 의 성공 표면 규약이고 27 의 실패 봉투는 넓히지 않는다.
+
 ## 금지
 
 구현·패치 적용, `--all`, 워크트리 밖, 커스텀 HTTP, 전역 `ANTHROPIC_BASE_URL` 변경, 워커 팜.

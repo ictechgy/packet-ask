@@ -128,7 +128,30 @@ Ambiguous Unicode matrix expressions
 with an unrecognized ASCII attribute-like suffix remain allowed to reduce code
 false positives, so this is still a denylist rather than a no-leak guarantee.
 
-If `--timeout` is omitted, launch providers use the final packet size: up to
+`--effort` selects how hard the vendor thinks. It is opt-in; omitting it leaves
+the vendor default, which the receipt records as `vendor-default` rather than
+null. Only the Claude-family launch providers (`glm`, `claude`) accept it;
+`paste` and `kimi` reject it instead of dropping it silently.
+
+Measured on one packet and one question against `glm`:
+
+| `--effort` | launch time | 53 KiB packet |
+| --- | ---: | ---: |
+| `low` | 108 s | 146 s |
+| `medium` | 214 s | — |
+| `high` | 444 s | — |
+| `max` | 751 s | 903 s |
+
+Roughly 2x per step, and the same multiplier at 20x the packet size. Holding
+effort fixed, 20x more bytes cost only 1.20-1.35x. Output length is not the
+signal: `high` returned a shorter answer than `medium`. The time is spent
+reasoning, not writing. Each cell is a single sample.
+
+If `--timeout` is omitted, launch providers use the larger of the packet-size
+tier and the effort tier (`low`/`medium` 1200 s, `high` 1800 s, `xhigh`/`max`
+2700 s). Taking the larger of the two keeps a big packet from silently losing
+its existing ceiling. `xhigh` was not measured; it is grouped with `max`
+because it should fall between `high` and `max`. The packet size tiers are: up to
 64 KiB gets 1200 seconds, up to 128 KiB gets 1500 seconds, and larger packets
 get 1800 seconds. A supplied `--timeout` is used exactly without clamping. The
 larger defaults do not delay successful calls; they only postpone failure for a
