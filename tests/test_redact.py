@@ -540,3 +540,28 @@ def test_parentheses_do_not_widen_the_phone_pattern_into_code() -> None:
         scrubbed, report = scrub_text(benign, home="/home/nobody")
         assert report.phones == 0, benign
         assert scrubbed == benign
+        # 진짜 위험은 scrub 카운터가 아니라 검증이 막는 것이다. 스크럽이
+        # 안 건드린 코드가 verify 에서 거절되면 그 패킷은 못 나간다.
+        verify_scrubbed(scrubbed, home="/home/nobody")
+
+
+def test_digit_adjacent_numbers_are_the_accepted_narrowing() -> None:
+    """경계를 넣으면서 수용한 절충을 기록으로 고정한다.
+
+    숫자에 바로 붙은 11자리는 이제 검증에서 통과한다. 이것은 사고가 아니라
+    선택이다. scrub 의 `_PHONE_RE` 가 이미 같은 `(?<!\\d)`/`(?!\\d)` 경계를
+    쓰므로, 경계를 넣어야 두 단계가 같은 것을 전화번호로 본다. 넣기 전에는
+    scrub 이 못 지우는 것을 verify 가 막기만 해서 패킷이 나갈 수 없었다.
+
+    이 테스트가 깨지면 절충이 바뀐 것이니 문서와 주석도 같이 본다.
+    """
+    for glued in ("99901012345678", "010-1234-56789", "2026090201012345678"):
+        scrubbed, report = scrub_text(glued, home="/home/nobody")
+        # scrub 도 같은 경계라 지우지 않는다. 두 단계가 일치한다.
+        assert report.phones == 0, glued
+        verify_scrubbed(scrubbed, home="/home/nobody")
+
+    # 붙어 있지 않으면 두 단계 모두 잡는다.
+    scrubbed, report = scrub_text("주문번호 20260902\n010-1234-5678", home="/home/nobody")
+    assert report.phones == 1
+    assert "1234" not in scrubbed
