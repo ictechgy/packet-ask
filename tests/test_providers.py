@@ -241,3 +241,42 @@ def test_builtin_catalog_uses_english_by_default(monkeypatch: pytest.MonkeyPatch
     for item in load_catalog(user_file=None):
         assert re.search(r"[가-힣]", item.label) is None
         assert re.search(r"[가-힣]", item.note) is None
+
+
+def test_paste_only_notes_state_a_measured_reason_not_a_pending_check() -> None:
+    """"확인 전" 은 "확인하면 열린다" 로 읽힌다. 실제로는 둘 다 확인했고 둘 다 막혔다.
+
+    grok 은 플래그 계약(`--prompt-file`, `--tools`, `--sandbox`)을 실제로
+    갖췄지만, PATH 의 실행 파일이 실제 바이너리를 벤더 홈에서 찾고 전용 키를
+    받을 env 통로가 없다. 이 도구의 런치 어댑터는 전부 자식 HOME 을 격리된
+    프로바이더 홈으로 바꾸므로 격리 실행 자체가 성립하지 않는다.
+    agy 는 태스크를 argv 로 넘겨야 해서 프로세스 목록에 보인다.
+
+    이유가 서로 다른데 같은 문장을 쓰면 다음 에이전트가 플래그만 보고 승격을
+    시도한다. 실제로 그 길을 한 번 팠다.
+    """
+    from packet_ask.text import _EN, _KO
+
+    for catalog in (_EN, _KO):
+        grok_note = catalog["provider_grok_note"]
+        agy_note = catalog["provider_agy_note"]
+        assert grok_note != agy_note
+        for note in (grok_note, agy_note):
+            for pending in ("until", "yet", "전에는", "아직"):
+                assert pending not in note
+
+
+def test_grok_note_names_the_isolation_blocker() -> None:
+    """플래그 계약이 아니라 격리가 막힌 지점이라는 것을 표면에 남긴다."""
+    from packet_ask.text import _EN, _KO
+
+    assert "isolated" in _EN["provider_grok_note"]
+    assert "격리" in _KO["provider_grok_note"]
+
+
+def test_grok_and_agy_stay_paste_only_in_the_registry() -> None:
+    """note 만 고치고 어댑터를 여는 일이 없도록 레지스트리도 같이 고정한다."""
+    for provider_id in ("grok", "agy"):
+        adapter = BUILTIN_ADAPTERS[provider_id]
+        assert adapter.launcher_name is None
+        assert adapter.doctor_kind is None

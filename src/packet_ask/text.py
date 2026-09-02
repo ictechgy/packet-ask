@@ -89,8 +89,13 @@ _EN = {
     ),
     "provider_kimi_note": "Official Kimi quiet one-shot with tools disabled by the agent file.",
     "provider_claude_note": "Uses the GLM argv without the Z.ai endpoint; doctor checks help flags only.",
-    "provider_grok_note": "Paste only until a no-tools one-shot contract is confirmed.",
-    "provider_agy_note": "Paste only until a no-tools one-shot contract is confirmed.",
+    "provider_grok_note": (
+        "Paste only: it resolves its real binary through the vendor home and "
+        "takes no dedicated key, so it cannot run isolated."
+    ),
+    "provider_agy_note": (
+        "Paste only: the task must go in argv, where the process table shows it."
+    ),
     "providers_read_failed": "Could not read providers.toml.",
     "providers_version": "providers.toml version must be 1.",
     "providers_table": "providers.toml providers must be a table.",
@@ -234,8 +239,13 @@ _KO = {
         "Z.ai 엔드포인트 없이 GLM과 같은 argv를 쓰며 "
         "doctor는 help 플래그만 확인합니다."
     ),
-    "provider_grok_note": "무도구 원샷 계약이 확인되기 전에는 paste만 합니다.",
-    "provider_agy_note": "무도구 원샷 계약이 확인되기 전에는 paste만 합니다.",
+    "provider_grok_note": (
+        "paste 전용입니다. 실제 바이너리를 벤더 홈에서 찾고 전용 키를 받지 않아 "
+        "격리 실행이 성립하지 않습니다."
+    ),
+    "provider_agy_note": (
+        "paste 전용입니다. 태스크를 argv 로 넘겨야 해서 프로세스 목록에 보입니다."
+    ),
     "providers_read_failed": "providers.toml을 읽지 못했습니다.",
     "providers_version": "providers.toml의 version은 1이어야 합니다.",
     "providers_table": "providers.toml의 providers가 테이블이 아닙니다.",

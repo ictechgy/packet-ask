@@ -19,7 +19,8 @@ MIT 라이선스입니다. 전문은 [LICENSE](LICENSE)를 보세요.
 - [uv](https://docs.astral.sh/uv/) 0.10.9+ (`pyproject.toml` 의 `uv_build` 하한과 같습니다)
 - GLM / Claude 서브 실행: allowlist 경로의 `claude` CLI (출처 서명은 검증하지 않습니다)
 - Kimi 실행: allowlist 경로의 `kimi` CLI
-- `paste` / `grok` / `agy` 는 벤더를 띄우지 않고 패킷만 출력합니다
+- `paste` / `grok` / `agy` 는 벤더를 띄우지 않고 패킷만 출력합니다. 각각 왜
+  paste 로 남는지는 `packet-ask doctor` 가 실측한 이유로 알려 줍니다
 
 credential은 전용 환경변수, packet-ask 소유 macOS Keychain 항목, 명시한 일회성 prompt 중 하나에서 받습니다. **`.env`, ZCode, Claude Code, 임의 key 파일이나 key command는 읽지 않습니다.** 키 값을 명령행에 직접 넣으면 셸 히스토리에 남으므로 금지합니다. 질문도 같습니다. `--question` 은 argv라 프로세스 목록과 셸 히스토리에 보이므로 `--question-stdin` 을 우선 쓰세요. stdin 은 질문을 argv 밖에 두지만 대화형 셸이 무엇을 기록하는지까지는 통제하지 못하므로, 민감한 질문은 직접 친 heredoc 대신 파일에서 읽으세요. 변수 이름만 [.env.example](.env.example)에 있고 전체 source 계약은 [docs/key-sources.md](docs/key-sources.md)에 있습니다. 실행 파일 allowlist는 [SECURITY.md](SECURITY.md)를 보세요. Claude 계열 launch는 공식 bare mode, 빈 built-in tool set, strict explicit empty MCP config를 함께 씁니다. `doctor`는 제한된 help 출력에 해당 플래그 이름이 있는지만 보며 OS sandbox를 증명하지 않습니다.
 
@@ -249,7 +250,8 @@ packet-ask review --provider claude --files src/app.py --question "이 코드를
 # Kimi. 키는 PACKET_ASK_KIMI_KEY
 packet-ask review --provider kimi --files src/app.py --question "이 코드를 리뷰해줘"
 
-# grok/agy 는 아직 무도구 원샷을 실행하지 않고 paste 합니다
+# grok/agy 는 paste 로 남습니다. grok 은 실제 바이너리를 벤더 홈에서 찾고
+# 전용 키를 받지 않으며, agy 는 태스크를 argv 로 넘겨야 합니다
 packet-ask review --provider grok --files src/app.py --question "이 코드를 리뷰해줘"
 
 # 리서치. 로컬 파일·diff 는 기본 금지. 첨부는 --include-files 만
