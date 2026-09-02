@@ -41,6 +41,9 @@ EOF
 packet-ask review --provider <id> --unstaged --question-stdin < <file>
 packet-ask research --provider <id> --question-stdin < <file>
 
+# Launch plan without starting the vendor. Check this before a long run.
+packet-ask review --provider <id> --preview --diff <ref> --question-stdin < <file>
+
 # Metadata only. No provider, credential, timeout, or launch.
 packet-ask inspect review --files <paths> --question-stdin < <file>
 packet-ask inspect review --unstaged --breakdown --json --question-stdin < <file>
@@ -62,6 +65,7 @@ User `~/.config/packet-ask/providers.toml` may add paste aliases only.
 
 - Credential source defaults to `auto`: dedicated env, then packet-ask-owned macOS Keychain. It never reads another app's settings.
 - Provider timeout defaults to a generous final-packet-size tier (1200/1500/1800 seconds). An explicit `--timeout` is used exactly.
+- `--preview` builds and verifies the packet, prints the launch plan, and stops. It reports the provider mode, the credential source kind, the `--max-bytes` remainder, and `launch: not-started`. It never reads a credential value, writes no ledger line, and is rejected together with `--dry-run`. Use it before a run that would otherwise wait out a 1200-1800 second timeout.
 - `--progress` is opt-in and emits only a fixed launch phase and elapsed milliseconds every 30 seconds.
 - Real-fd question stdin and Git preflight share a 30-second default `--preflight-timeout`; this is separate from the provider timeout.
 - GLM: `PACKET_ASK_GLM_KEY` or Keychain service `packet-ask-glm`

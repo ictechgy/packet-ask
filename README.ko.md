@@ -73,6 +73,22 @@ diff는 변경 줄만이 아니라 header와 hunk를 포함한 전체 렌더링 
 이 항목별 shape metadata는 의도적으로 공개하지만 질문·항목 본문은 반환하지
 않습니다.
 
+`--preview`는 같은 스크럽 패킷을 만들어 검증한 뒤 런치 계획만 출력하고 **멈춥니다.**
+"지금 무엇이 어디로 나가려 하는가"에 답하는 유일한 표면입니다. 영수증 필드에 더해
+프로바이더 모드, 자격증명 소스 종류, `--max-bytes` 잔여, `launch: not-started`를
+싣습니다.
+
+```
+packet-ask review --provider glm --preview --diff HEAD --question "리뷰해줘"
+packet-ask preview provider=glm mode=review provider_mode=launch selector=diff paths=["changes.patch"] bytes=10374 sha256=ee792fb26412 budget_remaining=251770 timeout=1200s(auto,applies) credential=auto:keychain launch=not-started surface=absent guarantees=...
+```
+
+자격증명은 존재만 확인하고 값은 읽지 않습니다. 값을 읽으면 미리보기가 실행만큼
+위험해지기 때문입니다. 대장도 남기지 않습니다. 한 줄은 egress 지점 도달을 뜻하는데
+미리보기는 거기에 도달하지 않습니다. `--dry-run` 과 함께 쓰면 usage 오류입니다.
+`--dry-run` 은 패킷 본문을 출력하고 `--preview` 는 절대 출력하지 않으므로 둘 중
+하나를 조용히 고를 수 없습니다.
+
 `--line-numbers`를 명시하면 `packet.md` 안의 scrubbed 전체 파일 본문에 고정 폭
 gutter를 붙여 리뷰가 packet-local 줄을 인용할 수 있습니다. `files/` 아래 scrubbed
 파일은 바꾸지 않고 unified diff에는 적용하지 않으며 gutter/설명문 byte도 모두

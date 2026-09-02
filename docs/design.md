@@ -63,6 +63,8 @@ HOME 을 격리 프로바이더 홈으로 바꾸는 이 도구의 런치 규약�
 
 42. `doctor` 는 성공 신호만 내는 표면이었다. `GUARANTEES` 는 성공한 task 의 receipt 와 inspect summary 에만 붙는데, 설치 절차가 `install-skills` 다음에 `doctor` 를 부르므로 사람이 이 도구를 믿을지 정하는 첫 화면은 `doctor` 다. 상쇄해야 할 신호보다 상쇄가 늦게 오면 안 된다. 코드 상수 `DOCTOR_SIGNALS`(verification/sandbox/signatures)를 프로바이더 줄 뒤에 append-only 토큰 한 줄로 낸다. 39 와 같은 이유로 산출값이 아니라 상수이며 기계 표면이라 언어 설정과 무관하다. 기전 존재를 주장하는 `verification: flags-mentioned` 는 실제 동작 테스트에 묶고, `sandbox: none` 과 `signatures: not-checked` 는 doctor 가 샌드박스를 만들거나 서명·해시를 확인하지 않는다는 소스 단언에 묶는다. 27 의 실패 봉투는 여기서도 넓히지 않는다.
 
+43. `inspect` 는 provider·credential·timeout·launch 를 일부러 만지지 않는다. 그래서 "지금 무엇이 어디로 나가려 하는가" 한 장이 비어 있었다. task 의 `--preview` 는 같은 pipeline 으로 packet 을 만들고 검증한 뒤 영수증에 provider mode·credential source 종류·`--max-bytes` 잔여·`launch: not-started` 를 더해 출력하고 **벤더를 실행하지 않는다.** 자격증명은 존재만 보고 값을 읽지 않는다. 값을 읽으면 미리보기가 실행만큼 위험해진다. 대장은 남기지 않는다. 한 줄은 egress 지점 도달을 뜻하는데 미리보기는 거기에 도달하지 않으며, 나가지 않은 것이 섞이면 "무엇이 나갔나" 라는 대장의 질문이 무의미해진다. `--dry-run` 과 함께 쓰면 usage 거절이다. `--dry-run` 은 패킷 본문을 내고 `--preview` 는 절대 내지 않으므로 둘 중 하나를 조용히 고를 수 없다. 39 의 성공 표면 규약대로 `guarantees` 를 싣고 27 의 실패 봉투는 넓히지 않는다.
+
 ## 금지
 
 구현·패치 적용, `--all`, 워크트리 밖, 커스텀 HTTP, 전역 `ANTHROPIC_BASE_URL` 변경, 워커 팜.
