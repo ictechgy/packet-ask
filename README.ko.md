@@ -125,7 +125,9 @@ canonical dotted 국내 mobile 번호는 scrub하고 혼합 separator는 fail-cl
 행렬곱 표현식은 허용하므로, 여전히 no-leak 보장이 아닌 denylist입니다.
 
 `--effort`는 벤더가 얼마나 깊이 생각할지를 고릅니다. opt-in 이고 생략하면 벤더
-기본값이 쓰이며, 영수증에는 null 이 아니라 `vendor-default`로 남습니다. Claude
+기본값이 쓰입니다. 값과 출처는 `timeout_seconds` + `timeout_source` 선례대로
+나눕니다. 고르지 않으면 `effort` 는 null 이고 `effort_source` 가
+`vendor-default` 입니다. Claude
 계열 런치 프로바이더(`glm`, `claude`)만 받습니다. `paste`와 `kimi`는 조용히
 버리지 않고 거절합니다.
 
@@ -138,7 +140,8 @@ canonical dotted 국내 mobile 번호는 scrub하고 혼합 separator는 fail-cl
 | `high` | 444초 | — |
 | `max` | 751초 | 903초 |
 
-한 단계마다 약 2배이고, 20배 큰 패킷에서도 배수가 같습니다. 반대로 effort를
+`high` 까지는 한 단계마다 약 2배(1.98배, 2.07배)이고 `max` 로는 1.69배로
+완만해집니다. low→max 배수는 20배 큰 패킷에서도 유지됩니다(6.94배, 6.19배). 반대로 effort를
 고정하면 바이트가 20배 늘어도 1.20~1.35배뿐입니다. **출력 길이는 신호가
 아닙니다** — `high`가 `medium`보다 짧게 나왔습니다. 시간은 쓰는 데가 아니라
 생각하는 데 들어갑니다. 각 칸은 표본 하나입니다.

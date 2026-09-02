@@ -129,8 +129,9 @@ with an unrecognized ASCII attribute-like suffix remain allowed to reduce code
 false positives, so this is still a denylist rather than a no-leak guarantee.
 
 `--effort` selects how hard the vendor thinks. It is opt-in; omitting it leaves
-the vendor default, which the receipt records as `vendor-default` rather than
-null. Only the Claude-family launch providers (`glm`, `claude`) accept it;
+the vendor default. Value and origin are split the way `timeout_seconds` and
+`timeout_source` already are: `effort` is null and `effort_source` is
+`vendor-default`. Only the Claude-family launch providers (`glm`, `claude`) accept it;
 `paste` and `kimi` reject it instead of dropping it silently.
 
 Measured on one packet and one question against `glm`:
@@ -142,7 +143,7 @@ Measured on one packet and one question against `glm`:
 | `high` | 444 s | — |
 | `max` | 751 s | 903 s |
 
-Roughly 2x per step, and the same multiplier at 20x the packet size. Holding
+About 2x per step up to `high` (1.98x, 2.07x), then 1.69x to `max`. The low-to-max multiplier holds at 20x the packet size (6.94x and 6.19x). Holding
 effort fixed, 20x more bytes cost only 1.20-1.35x. Output length is not the
 signal: `high` returned a shorter answer than `medium`. The time is spent
 reasoning, not writing. Each cell is a single sample.

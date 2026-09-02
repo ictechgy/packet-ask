@@ -77,7 +77,8 @@ AUTO_TIMEOUT_LARGE_SECONDS = 1800
 DEFAULT_PREFLIGHT_TIMEOUT_SECONDS = 30
 PROGRESS_INTERVAL_SECONDS = 30
 # 실측(같은 패킷·같은 질문, glm/Z.ai): low 108s, medium 214s, high 444s, max 751s.
-# 한 단계마다 약 2배다. 53KB 패킷에서도 low 146s max 903s 로 배수가 유지됐다.
+# high 까지는 한 단계마다 약 2배(1.98, 2.07)이고 max 로는 1.69 로 완만해진다.
+# 53KB 패킷에서도 low 146s max 903s 로 low→max 배수가 유지됐다.
 # 크기는 effort 고정 시 20배 늘어도 1.2~1.35배뿐이라 tier 를 가르는 변수로
 # 약했다. 관측 최악 903초에 3배 안팎 여유를 둔다. xhigh 는 재지 않았고
 # high 와 max 사이일 것이므로 보수적으로 max 와 묶는다.

@@ -74,9 +74,11 @@ def build_receipt(
         "timeout_source": timeout_source,
         "timeout_applies": timeout_applies,
         "surface": surface,
-        # 생략은 "우리가 고르지 않았다" 이지 null 이 아니다. 벤더 기본값이
-        # 쓰였다는 사실 자체가 기록돼야 나중에 재현할 수 있다.
-        "effort": effort or "vendor-default",
+        # `timeout_seconds` + `timeout_source` 와 같은 짝이다. 값과 출처를 한
+        # 필드에 섞으면 enum 도메인에 sentinel 이 들어가고, 나중에 출처가
+        # 늘어날 때 값 도메인을 깨야 한다.
+        "effort": effort,
+        "effort_source": "explicit" if effort else "vendor-default",
         "guarantees": dict(GUARANTEES),
     }
 
@@ -152,7 +154,7 @@ def format_preview_line(preview: dict[str, Any]) -> str:
         f"({preview['timeout_source']},{applies}) "
         f"credential={preview['credential_source']}:{preview['credential_state']} "
         f"launch={preview['launch']} "
-        f"effort={preview['effort']} "
+        f"effort={preview['effort'] or 'none'}({preview['effort_source']}) "
         f"surface={preview['surface']}"
         f" guarantees={_RECEIPT_LINE_GUARANTEES}"
     )
@@ -196,7 +198,8 @@ def format_receipt_line(receipt: dict[str, Any]) -> str:
         f"selector={receipt['selector']} paths={paths} "
         f"bytes={receipt['bytes']} sha256={digest}{timeout}"
         f" surface={receipt['surface']}"
-        f" effort={receipt.get('effort', 'vendor-default')}"
+        f" effort={receipt.get('effort') or 'none'}"
+        f"({receipt.get('effort_source', 'vendor-default')})"
         f" guarantees={_RECEIPT_LINE_GUARANTEES}"
     )
 
