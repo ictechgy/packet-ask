@@ -69,7 +69,11 @@ _DOTTED_PHONE_RE = re.compile(
 _VERIFY_EMAIL_RE = re.compile(
     r"(?a:\b)[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"
 )
-_VERIFY_PHONE_RE = re.compile(r"(?:\+82|0)1[016789]\d{7,8}")
+# 검증은 공백·하이픈·괄호를 텍스트 전체에서 지운 뒤 훑는다. 그래서 무관한
+# 숫자들이 붙는다. git diff 의 `index <old>..<new> 100644` 가 대표적이다.
+# 숫자 경계가 없으면 긴 숫자열 한가운데를 전화번호로 읽는다. 바로 아래
+# dotted 후보 패턴은 이미 같은 경계를 갖고 있다.
+_VERIFY_PHONE_RE = re.compile(r"(?<!\d)(?:\+82|0)1[016789]\d{7,8}(?!\d)")
 _VERIFY_PHONE_DOT_CANDIDATE_RE = re.compile(
     r"(?<![\d.])(?P<number>(?:\+82|0)1[016789][\d.]{7,10})(?!\d|\.\d)"
 )

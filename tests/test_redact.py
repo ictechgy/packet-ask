@@ -474,3 +474,35 @@ def test_redacts_url_userinfo() -> None:
     assert "[REDACTED]" in text
     assert report.secret_values >= 1
     verify_scrubbed(text)
+
+
+def test_git_index_line_is_not_a_phone_candidate() -> None:
+    """git diff 의 index 줄이 전화번호로 오탐되면 안 된다.
+
+    `verify_scrubbed` 는 전화번호를 찾기 전에 텍스트 전체에서 공백·하이픈·
+    괄호를 지운다. 그래서 blob 해시와 파일 모드가 붙는다.
+
+        index 3bb8321..1010471 100644
+        → index3bb8321..1010471100644
+                          ^^^^^^^^^^^ 01047110064
+
+    경계가 없으면 긴 숫자열 한가운데를 매치한다. 이 저장소의 리뷰 관례가
+    `review --diff` 라서, 어떤 커밋을 리뷰하느냐에 따라 무작위로 exit 12 가
+    된다. 사용자는 "민감 데이터가 남았다" 는 틀린 메시지를 본다. 실제로
+    최근 60개 커밋 중 1건이 이것만으로 막혔다.
+    """
+    verify_scrubbed("index 3bb8321..1010471 100644\n", home="/home/nobody")
+    verify_scrubbed("index 0000000..0101234 100755\n", home="/home/nobody")
+
+
+def test_real_korean_mobile_numbers_still_fail_closed() -> None:
+    """경계를 붙여도 실제 번호는 전부 그대로 잡혀야 한다."""
+    for leftover in (
+        "전화 010-1234-5678",
+        "010 1234 5678",
+        "01012345678",
+        "+82 10 1234 5678",
+        "연락처(010)1234-5678",
+    ):
+        with pytest.raises(RedactionError):
+            verify_scrubbed(leftover, home="/home/nobody")
