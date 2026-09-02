@@ -347,20 +347,30 @@ def test_doctor_output_states_its_own_limits(capsys: pytest.CaptureFixture[str])
     """
     from packet_ask.cli import main
 
+    from packet_ask.doctor import format_doctor_signals_line
+
     assert main(["doctor"]) == 0
-    out = capsys.readouterr().out
-    assert (
-        "packet-ask doctor signals="
-        "verification:flags-mentioned,sandbox:unproven,signatures:unverified" in out
-    )
+    lines = capsys.readouterr().out.splitlines()
+    # 프로바이더 줄이 전부 성공 신호다. 상쇄는 그 뒤에 와야 하므로 위치까지
+    # 고정한다. 존재만 보면 루프 위로 옮겨도 통과한다.
+    assert lines[-1] == format_doctor_signals_line()
+    assert len(lines) > 1
 
 
 def test_doctor_signal_line_is_append_only_tokens() -> None:
-    """영수증과 같은 규약이다. 줄 끝에 정규식을 앵커하지 않게 토큰 나열로 둔다."""
+    """영수증과 같은 규약이다. 줄 끝에 정규식을 앵커하지 않게 토큰 나열로 둔다.
+
+    줄 내용이 매핑의 삽입 순서를 따르므로 정확한 문자열로 고정한다. 상수를
+    알파벳 정렬하는 리팩터 하나가 append-only 표면의 기존 토큰 순서를 바꾸고
+    README 의 예시와 어긋나게 만든다. 순서 무시 비교만으로는 그것을 못 잡는다.
+    """
     from packet_ask.doctor import format_doctor_signals_line
 
     line = format_doctor_signals_line()
-    assert line.startswith("packet-ask doctor signals=")
+    assert line == (
+        "packet-ask doctor signals="
+        "verification:flags-mentioned,sandbox:unproven,signatures:unverified"
+    )
     assert "\n" not in line
     assert line.isascii()
 
@@ -385,6 +395,51 @@ def test_doctor_verification_signal_matches_real_behaviour() -> None:
     assert claude_supports_isolated_print(complete.replace("--bare\n", "")) is False
 
 
+def test_missing_flag_mention_removes_launch_candidacy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """술어 함수가 아니라 `inspect_provider` 결로까지 고정한다.
+
+    술어만 단언하면 launch 게이트가 이 함수를 우회하도록 리팩터되거나 게이트
+    없는 신규 launch 프로바이더가 추가돼도 테스트가 전부 녹색인 채
+    `verification: flags-mentioned` 만 기계 판독 가능한 거짓이 된다. 기존
+    `can_launch is False` 단언은 실행파일 미신뢰 경로뿐이고 이 경로가 아니었다.
+    """
+    from packet_ask.doctor import DOCTOR_SIGNALS
+    from packet_ask.text import message
+
+    complete = (
+        "--bare\n-p\n--tools\n--permission-mode\n--no-session-persistence\n"
+        "--setting-sources\n--mcp-config\n--strict-mcp-config\n"
+    )
+    assert DOCTOR_SIGNALS["verification"] == "flags-mentioned"
+
+    monkeypatch.setattr("packet_ask.doctor._help_text", lambda _name: complete)
+    assert doctor.inspect_provider("glm").can_launch is True
+
+    # help 는 정상인데 언급 하나가 사라지면 paste 로 강등된다.
+    monkeypatch.setattr(
+        "packet_ask.doctor._help_text",
+        lambda _name: complete.replace("--strict-mcp-config\n", ""),
+    )
+    degraded = doctor.inspect_provider("glm")
+    assert degraded.installed is True
+    assert degraded.can_launch is False
+    assert degraded.note == message("launch_flags_missing")
+
+    # kimi 도 같은 게이트를 지난다. Claude 계열만 묶여 있으면 안 된다.
+    monkeypatch.setattr(
+        "packet_ask.doctor._help_text",
+        lambda _name: "--quiet\n--agent-file\n--work-dir\n--skills-dir\n",
+    )
+    assert doctor.inspect_provider("kimi").can_launch is True
+    monkeypatch.setattr(
+        "packet_ask.doctor._help_text",
+        lambda _name: "--quiet\n--agent-file\n--work-dir\n",
+    )
+    assert doctor.inspect_provider("kimi").can_launch is False
+
+
 def test_doctor_does_not_create_a_sandbox_or_check_signatures() -> None:
     """`sandbox: unproven` / `signatures: unverified` 가 실제 코드와 맞는지 본다.
 
@@ -399,8 +454,20 @@ def test_doctor_does_not_create_a_sandbox_or_check_signatures() -> None:
     assert DOCTOR_SIGNALS["sandbox"] == "unproven"
     assert DOCTOR_SIGNALS["signatures"] == "unverified"
     source = _inspect.getsource(_doctor)
-    # 샌드박스를 만드는 호출도, 서명·해시를 확인하는 호출도 없다.
-    for absent in ("sandbox-exec", "codesign", "hashlib", "sha256"):
+    # 샌드박스를 만드는 호출도, 서명·해시를 확인하는 호출도 없다. 이 단언은
+    # doctor.py 모듈 본문 안에서만 유효하다. 기능이 다른 모듈로 옮겨 가면
+    # 잡지 못한다. 다만 그때 어긋나는 방향은 "하는데 안 한다고 밝힘" 이라
+    # 과잉 신뢰를 만들지 않는다.
+    for absent in (
+        "sandbox-exec",
+        "sandbox_init",
+        "landlock",
+        "bwrap",
+        "codesign",
+        "spctl",
+        "gpg",
+        "openssl",
+        "hashlib",
+        "sha256",
+    ):
         assert absent not in source
-    # 자식에게 주는 것은 최소 환경일 뿐이고 그것은 격리 기제가 아니다.
-    assert "minimal_child_env(probe)" in source
