@@ -74,6 +74,22 @@ rendered diff, including headers and hunks—not just changed lines. This
 per-item shape metadata is disclosed by design; the question and item body are
 never returned.
 
+`--preview` builds and verifies the same scrubbed packet, then prints the
+launch plan and **stops**. It is the one surface that answers "what is about to
+go where": on top of the receipt fields it adds the provider mode, the
+credential source kind, the `--max-bytes` remainder, and `launch: not-started`.
+
+```
+packet-ask review --provider glm --preview --diff HEAD --question "Review this"
+packet-ask preview provider=glm mode=review provider_mode=launch selector=diff paths=["changes.patch"] bytes=10374 sha256=ee792fb26412 budget_remaining=251770 timeout=1200s(auto,applies) credential=auto:keychain launch=not-started surface=absent guarantees=...
+```
+
+The credential is checked for existence only; its value is never read, because
+reading it would make a preview as dangerous as a run. No ledger line is
+written: an entry means a run reached the point of egress, and a preview never
+does. `--preview` with `--dry-run` is a usage error, since `--dry-run` prints
+the packet body and `--preview` never does.
+
 `--line-numbers` opt-in adds a fixed-width gutter to scrubbed full-file content
 inside `packet.md`, so a review can cite packet-local lines. It does not alter
 the scrubbed files under `files/`, never decorates unified diffs, and counts all

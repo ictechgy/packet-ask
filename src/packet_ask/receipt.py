@@ -104,6 +104,65 @@ def build_packet_summary(
     return summary
 
 
+def build_preview(
+    receipt: dict[str, Any],
+    mode: str,
+    provider_mode: str,
+    credential_source: str,
+    credential_state: str,
+    max_bytes: int,
+) -> dict[str, Any]:
+    """벤더를 실행하기 전의 런치 계획. 본문과 키 값은 담지 않는다.
+
+    `inspect` 는 의도적으로 provider·credential·timeout 을 만지지 않는다.
+    그래서 "실제로 무엇이 어디로 나가려 하는가" 한 장이 비어 있었다. 영수증이
+    이미 그 필드를 다 만들므로 재사용하고, 런치 계획에만 있는 것을 더한다.
+    """
+    preview = dict(receipt)
+    preview["mode"] = mode
+    preview["provider_mode"] = provider_mode
+    preview["credential_source"] = credential_source
+    preview["credential_state"] = credential_state
+    preview["max_bytes"] = int(max_bytes)
+    preview["budget_remaining_bytes"] = max(0, int(max_bytes) - int(receipt["bytes"]))
+    # 이 표면의 존재 이유가 "아직 안 나갔다" 이므로 그것을 기계 키로 적는다.
+    preview["launch"] = "not-started"
+    return preview
+
+
+def format_preview_line(preview: dict[str, Any]) -> str:
+    """사람이 읽는 한 줄 미리보기. 영수증과 같은 append-only 토큰 나열이다."""
+    paths = json.dumps(
+        [str(path) for path in preview["paths"]],
+        ensure_ascii=True,
+        separators=(",", ":"),
+    )
+    applies = "applies" if preview["timeout_applies"] else "informational"
+    return (
+        f"packet-ask preview provider={preview['provider']} "
+        f"mode={preview['mode']} provider_mode={preview['provider_mode']} "
+        f"selector={preview['selector']} paths={paths} "
+        f"bytes={preview['bytes']} sha256={str(preview['sha256_packet_md'])[:12]} "
+        f"budget_remaining={preview['budget_remaining_bytes']} "
+        f"timeout={preview['timeout_seconds']}s"
+        f"({preview['timeout_source']},{applies}) "
+        f"credential={preview['credential_source']}:{preview['credential_state']} "
+        f"launch={preview['launch']} "
+        f"surface={preview['surface']}"
+        f" guarantees={_RECEIPT_LINE_GUARANTEES}"
+    )
+
+
+def json_preview_envelope(preview: dict[str, Any]) -> str:
+    """런치하지 않은 계획만 담는 versioned JSON."""
+    body = {
+        "schema": SCHEMA,
+        "ok": True,
+        "preview": preview,
+    }
+    return json.dumps(body, ensure_ascii=False, indent=2) + "\n"
+
+
 def _packet_paths(files: list[ScopedFile], diff_text: str | None) -> list[str]:
     """receipt와 inspect가 공유하는 packet 상대경로 목록."""
     paths = [item.relative for item in files]
