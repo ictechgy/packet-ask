@@ -19,7 +19,8 @@ MIT licensed. See [LICENSE](LICENSE).
 - [uv](https://docs.astral.sh/uv/) 0.10.9+ (same lower bound as `uv_build` in `pyproject.toml`)
 - GLM / Claude SUB runs: a `claude` CLI on the allowlist path (origin signatures are not verified)
 - Kimi runs: a `kimi` CLI on the allowlist path
-- `paste` / `grok` / `agy` print a packet and do not launch a vendor
+- `paste` / `grok` / `agy` print a packet and do not launch a vendor. Run
+  `packet-ask doctor` for the measured reason each one stays paste-only
 
 Credentials come from a dedicated environment variable, a packet-ask-owned macOS Keychain item, or an explicitly requested one-run prompt. **This tool does not read `.env`, ZCode, Claude Code, arbitrary key files, or key commands.** Never put key values on the command line; they land in shell history. The same applies to the question: `--question` is argv and is visible in the process table and in shell history, so prefer `--question-stdin`. Stdin keeps the question out of argv, but it does not control what an interactive shell records; read a sensitive question from a file rather than a typed heredoc. Variable names are in [.env.example](.env.example), and the complete source contract is in [docs/key-sources.md](docs/key-sources.md). The executable allowlist is in [SECURITY.md](SECURITY.md). Claude-family launches use official bare mode, an empty built-in tool set, and strict explicit empty MCP configuration. `doctor` only checks that bounded help text mentions those required flags; it does not prove an OS sandbox.
 
@@ -263,7 +264,8 @@ packet-ask review --provider claude --files src/app.py --question "Review this c
 # Kimi. Key: PACKET_ASK_KIMI_KEY
 packet-ask review --provider kimi --files src/app.py --question "Review this code"
 
-# grok/agy still paste; they do not run a no-tools one-shot yet
+# grok/agy stay paste. grok resolves its real binary through the vendor home
+# and takes no dedicated key; agy needs the task in argv
 packet-ask review --provider grok --files src/app.py --question "Review this code"
 
 # Research. Local files are off by default
