@@ -299,3 +299,24 @@ def test_security_docs_document_the_same_variables_in_both_languages() -> None:
     }
     # 표가 비어 있으면 위 비교가 공짜로 통과한다.
     assert len(english) >= 9
+
+
+def test_readme_sections_do_not_drift_between_languages() -> None:
+    """한쪽 언어에만 절을 더하는 것을 막는다.
+
+    이번 세션에서 두 번 겪었다. SECURITY 변수 표가 갈라져 있었고(#58), 그 직후
+    allowlist 절이 영어 README 에만 들어왔다. 문구는 언어마다 다르니 제목을
+    비교할 수는 없지만, **개수**는 같아야 한다. 절을 하나 더하면서 대응본을
+    빠뜨리면 여기서 걸린다.
+
+    문단 단위 누락까지 잡지는 못한다. 그건 사람이 볼 몫이다.
+    """
+    english = (ROOT / "README.md").read_text(encoding="utf-8").splitlines()
+    korean = (ROOT / "README.ko.md").read_text(encoding="utf-8").splitlines()
+    for level in ("## ", "### "):
+        assert sum(1 for line in english if line.startswith(level)) == sum(
+            1 for line in korean if line.startswith(level)
+        ), level
+    assert sum(1 for line in english if line.startswith("```")) == sum(
+        1 for line in korean if line.startswith("```")
+    )

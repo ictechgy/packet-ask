@@ -381,6 +381,42 @@ version = 1
 label = "Gemini CLI"
 ```
 
+### 시크릿 이름 추정에서 경로 하나 면제하기
+
+스코프는 이름이 자격증명 파일처럼 보이는 경로를 거절합니다. 그 검사의 일부는
+**추정**입니다 — 경로 조각이 `token`, `secret`, `password`, `credential`,
+`passwd` 중 하나면 걸립니다. 그 단어가 도메인 어휘인 저장소에서는(`token` 이
+컨텍스트 토큰, `credential` 이 리댁션 정책을 뜻하는 경우) 평범한 소스 파일이
+막힙니다.
+
+`~/.config/packet-ask/allowlist.toml` 이 **그 추정만** 정확한 경로 단위로
+면제합니다.
+
+```toml
+version = 1
+secret_name_exempt_paths = [
+  "src/token_budget.py",
+  "src/credential_policy.py",
+]
+```
+
+하지 않는 것:
+
+- 자격증명 파일 **정의**는 절대 면제하지 않습니다. `.env` 와 그것으로 시작하는
+  모든 이름, `id_rsa`, `id_ed25519`, `credentials`, `credentials.json`, 그리고
+  `.pem` `.key` `.p12` `.pfx` `.env` `.npmrc` `.pypirc` `.netrc` 접미사는
+  적어 두어도 계속 거절합니다.
+- 글롭이 아니라 정확한 워크트리 상대경로만 받습니다. `src/**` 한 줄이 규칙
+  전체를 끄는 것이 이 통제가 막으려는 바로 그 일입니다.
+- 내용 리댁션을 완화하지 않습니다. allowlist 는 "이 경로를 읽어도 된다" 만
+  말하고 "이 바이트를 그대로 보내도 된다" 는 말하지 않습니다.
+
+모양이 어긋난 파일은 무시하지 않고 거절하므로, 오타 하나로 면제가 조용히
+사라지지 않습니다. 패킷이 실제로 면제를 쓰면 `secret_name_exempt_used` 가
+receipt·JSON summary·preview 줄에 나타납니다. 이번 패킷이 기본 denylist 보다
+넓은 범위였다는 사실을 영수증이 숨기지 않습니다. 경로는
+`PACKET_ASK_ALLOWLIST_FILE` 로 바꿀 수 있습니다.
+
 ## 스킬
 
 `packet-ask install-skills` 가 하니스 홈에 설치합니다. 스킬은 `packet-ask`를

@@ -55,6 +55,19 @@ _EN = {
     "skill_exists": "A different SKILL.md already exists. Re-run with --force to overwrite.",
     "skill_symlink": "Skill path must not be a symlink.",
     "secret_path": "Secret or git path is not allowed: {name}",
+    "allowlist_read_failed": "Could not read allowlist.toml.",
+    "allowlist_version": "allowlist.toml version must be 1.",
+    "allowlist_table": "allowlist.toml secret_name_exempt_paths must be an array.",
+    "allowlist_too_large": "allowlist.toml is too large.",
+    "allowlist_too_many": "allowlist.toml lists too many paths.",
+    "allowlist_entry_type": "allowlist.toml paths must be strings.",
+    "allowlist_entry_shape": "allowlist.toml paths must be non-empty and bounded.",
+    "allowlist_entry_inert": (
+        "Allowlist entry can never take effect; credential-file names and "
+        "git metadata are not exemptible: {name}"
+    ),
+    "allowlist_entry_glob": "allowlist.toml paths must be exact, not globs: {name}",
+    "allowlist_entry_relative": "allowlist.toml paths must be worktree-relative: {name}",
     "cache_worktree": "Packet cache cannot live inside the git worktree.",
     "cache_cwd": "Packet cache cannot live inside the current directory.",
     "not_worktree": "Not inside a git worktree.",
@@ -210,6 +223,19 @@ _KO = {
     "skill_exists": "다른 내용의 SKILL.md 가 있습니다. 덮으려면 --force 를 쓰세요.",
     "skill_symlink": "스킬 경로에 심링크는 허용하지 않습니다.",
     "secret_path": "시크릿 또는 git 경로가 있습니다: {name}",
+    "allowlist_read_failed": "allowlist.toml을 읽지 못했습니다.",
+    "allowlist_version": "allowlist.toml의 version은 1이어야 합니다.",
+    "allowlist_table": "allowlist.toml의 secret_name_exempt_paths는 배열이어야 합니다.",
+    "allowlist_too_large": "allowlist.toml이 너무 큽니다.",
+    "allowlist_too_many": "allowlist.toml에 경로가 너무 많습니다.",
+    "allowlist_entry_type": "allowlist.toml의 경로는 문자열이어야 합니다.",
+    "allowlist_entry_shape": "allowlist.toml의 경로는 비어 있지 않고 길이 제한 안이어야 합니다.",
+    "allowlist_entry_inert": (
+        "면제될 수 없는 allowlist 항목입니다. 자격증명 파일 이름과 git 메타데이터는 "
+        "면제 대상이 아닙니다: {name}"
+    ),
+    "allowlist_entry_glob": "allowlist.toml의 경로는 글롭이 아니라 정확한 경로여야 합니다: {name}",
+    "allowlist_entry_relative": "allowlist.toml의 경로는 워크트리 상대경로여야 합니다: {name}",
     "cache_worktree": "패킷 캐시는 git 워크트리 안에 둘 수 없습니다.",
     "cache_cwd": "패킷 캐시는 현재 디렉터리 안에 둘 수 없습니다.",
     "not_worktree": "git 워크트리가 아닙니다.",

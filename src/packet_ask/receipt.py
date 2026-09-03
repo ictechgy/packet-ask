@@ -59,6 +59,7 @@ def build_receipt(
     surface: str,
     effort: str | None,
     effort_source: str,
+    secret_name_exempt_used: int = 0,
 ) -> dict[str, Any]:
     """비밀 값 없이 보낸 범위를 요약한다."""
     if (effort is None) != (effort_source == "vendor-default"):
@@ -84,6 +85,11 @@ def build_receipt(
         "effort_source": effort_source,
         # 값과 출처가 어긋나면 영수증이 거짓을 말한다. 이 배치의 존재 이유가
         # 출처를 정확히 남기는 것이므로 어긋난 조합은 만들지 않는다.
+        #
+        # 시크릿 이름 추정을 사용자 allowlist 로 면제한 경로 수. 0 이 아니면 이번
+        # 패킷은 기본 denylist 보다 넓은 범위를 보낸 것이고, 영수증은 그 사실을
+        # 숨기지 않는다. 자격증명 파일 정의(확장자·이름·.env)는 면제 대상이 아니다.
+        "secret_name_exempt_used": secret_name_exempt_used,
         "guarantees": dict(GUARANTEES),
     }
 
@@ -96,6 +102,7 @@ def build_packet_summary(
     packet: Packet,
     surface: str,
     include_breakdown: bool = False,
+    secret_name_exempt_used: int = 0,
 ) -> dict[str, Any]:
     """본문·질문·임시 경로 없이 검증된 packet metadata만 만든다."""
     paths = _packet_paths(files, diff_text)
@@ -108,6 +115,7 @@ def build_packet_summary(
         "redaction": public_redaction_counts(packet.report),
         "sha256_packet_md": packet.payload_digest(),
         "surface": surface,
+        "secret_name_exempt_used": secret_name_exempt_used,
         "guarantees": dict(GUARANTEES),
     }
     if include_breakdown:
@@ -161,7 +169,12 @@ def format_preview_line(preview: dict[str, Any]) -> str:
         f"launch={preview['launch']} "
         f"effort={preview['effort'] or 'none'}({preview['effort_source']}) "
         f"surface={preview['surface']}"
-        f" guarantees={_RECEIPT_LINE_GUARANTEES}"
+        + (
+            f" secret_name_exempt={preview['secret_name_exempt_used']}"
+            if preview.get("secret_name_exempt_used")
+            else ""
+        )
+        + f" guarantees={_RECEIPT_LINE_GUARANTEES}"
     )
 
 

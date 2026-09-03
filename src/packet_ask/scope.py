@@ -75,19 +75,42 @@ def is_vcs_path(path: Path) -> bool:
     return any(part.lower() == ".git" for part in path.parts)
 
 
-def is_secret_path(path: Path) -> bool:
-    """시크릿으로 보이는 파일명을 가린다. token 부분문자열만으로는 맞추지 않는다."""
-    return any(_name_is_secret(part) for part in path.parts)
+def is_secret_path(path: Path, exempt: frozenset[str] = frozenset()) -> bool:
+    """시크릿으로 보이는 파일명을 가린다. token 부분문자열만으로는 맞추지 않는다.
+
+    `exempt` 는 사용자가 명시적으로 적어 둔 워크트리 상대경로 집합이다. 그 경로는
+    **이름 조각 추정만** 면제받는다. 확장자·이름 규칙과 `.env` 접두는 추정이 아니라
+    자격증명 파일의 정의이므로 면제 대상이 아니고, 아래에서 먼저 검사한다.
+    """
+    if any(_name_is_definitely_secret(part) for part in path.parts):
+        return True
+    if path.as_posix() in exempt:
+        return False
+    return any(_SECRET_SEGMENT_RE.search(part) is not None for part in path.parts)
+
+
+def _name_is_definitely_secret(name: str) -> bool:
+    """추정이 아니라 그 자체로 자격증명 파일인 이름인지 본다. 면제되지 않는다."""
+    lowered = name.lower()
+    if lowered in _SECRET_NAMES or lowered.startswith(".env"):
+        return True
+    return any(lowered.endswith(suffix) for suffix in _SECRET_SUFFIXES)
+
+
+def is_inert_exemption(path: Path) -> bool:
+    """allowlist 에 적어도 영원히 발화하지 않는 경로인지 본다.
+
+    자격증명 파일 정의와 git 메타데이터는 면제 대상이 아니므로, 그런 경로를
+    적어 둔 사람은 면제됐다고 잘못 믿게 된다.
+    """
+    return is_vcs_path(path) or any(
+        _name_is_definitely_secret(part) for part in path.parts
+    )
 
 
 def _name_is_secret(name: str) -> bool:
     """경로 한 조각이 시크릿 파일명 규칙에 맞는지 본다."""
-    lowered = name.lower()
-    if lowered in _SECRET_NAMES or lowered.startswith(".env"):
-        return True
-    if any(lowered.endswith(suffix) for suffix in _SECRET_SUFFIXES):
-        return True
-    return _SECRET_SEGMENT_RE.search(name) is not None
+    return _name_is_definitely_secret(name) or _SECRET_SEGMENT_RE.search(name) is not None
 
 
 def _must_stay_inside(worktree: Path, candidate: Path) -> Path:
@@ -109,8 +132,13 @@ def collect_files(
     paths: list[Path],
     max_files: int = DEFAULT_MAX_FILES,
     max_bytes: int = DEFAULT_MAX_BYTES,
+    secret_name_exempt: frozenset[str] = frozenset(),
 ) -> list[ScopedFile]:
-    """지정 파일을 읽어 상대경로 목록으로 반환한다."""
+    """지정 파일을 읽어 상대경로 목록으로 반환한다.
+
+    `secret_name_exempt` 는 사용자가 명시적으로 적어 둔 상대경로들로, 시크릿 파일명
+    **추정**만 면제한다. 자격증명 파일 정의에 해당하는 이름과 확장자는 면제되지 않는다.
+    """
     worktree = worktree.resolve()
     if len(paths) > max_files:
         raise BudgetError(message("max_files", limit=max_files))
@@ -119,7 +147,7 @@ def collect_files(
     for raw in paths:
         real = _must_stay_inside(worktree, raw)
         relative = real.relative_to(worktree)
-        _reject_blocked_relative(relative)
+        _reject_blocked_relative(relative, secret_name_exempt)
         remaining = max_bytes - total
         if remaining < 0:
             raise BudgetError(message("max_bytes", limit=max_bytes))
@@ -146,11 +174,11 @@ def _read_text_file_bounded(path: Path, max_bytes: int) -> bytes:
     return data
 
 
-def _reject_blocked_relative(relative: Path) -> None:
+def _reject_blocked_relative(relative: Path, exempt: frozenset[str] = frozenset()) -> None:
     """git 메타데이터와 시크릿 파일명을 거절한다."""
     if is_vcs_path(relative):
         raise ScopeError(message("vcs_path", name=relative.as_posix()))
-    if is_secret_path(relative):
+    if is_secret_path(relative, exempt):
         raise ScopeError(message("secret_path", name=relative.name))
 
 
@@ -328,11 +356,13 @@ def _reject_oversized_diff(text: str, max_bytes: int) -> None:
         raise BudgetError(message("max_bytes", limit=max_bytes))
 
 
-def _reject_secret_diff_paths(paths: list[str]) -> None:
+def _reject_secret_diff_paths(
+    paths: list[str], secret_name_exempt: frozenset[str] = frozenset()
+) -> None:
     """시크릿·git 경로는 일부를 지우는 대신 전체를 거절한다."""
     for relative in paths:
         path = Path(relative)
-        if is_vcs_path(path) or is_secret_path(path):
+        if is_vcs_path(path) or is_secret_path(path, secret_name_exempt):
             raise ScopeError(message("secret_path", name=path.name))
 
 
@@ -366,6 +396,7 @@ def collect_git_diff_with_paths(
     max_bytes: int = DEFAULT_MAX_BYTES,
     max_files: int = DEFAULT_MAX_FILES,
     deadline: Deadline | None = None,
+    secret_name_exempt: frozenset[str] = frozenset(),
 ) -> tuple[str, list[str]]:
     """diff 텍스트와 바뀐 경로를 함께 돌려준다. name-status 를 다시 돌리지 않는다."""
     if max_bytes < 1:
@@ -387,5 +418,5 @@ def collect_git_diff_with_paths(
     if not paths:
         raise ScopeError(message("missing_diff_paths"))
     _reject_oversized_diff(text, max_bytes)
-    _reject_secret_diff_paths(paths)
+    _reject_secret_diff_paths(paths, secret_name_exempt)
     return text, list(paths)
