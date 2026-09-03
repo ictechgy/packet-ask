@@ -64,6 +64,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 | `PACKET_ASK_CACHE_DIR` | 패킷 캐시 부모. 절대경로만. 전용 `packet-ask` 자식을 만듭니다 |
 | `PACKET_ASK_CLAUDE_BIN` / `PACKET_ASK_KIMI_BIN` | 절대경로 실행 파일 재지정 |
 | `PACKET_ASK_BIN_DIRS` | allowlist 디렉터리 추가 (`os.pathsep` 구분, 절대경로만) |
+| `PACKET_ASK_EFFORT` | `glm`·`claude` 의 기본 추론 effort. `--effort` 가 이기며, 잘못된 값은 무시하지 않고 거절합니다 |
 
 canonical macOS Keychain service는 `packet-ask-glm`, `packet-ask-kimi`,
 `packet-ask-claude`이며 현재 uid의 계정 이름을 씁니다. Keychain·prompt를

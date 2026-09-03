@@ -46,9 +46,11 @@ def test_gitignore_covers_dotenv_but_keeps_example() -> None:
     assert "HANDOFF.md" in lines
     assert ".serena/" in lines
     assert ".omc/" in lines
-    assert "!.env.example" in lines
-    assert lines.index("!.env.example") > lines.index(".env.*")
-    example = (ROOT / ".env.example").read_text(encoding="utf-8")
+    # `.env*` 는 예외 없이 막는다. 예시 파일은 `env.example` 이라 애초에
+    # 이 규칙에 걸리지 않으므로 negation 이 필요 없다. negation 이 있으면
+    # 누군가 `.env.example` 을 만들었을 때 그것만 추적돼 버린다.
+    assert not any(line.startswith("!.env") for line in lines)
+    example = (ROOT / "env.example").read_text(encoding="utf-8")
     assert "PACKET_ASK_GLM_KEY" in example
     assert "sk-" not in example
     for line in example.splitlines():
@@ -62,7 +64,7 @@ def test_gitignore_covers_dotenv_but_keeps_example() -> None:
 
 
 def test_gitignore_rejects_env_and_keeps_example() -> None:
-    """git check-ignore 로 .env 는 막고 .env.example 은 연다."""
+    """git check-ignore 로 .env 계열은 막고 env.example 은 연다."""
     git_dir = ROOT / ".git"
     if not git_dir.exists():
         return
@@ -73,8 +75,15 @@ def test_gitignore_rejects_env_and_keeps_example() -> None:
             check=False,
         )
         assert ignored.returncode == 0, relative
+    for relative in (".env.example", ".env.sample"):
+        also_ignored = subprocess.run(
+            ["git", "check-ignore", "-q", "--", relative],
+            cwd=ROOT,
+            check=False,
+        )
+        assert also_ignored.returncode == 0, relative
     kept = subprocess.run(
-        ["git", "check-ignore", "-q", "--", ".env.example"],
+        ["git", "check-ignore", "-q", "--", "env.example"],
         cwd=ROOT,
         check=False,
     )
@@ -246,3 +255,26 @@ def data_version() -> str:
     """pyproject 의 배포 버전."""
     data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     return str(data["project"]["version"])
+
+
+def test_the_tool_can_scope_its_own_env_variable_reference() -> None:
+    """도구가 자기가 요구하는 문서를 리뷰할 수 있어야 한다.
+
+    `docs/AGENTS.md` 는 환경 변수를 더하면 예시 파일을 고치라고 요구한다.
+    그런데 `is_secret_path` 는 `.env` 로 시작하는 모든 이름을 거절하므로
+    `.env.example` 을 건드린 diff 는 `review --diff` 가 통째로 거절했다.
+    도구가 자기가 시킨 변경을 리뷰하지 못하는 상태였다.
+
+    정책은 완화하지 않는다. 파일명은 내용을 보증하지 않으므로 `.example`
+    접미사를 예외로 열면 그 이름에 진짜 키를 적는 순간 통로가 된다. 0.1.7
+    에서 `credentials.py` 를 `keysource.py` 로 바꾼 것과 같은 선택으로,
+    가드가 아니라 파일 이름을 바꿨다.
+    """
+    from packet_ask.scope import is_secret_path
+
+    assert (ROOT / "env.example").is_file()
+    assert not (ROOT / ".env.example").exists()
+    assert is_secret_path(Path("env.example")) is False
+    # 가드는 그대로다.
+    for still_secret in (".env", ".env.example", ".env.local", "sample.env"):
+        assert is_secret_path(Path(still_secret)) is True, still_secret

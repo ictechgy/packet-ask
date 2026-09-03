@@ -65,6 +65,7 @@ How personal Kimi Code or GLM Coding Plan subscriptions handle data is defined b
 | `PACKET_ASK_CLAUDE_BIN` / `PACKET_ASK_KIMI_BIN` | Absolute executable override |
 | `PACKET_ASK_BIN_DIRS` | Extra allowlist directories (`os.pathsep`, absolute only) |
 | `PACKET_ASK_LEDGER` | Absolute path to an opt-in append-only egress ledger. Never holds the question or file bodies |
+| `PACKET_ASK_EFFORT` | Default reasoning effort for `glm` and `claude`. `--effort` wins; an invalid value is rejected, not ignored |
 | `PACKET_ASK_LANG` | `en` or `ko` for CLI messages |
 
 Canonical macOS Keychain services are `packet-ask-glm`, `packet-ask-kimi`, and

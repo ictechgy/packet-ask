@@ -22,7 +22,7 @@ MIT 라이선스입니다. 전문은 [LICENSE](LICENSE)를 보세요.
 - `paste` / `grok` / `agy` 는 벤더를 띄우지 않고 패킷만 출력합니다. 각각 왜
   paste 로 남는지는 `packet-ask doctor` 가 실측한 이유로 알려 줍니다
 
-credential은 전용 환경변수, packet-ask 소유 macOS Keychain 항목, 명시한 일회성 prompt 중 하나에서 받습니다. **`.env`, ZCode, Claude Code, 임의 key 파일이나 key command는 읽지 않습니다.** 키 값을 명령행에 직접 넣으면 셸 히스토리에 남으므로 금지합니다. 질문도 같습니다. `--question` 은 argv라 프로세스 목록과 셸 히스토리에 보이므로 `--question-stdin` 을 우선 쓰세요. stdin 은 질문을 argv 밖에 두지만 대화형 셸이 무엇을 기록하는지까지는 통제하지 못하므로, 민감한 질문은 직접 친 heredoc 대신 파일에서 읽으세요. 변수 이름만 [.env.example](.env.example)에 있고 전체 source 계약은 [docs/key-sources.md](docs/key-sources.md)에 있습니다. 실행 파일 allowlist는 [SECURITY.md](SECURITY.md)를 보세요. Claude 계열 launch는 공식 bare mode, 빈 built-in tool set, strict explicit empty MCP config를 함께 씁니다. `doctor`는 제한된 help 출력에 해당 플래그 이름이 있는지만 보며 OS sandbox를 증명하지 않습니다.
+credential은 전용 환경변수, packet-ask 소유 macOS Keychain 항목, 명시한 일회성 prompt 중 하나에서 받습니다. **`.env`, ZCode, Claude Code, 임의 key 파일이나 key command는 읽지 않습니다.** 키 값을 명령행에 직접 넣으면 셸 히스토리에 남으므로 금지합니다. 질문도 같습니다. `--question` 은 argv라 프로세스 목록과 셸 히스토리에 보이므로 `--question-stdin` 을 우선 쓰세요. stdin 은 질문을 argv 밖에 두지만 대화형 셸이 무엇을 기록하는지까지는 통제하지 못하므로, 민감한 질문은 직접 친 heredoc 대신 파일에서 읽으세요. 변수 이름만 [env.example](env.example)에 있고 전체 source 계약은 [docs/key-sources.md](docs/key-sources.md)에 있습니다. 실행 파일 allowlist는 [SECURITY.md](SECURITY.md)를 보세요. Claude 계열 launch는 공식 bare mode, 빈 built-in tool set, strict explicit empty MCP config를 함께 씁니다. `doctor`는 제한된 help 출력에 해당 플래그 이름이 있는지만 보며 OS sandbox를 증명하지 않습니다.
 
 ## 설치
 
@@ -127,7 +127,21 @@ canonical dotted 국내 mobile 번호는 scrub하고 혼합 separator는 fail-cl
 `--effort`는 벤더가 얼마나 깊이 생각할지를 고릅니다. opt-in 이고 생략하면 벤더
 기본값이 쓰입니다. 값과 출처는 `timeout_seconds` + `timeout_source` 선례대로
 나눕니다. 고르지 않으면 `effort` 는 null 이고 `effort_source` 가
-`vendor-default` 입니다. Claude
+`vendor-default` 입니다.
+
+`PACKET_ASK_EFFORT` 로 기본값을 둘 수 있습니다. 매번 플래그를 치지 않아도
+됩니다. `--effort` 가 이기고, 어느 쪽이 적용됐는지는 `effort_source` 에
+남습니다(`explicit`, `env`, `vendor-default`). 이 기록이 없으면 "왜 이 실행이
+751초 걸렸나" 를 나중에 풀 수 없고, 그것이 기본값과 **조용한** 기본값의
+차이입니다. 잘못된 값은 벤더 기본값으로 떨어지지 않고 exit 2 로 거절합니다.
+`argparse` 는 플래그만 검사하므로 변수의 오타는 그냥 두면 사라집니다. 빈 값은
+설정하지 않은 것으로 봅니다.
+
+폭발 반경을 알아 두세요. 이 변수는 모든 task 실행에 걸리고 `review` 와
+`research` 가 같은 경로를 씁니다. 설정한 채로 `--provider paste` 를 부르면
+기본값을 무시하는 대신 exit 2 로 거절합니다. 플래그와 일관된 동작이지만
+변수는 셸 프로필에 박아두고 잊기 쉬우니, paste 로 옮길 때는 해제하거나
+`--effort` 를 명시하세요. Claude
 계열 런치 프로바이더(`glm`, `claude`)만 받습니다. `paste`와 `kimi`는 조용히
 버리지 않고 거절합니다.
 

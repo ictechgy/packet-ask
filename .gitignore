@@ -24,7 +24,6 @@ coverage.xml
 .env.*
 .envrc
 .direnv/
-!.env.example
 .packet-ask-tmp/
 packet.md
 

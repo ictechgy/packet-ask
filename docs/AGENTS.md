@@ -61,7 +61,7 @@
 | CLI 플래그·동작 | `README.md`, `README.ko.md`, `docs/design.md` |
 | 신뢰 경계·한계 | `SECURITY.md`, `SECURITY.ko.md` |
 | MAIN 이 알아야 할 것 | `src/packet_ask/data/SKILL.md` |
-| 환경 변수 | `SECURITY.md` 변수 표, `.env.example` |
+| 환경 변수 | `SECURITY.md` 변수 표, `env.example` |
 
 번들 `SKILL.md` 는 특히 잊기 쉽다. 0.4.0 의 `--line-numbers` 와
 `--selected-tree` 는 배포하고도 스킬에 없어서 MAIN 이 존재를 몰랐다.

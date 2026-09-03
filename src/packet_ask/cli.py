@@ -93,6 +93,24 @@ EFFORT_TIMEOUT_SECONDS = {
 # Claude 계열만 `--effort` 를 받는다. kimi 는 별도 CLI 이고 paste 는 벤더를
 # 띄우지 않는다. 조용히 버리지 않고 usage 로 거절한다.
 EFFORT_PROVIDERS = frozenset({"glm", "claude"})
+# 매번 치지 않아도 되게 하되 출처를 같이 기록한다. 기록이 없으면 "왜 이 실행이
+# 751초 걸렸나" 를 나중에 풀 수 없고, 그것이 조용한 기본값과 아닌 것의 차이다.
+_EFFORT_ENV = "PACKET_ASK_EFFORT"
+
+
+def _resolve_effort(flag: str | None) -> tuple[str | None, str]:
+    """플래그 > env > 벤더 기본값. `--timeout` 의 explicit > auto 와 같은 결이다."""
+    if flag is not None:
+        return flag, "explicit"
+    raw = os.environ.get(_EFFORT_ENV, "").strip()
+    if not raw:
+        # 빈 값은 "설정하지 않음" 이다. 거절하면 unset 하기가 어려워진다.
+        return None, "vendor-default"
+    if raw not in EFFORT_LEVELS:
+        # argparse choices 는 플래그만 본다. 여기서 안 막으면 오타가 조용히
+        # 벤더 기본값으로 떨어진다.
+        raise PacketAskError(message("effort_env_invalid"), codes.USAGE)
+    return raw, "env"
 
 
 @dataclass(frozen=True)
@@ -632,7 +650,9 @@ def _run_task_guarded(
     )
     provider = _task_provider(args)
     spec = lookup_provider(provider)
-    _assert_effort_supported(args.effort, provider)
+    effort, effort_source = _apply_effort_to_provider(
+        *_resolve_effort(args.effort), provider
+    )
     if require_review_scope:
         _require_explicit_review_scope(args)
     with _packet_pipeline(
@@ -647,7 +667,7 @@ def _run_task_guarded(
         timeout_seconds, timeout_source = _resolve_timeout(
             args.timeout,
             len(prepared.packet.payload_bytes()),
-            args.effort,
+            effort,
         )
         receipt = build_receipt(
             provider,
@@ -659,7 +679,8 @@ def _run_task_guarded(
             timeout_source=timeout_source,
             timeout_applies=spec.mode == "launch",
             surface=prepared.surface,
-            effort=args.effort,
+            effort=effort,
+            effort_source=effort_source,
         )
         if args.preview:
             # 대장 이전에 끝낸다. 대장 한 줄은 egress 지점 도달을 뜻하는데
@@ -692,6 +713,7 @@ def _run_task_guarded(
             started,
             prepared.preflight_ms,
             packet_ms,
+            effort,
         )
     result.timing["total_ms"] = _ms_since(started)
     return _emit_task_result(args, receipt, result)
@@ -802,13 +824,27 @@ def _cleanup_packet(packet: Packet, parent: Path) -> None:
         raise
 
 
-def _assert_effort_supported(effort: str | None, provider: str) -> None:
-    """받지 못하는 프로바이더에 effort 를 조용히 버리지 않는다.
+def _apply_effort_to_provider(
+    effort: str | None,
+    source: str,
+    provider: str,
+) -> tuple[str | None, str]:
+    """요청은 거절하고 기본값은 적용 가능한 곳에만 적용한다.
 
+    플래그는 이번 실행에 대한 명시 요청이라 못 지키면 거절한다.
     `--include-files` 가 조용히 버려졌던 것이 이 저장소의 실제 결함이었다.
+
+    env 는 상시 설정이지 이번 실행에 대한 요청이 아니다. 특히 `paste` 는
+    벤더를 아예 띄우지 않아 설정할 추론이 없다. 벤더가 안 도는 실행을 벤더
+    노브의 기본값 때문에 거절하면 안전 이득 없이 마찰만 남고, 셸 프로필에 박아
+    둔 변수가 paste 실행을 전부 깨뜨린다. 조용하지도 않다 — `effort_source` 가
+    적용되지 않았음을 그대로 말한다.
     """
-    if effort is not None and provider not in EFFORT_PROVIDERS:
+    if effort is None or provider in EFFORT_PROVIDERS:
+        return effort, source
+    if source == "explicit":
         raise PacketAskError(message("effort_unsupported"), codes.USAGE)
+    return None, "vendor-default"
 
 
 def _credential_state(spec: ProviderSpec, source: str) -> str:
@@ -859,6 +895,7 @@ def _finish_task(
     started: float,
     preflight_ms: int,
     packet_ms: int,
+    effort: str | None = None,
 ) -> TaskResult:
     """벤더 실행 결과를 준비하되 cleanup 전에는 공개하지 않는다."""
     launch_started = time.monotonic()
@@ -868,7 +905,7 @@ def _finish_task(
             packet,
             timeout_seconds,
             args.credential_source,
-            getattr(args, "effort", None),
+            effort,
         )
     wrapped = wrap_untrusted(raw)
     timing = _phase_timing(started, preflight_ms, packet_ms, launch_started)

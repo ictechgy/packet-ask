@@ -22,7 +22,7 @@ MIT licensed. See [LICENSE](LICENSE).
 - `paste` / `grok` / `agy` print a packet and do not launch a vendor. Run
   `packet-ask doctor` for the measured reason each one stays paste-only
 
-Credentials come from a dedicated environment variable, a packet-ask-owned macOS Keychain item, or an explicitly requested one-run prompt. **This tool does not read `.env`, ZCode, Claude Code, arbitrary key files, or key commands.** Never put key values on the command line; they land in shell history. The same applies to the question: `--question` is argv and is visible in the process table and in shell history, so prefer `--question-stdin`. Stdin keeps the question out of argv, but it does not control what an interactive shell records; read a sensitive question from a file rather than a typed heredoc. Variable names are in [.env.example](.env.example), and the complete source contract is in [docs/key-sources.md](docs/key-sources.md). The executable allowlist is in [SECURITY.md](SECURITY.md). Claude-family launches use official bare mode, an empty built-in tool set, and strict explicit empty MCP configuration. `doctor` only checks that bounded help text mentions those required flags; it does not prove an OS sandbox.
+Credentials come from a dedicated environment variable, a packet-ask-owned macOS Keychain item, or an explicitly requested one-run prompt. **This tool does not read `.env`, ZCode, Claude Code, arbitrary key files, or key commands.** Never put key values on the command line; they land in shell history. The same applies to the question: `--question` is argv and is visible in the process table and in shell history, so prefer `--question-stdin`. Stdin keeps the question out of argv, but it does not control what an interactive shell records; read a sensitive question from a file rather than a typed heredoc. Variable names are in [env.example](env.example), and the complete source contract is in [docs/key-sources.md](docs/key-sources.md). The executable allowlist is in [SECURITY.md](SECURITY.md). Claude-family launches use official bare mode, an empty built-in tool set, and strict explicit empty MCP configuration. `doctor` only checks that bounded help text mentions those required flags; it does not prove an OS sandbox.
 
 ## Install
 
@@ -131,7 +131,21 @@ false positives, so this is still a denylist rather than a no-leak guarantee.
 `--effort` selects how hard the vendor thinks. It is opt-in; omitting it leaves
 the vendor default. Value and origin are split the way `timeout_seconds` and
 `timeout_source` already are: `effort` is null and `effort_source` is
-`vendor-default`. Only the Claude-family launch providers (`glm`, `claude`) accept it;
+`vendor-default`.
+
+`PACKET_ASK_EFFORT` sets a default so you do not have to type the flag every
+time. `--effort` wins over it, and `effort_source` records which one applied
+(`explicit`, `env`, or `vendor-default`). Without that record you cannot later
+answer why one run took 751 seconds, and that record is the difference between
+a default and a silent default. An invalid value is rejected with exit 2 rather
+than falling back to the vendor default; `argparse` validates the flag only, so
+a typo in the variable would otherwise disappear. A blank value means unset.
+
+Note the blast radius: the variable applies to every task run, and `review` and
+`research` share the same path. With it set, a `--provider paste` run is
+rejected with exit 2 rather than ignoring the default. That is consistent with
+the flag, but a variable lives in a shell profile and is easy to forget, so
+unset it or pass `--effort` deliberately when you switch to `paste`. Only the Claude-family launch providers (`glm`, `claude`) accept it;
 `paste` and `kimi` reject it instead of dropping it silently.
 
 Measured on one packet and one question against `glm`:
