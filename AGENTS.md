@@ -18,7 +18,11 @@ CLI 에는 **의도적으로 고른 뒤 스크럽한 패킷만** 넘긴다.
 
 - 커스텀 HTTP 클라이언트. 공식 CLI 원샷만 쓴다.
 - 부모 프로세스의 `ANTHROPIC_BASE_URL` 등 환경 변수 변경.
-- 사용자 TOML 에서 실행 파일·argv·env 지정. 사용자 overlay 는 paste 별명뿐이다.
+- 사용자 TOML 에서 실행 파일·argv·env 지정. provider overlay 는 paste 별명뿐이고
+  내장 id 를 이름으로 쓰는 것 자체가 거절된다.
+- 사용자 설정으로 **벤더 동작**을 정하는 것. 모델·argv 기본값은 열지 않는다.
+  0.9.0 의 `allowlist.toml` 이 유일한 예외이고 그것도 스코프의 **추정 하나만**
+  연다. 새 사용자 설정을 제안하려면 무엇을 열지 않는지부터 적어라.
 - 워커 팜, 병렬 팬아웃, 재시도.
 - `--all` 이나 암묵적 전체 레포·원격 URL 수집.
 - SUB 에게 구현·패치 적용·장애 대응 위임.
@@ -73,6 +77,9 @@ CLI 에는 **의도적으로 고른 뒤 스크럽한 패킷만** 넘긴다.
 
 - **"확인 필요" 류 지적은 반드시 로컬에서 재현한다.** 기각한 건은 기각 근거를
   커밋 메시지에 남긴다.
+- **SUB 가 패킷 밖이라고 표시한 추정은 특히 의심한다.** 그 위에 세운 blocker 가
+  세 번 중 두 번 틀렸다. 다만 밑에 깔린 지적은 옳은 경우가 많았으니 주장과
+  근거를 분리해서 본다.
 - **패킷에 없는 것을 인용하면 그 응답 전체의 사실 주장을 의심한다.** 존재하지
   않는 함수와 테스트 리터럴을 인용한 리뷰가 있었고, 그 위에 세운 blocker 의
   근거("변경 전에는 매치됐다")는 실측하니 거짓이었다. 조작된 맥락은 그럴듯한
@@ -113,11 +120,12 @@ uv run --isolated --no-project --with "dist/packet_ask-${release_version}.tar.gz
 아래 파일들은 해당 디렉터리 아래에서 작업할 때 자동으로 활성화된다. 링크는
 찾아보기용이고, 권위는 파일의 위치에서 나온다.
 
-- [src/packet_ask/AGENTS.md](src/packet_ask/AGENTS.md) — 구현 불변식,
-  egress 표면 구분, 출력 계약, 메시지 카탈로그, 종료 코드.
-- [tests/AGENTS.md](tests/AGENTS.md) — TDD 순서, 판별력 있는 단언과
-  양성 대조, 계약 테스트, 수집 함정.
+- [src/packet_ask/AGENTS.md](src/packet_ask/AGENTS.md) — 구현 불변식, egress
+  표면 구분, 값과 출처 분리, 요청과 기본값, 가드를 여는 규칙, 출력 계약,
+  메시지 카탈로그, 종료 코드.
+- [tests/AGENTS.md](tests/AGENTS.md) — TDD 순서, 결로 고정과 양성 대조,
+  계약 테스트, 수집·캐시 함정.
 - [docs/AGENTS.md](docs/AGENTS.md) — 설계 불변식 번호, 과잉 약속 금지,
-  근거를 쓰기 전에 측정하기, 문서 언어 규칙.
+  근거를 쓰기 전에 측정하기, 영/한 parity 와 그 한계.
 - [.github/AGENTS.md](.github/AGENTS.md) — CI 핀, 릴리스,
   Trusted Publishing, 배포 뒤 실측.
