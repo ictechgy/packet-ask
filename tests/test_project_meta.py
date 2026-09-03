@@ -278,3 +278,24 @@ def test_the_tool_can_scope_its_own_env_variable_reference() -> None:
     # 가드는 그대로다.
     for still_secret in (".env", ".env.example", ".env.local", "sample.env"):
         assert is_secret_path(Path(still_secret)) is True, still_secret
+
+
+def test_security_docs_document_the_same_variables_in_both_languages() -> None:
+    """영어 문서와 한국어 문서가 갈라지면 계약이 갈라진다.
+
+    실제로 갈라져 있었다. 한국어 쪽에 `PACKET_ASK_LEDGER` 와 `PACKET_ASK_LANG`
+    이 없었고, `PACKET_ASK_PROVIDERS_FILE` 은 양쪽 다 없었다. 사람이 표를
+    비교해서 잡을 수 있는 종류가 아니다.
+
+    `docs/AGENTS.md` 가 "영어 문서와 한국어 문서를 같이 고친다" 를 규칙으로
+    적어 두었으니 그 규칙을 여기서 강제한다.
+    """
+    pattern = re.compile(r"PACKET_ASK_[A-Z_]+")
+    english = set(pattern.findall((ROOT / "SECURITY.md").read_text(encoding="utf-8")))
+    korean = set(pattern.findall((ROOT / "SECURITY.ko.md").read_text(encoding="utf-8")))
+    assert english == korean, {
+        "영어에만": sorted(english - korean),
+        "한국어에만": sorted(korean - english),
+    }
+    # 표가 비어 있으면 위 비교가 공짜로 통과한다.
+    assert len(english) >= 9
