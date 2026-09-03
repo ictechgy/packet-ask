@@ -27,6 +27,7 @@ from packet_ask.keysource import (
 )
 from packet_ask.doctor import format_doctor_signals_line, inspect_providers
 from packet_ask.deadline import Deadline
+from packet_ask.allowlist import load_allowlist
 from packet_ask.errors import PacketAskError
 from packet_ask.install_skills import install_skills
 from packet_ask.launch import launch_claude, launch_glm, launch_kimi
@@ -142,6 +143,9 @@ class PreparedPacket:
     packet_started: float
     worktree: Path
     surface: str
+    # 시크릿 이름 추정을 면제한 경로 수. 영수증이 이번 패킷의 실제 범위를 말해야
+    # 하므로 여기서 끝까지 들고 간다.
+    secret_name_exempt_used: int = 0
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -341,12 +345,16 @@ def _collect_scope(
     files_arg = list(args.include_files or []) if active_mode == "research" else list(args.files or [])
     diff_paths: list[str] = []
     scoped_files = []
+    # 사용자가 명시적으로 적어 둔 시크릿 이름 추정 면제. 파일이 없으면 빈 집합이고,
+    # 모양이 어긋나면 벤더를 실행하지 않고 거절한다.
+    secret_name_exempt = load_allowlist()
     if files_arg:
         scoped_files = collect_files(
             worktree,
             files_arg,
             max_files=args.max_files,
             max_bytes=args.max_bytes,
+            secret_name_exempt=secret_name_exempt,
         )
     diff_text = None
     budget = args.max_bytes
@@ -357,6 +365,7 @@ def _collect_scope(
             max_bytes=budget,
             max_files=args.max_files,
             deadline=deadline,
+            secret_name_exempt=secret_name_exempt,
         )
     elif args.diff:
         diff_text, diff_paths = collect_git_diff_with_paths(
@@ -365,6 +374,7 @@ def _collect_scope(
             max_bytes=budget,
             max_files=args.max_files,
             deadline=deadline,
+            secret_name_exempt=secret_name_exempt,
         )
     elif getattr(args, "unstaged", False):
         diff_text, diff_paths = collect_git_diff_with_paths(
@@ -373,8 +383,13 @@ def _collect_scope(
             max_bytes=budget,
             max_files=args.max_files,
             deadline=deadline,
+            secret_name_exempt=secret_name_exempt,
         )
-    return scoped_files, diff_text, diff_paths
+    # 면제 집합에 들어 있으면서 **실제로 이번 패킷에 실린** 경로만 센다. allowlist 에
+    # 적어만 두고 보내지 않은 경로까지 세면 영수증이 범위를 부풀린다.
+    sent = {file.relative for file in scoped_files} | set(diff_paths)
+    secret_name_exempt_used = len(sent & secret_name_exempt)
+    return scoped_files, diff_text, diff_paths, secret_name_exempt_used
 
 
 def _check_surface(
@@ -623,6 +638,7 @@ def _run_inspect_guarded(
             prepared.packet,
             surface=prepared.surface,
             include_breakdown=args.breakdown,
+            secret_name_exempt_used=prepared.secret_name_exempt_used,
         )
     if args.json:
         sys.stdout.write(json_summary_envelope(summary))
@@ -681,6 +697,7 @@ def _run_task_guarded(
             surface=prepared.surface,
             effort=effort,
             effort_source=effort_source,
+            secret_name_exempt_used=prepared.secret_name_exempt_used,
         )
         if args.preview:
             # 대장 이전에 끝낸다. 대장 한 줄은 egress 지점 도달을 뜻하는데
@@ -757,7 +774,7 @@ def _packet_pipeline(
     parent: Path | None = None
     try:
         worktree = resolve_worktree(Path.cwd(), deadline)
-        scoped_files, diff_text, diff_paths = _collect_scope(
+        scoped_files, diff_text, diff_paths, secret_name_exempt_used = _collect_scope(
             args,
             worktree,
             packet_mode,
@@ -794,6 +811,7 @@ def _packet_pipeline(
             packet_started,
             worktree,
             surface_state,
+            secret_name_exempt_used,
         )
     except BaseException:
         if packet is not None and parent is not None:

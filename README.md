@@ -386,6 +386,39 @@ Alias labels and notes are bounded and reject terminal, bidi, and line/paragraph
 control characters before either human or JSON output. ZWNJ and ZWJ remain
 allowed for normal language and emoji sequences.
 
+### Exempting a path from the secret-name heuristic
+
+Scope rejects paths whose name looks like a credential file. Part of that check is a
+guess: any path segment that is `token`, `secret`, `password`, `credential`, or `passwd`.
+In a repository where those words are domain vocabulary — `token` meaning context tokens,
+`credential` naming a redaction policy — the guess blocks ordinary source files.
+
+`~/.config/packet-ask/allowlist.toml` exempts exact paths from **that guess only**:
+
+```toml
+version = 1
+secret_name_exempt_paths = [
+  "src/token_budget.py",
+  "src/credential_policy.py",
+]
+```
+
+What it does not do:
+
+- It never exempts a credential file *definition*. `.env` and anything starting with it,
+  `id_rsa`, `id_ed25519`, `credentials`, `credentials.json`, and the `.pem` `.key` `.p12`
+  `.pfx` `.env` `.npmrc` `.pypirc` `.netrc` suffixes stay rejected even when listed.
+- It takes exact worktree-relative paths, not globs. One `src/**` line turning the whole
+  rule off is the thing this control exists to prevent.
+- It does not relax content redaction. The allowlist says a path may be read, not that its
+  bytes may be sent unedited.
+
+A malformed file is rejected rather than ignored, so a typo cannot silently drop your
+exemption. When a packet actually uses one, `secret_name_exempt_used` appears in the
+receipt, the JSON summary, and the preview line — the receipt does not hide that this
+packet was scoped wider than the default denylist. Set `PACKET_ASK_ALLOWLIST_FILE` to
+point somewhere else.
+
 The implementation/incident question gate is a conservative lexical check, not
 a proof of intent. Launch adapters disable vendor tools and use the packet as
 the child cwd, but this is not OS-level filesystem confinement.
