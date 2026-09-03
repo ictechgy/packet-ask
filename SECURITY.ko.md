@@ -67,6 +67,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 | `PACKET_ASK_EFFORT` | `glm`·`claude` 의 기본 추론 effort. `--effort` 가 이기며, 잘못된 값은 무시하지 않고 거절합니다 |
 | `PACKET_ASK_LEDGER` | opt-in append-only 발송 대장의 절대경로. 질문과 파일 본문은 담지 않습니다 |
 | `PACKET_ASK_PROVIDERS_FILE` | 사용자 provider overlay 경로 재지정. 여전히 paste 별명만 받습니다 |
+| `PACKET_ASK_ALLOWLIST_FILE` | 시크릿 이름 면제 allowlist 경로 재지정. 이름 추정만 면제하며 자격증명 파일 정의는 절대 면제하지 않습니다 |
 | `PACKET_ASK_LANG` | CLI 메시지 언어. `en` 또는 `ko` |
 
 canonical macOS Keychain service는 `packet-ask-glm`, `packet-ask-kimi`,

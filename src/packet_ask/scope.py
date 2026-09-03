@@ -97,6 +97,17 @@ def _name_is_definitely_secret(name: str) -> bool:
     return any(lowered.endswith(suffix) for suffix in _SECRET_SUFFIXES)
 
 
+def is_inert_exemption(path: Path) -> bool:
+    """allowlist 에 적어도 영원히 발화하지 않는 경로인지 본다.
+
+    자격증명 파일 정의와 git 메타데이터는 면제 대상이 아니므로, 그런 경로를
+    적어 둔 사람은 면제됐다고 잘못 믿게 된다.
+    """
+    return is_vcs_path(path) or any(
+        _name_is_definitely_secret(part) for part in path.parts
+    )
+
+
 def _name_is_secret(name: str) -> bool:
     """경로 한 조각이 시크릿 파일명 규칙에 맞는지 본다."""
     return _name_is_definitely_secret(name) or _SECRET_SEGMENT_RE.search(name) is not None

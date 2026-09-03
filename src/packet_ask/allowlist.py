@@ -52,6 +52,13 @@ def _reject_entry(entry: object) -> str:
     candidate = Path(text)
     if candidate.is_absolute() or ".." in candidate.parts:
         raise ScopeError(message("allowlist_entry_relative", name=text))
+    # 자격증명 파일 정의는 면제 대상이 아니므로 이 항목은 영원히 발화하지 않는다.
+    # 발화 시점에 차단되기는 하지만, 적어 둔 사람은 면제됐다고 믿는다. 로드 때
+    # 거절하는 편이 이 통제의 fail-loud 원칙에 맞다.
+    from packet_ask.scope import is_inert_exemption
+
+    if is_inert_exemption(candidate):
+        raise ScopeError(message("allowlist_entry_inert", name=text))
     return candidate.as_posix()
 
 
@@ -64,18 +71,28 @@ def load_allowlist(path: Path | None = None) -> frozenset[str]:
     """
     target = path or default_user_allowlist_file()
     try:
+        # 통째로 읽기 전에 크기를 본다. 환경 변수로 어디든 가리킬 수 있다.
+        if target.stat().st_size > MAX_ALLOWLIST_BYTES:
+            raise ScopeError(message("allowlist_too_large"))
         raw = target.read_bytes()
     except FileNotFoundError:
+        # "파일 없음" 과 "링크 깨짐" 은 다르다. 후자는 설정을 두었다는 뜻이므로
+        # 조용히 면제를 잃는 대신 멈춘다.
+        if target.is_symlink():
+            raise ScopeError(message("allowlist_read_failed")) from None
         return frozenset()
     except OSError as exc:
         raise ScopeError(message("allowlist_read_failed")) from exc
-    if len(raw) > MAX_ALLOWLIST_BYTES:
-        raise ScopeError(message("allowlist_too_large"))
     try:
         parsed = tomllib.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         raise ScopeError(message("allowlist_read_failed")) from exc
-    if parsed.get("version") != ALLOWLIST_VERSION:
+    version = parsed.get("version")
+    # `True == 1` 이므로 타입을 먼저 본다. 마이그레이션 게이트가 bool 이나
+    # float 을 통과시키면 게이트로서 무결성이 없다.
+    if not isinstance(version, int) or isinstance(version, bool):
+        raise ScopeError(message("allowlist_version"))
+    if version != ALLOWLIST_VERSION:
         raise ScopeError(message("allowlist_version"))
     entries = parsed.get("secret_name_exempt_paths", [])
     if not isinstance(entries, list):

@@ -62,6 +62,10 @@ _EN = {
     "allowlist_too_many": "allowlist.toml lists too many paths.",
     "allowlist_entry_type": "allowlist.toml paths must be strings.",
     "allowlist_entry_shape": "allowlist.toml paths must be non-empty and bounded.",
+    "allowlist_entry_inert": (
+        "Allowlist entry can never take effect; credential-file names and "
+        "git metadata are not exemptible: {name}"
+    ),
     "allowlist_entry_glob": "allowlist.toml paths must be exact, not globs: {name}",
     "allowlist_entry_relative": "allowlist.toml paths must be worktree-relative: {name}",
     "cache_worktree": "Packet cache cannot live inside the git worktree.",
@@ -226,6 +230,10 @@ _KO = {
     "allowlist_too_many": "allowlist.toml에 경로가 너무 많습니다.",
     "allowlist_entry_type": "allowlist.toml의 경로는 문자열이어야 합니다.",
     "allowlist_entry_shape": "allowlist.toml의 경로는 비어 있지 않고 길이 제한 안이어야 합니다.",
+    "allowlist_entry_inert": (
+        "면제될 수 없는 allowlist 항목입니다. 자격증명 파일 이름과 git 메타데이터는 "
+        "면제 대상이 아닙니다: {name}"
+    ),
     "allowlist_entry_glob": "allowlist.toml의 경로는 글롭이 아니라 정확한 경로여야 합니다: {name}",
     "allowlist_entry_relative": "allowlist.toml의 경로는 워크트리 상대경로여야 합니다: {name}",
     "cache_worktree": "패킷 캐시는 git 워크트리 안에 둘 수 없습니다.",
