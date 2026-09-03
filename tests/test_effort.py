@@ -310,17 +310,39 @@ def test_blank_env_effort_means_unset(
     assert preview["effort_source"] == "vendor-default"
 
 
-def test_env_effort_is_rejected_for_providers_that_cannot_take_it(
+def test_env_default_does_not_apply_where_it_cannot(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """env 로 들어와도 paste 에 조용히 실리면 안 된다.
+    """env 는 상시 설정이지 이번 실행에 대한 요청이 아니다.
 
-    플래그 경로만 막으면 env 가 우회로가 된다.
+    `paste` 는 벤더를 아예 띄우지 않으므로 설정할 추론이 없다. 벤더가 안 도는
+    실행을 벤더 노브의 기본값이 설정돼 있다는 이유로 거절하면 안전 이득 없이
+    마찰만 남는다. 셸 프로필에 박아 둔 변수가 paste 실행을 전부 깨뜨린다.
+
+    조용하지도 않다. `effort_source` 가 적용되지 않았음을 그대로 말한다.
     """
     repo = _init_repo(tmp_path / "repo")
     monkeypatch.chdir(repo)
     monkeypatch.setenv("PACKET_ASK_EFFORT", "max")
-    argv = _argv("--preview")
+    argv = _argv("--preview", "--json")
+    argv[argv.index("glm")] = "paste"
+    assert main(argv) == codes.SUCCESS
+    preview = json.loads(capsys.readouterr().out)["preview"]
+    assert preview["effort"] is None
+    assert preview["effort_source"] == "vendor-default"
+
+
+def test_explicit_flag_is_still_rejected_where_it_cannot_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """플래그는 이번 실행에 대한 명시 요청이다. 못 지키면 거절한다.
+
+    env 와 다르게 대하는 것이 핵심이다. 요청은 조용히 버리지 않고, 기본값은
+    적용 가능한 곳에만 적용한다.
+    """
+    repo = _init_repo(tmp_path / "repo")
+    monkeypatch.chdir(repo)
+    argv = _argv("--effort", "max", "--preview")
     argv[argv.index("glm")] = "paste"
     assert main(argv) == codes.USAGE
     captured = capsys.readouterr()
@@ -409,8 +431,9 @@ def test_invalid_env_precedes_the_provider_check(
     argv[argv.index("glm")] = "paste"
     assert main(argv) == codes.USAGE
     captured = capsys.readouterr()
+    # 값 자체가 틀린 것은 프로바이더와 무관하게 거절한다. 오타를 못 본 채
+    # 넘어가면 glm 으로 바꿔 부를 때 그제서야 터진다.
     assert message("effort_env_invalid") in captured.err
-    assert message("effort_unsupported") not in captured.err
     assert captured.out == ""
 
 

@@ -14,9 +14,9 @@ _EN = {
         "PACKET_ASK_EFFORT must be one of low, medium, high, xhigh, max."
     ),
     "effort_unsupported": (
-        "Reasoning effort is only supported by the Claude-family launch "
-        "providers (glm, claude). It can come from --effort or "
-        "PACKET_ASK_EFFORT."
+        "--effort is only supported by the Claude-family launch providers "
+        "(glm, claude). PACKET_ASK_EFFORT is a default and simply does not "
+        "apply elsewhere."
     ),
     "preview_dry_run": (
         "Use --preview or --dry-run, not both. --dry-run prints the packet; "
@@ -167,8 +167,8 @@ _KO = {
         "PACKET_ASK_EFFORT 는 low, medium, high, xhigh, max 중 하나여야 합니다."
     ),
     "effort_unsupported": (
-        "추론 effort 는 Claude 계열 런치 프로바이더(glm, claude)만 지원합니다. "
-        "--effort 와 PACKET_ASK_EFFORT 둘 다 해당합니다."
+        "--effort 는 Claude 계열 런치 프로바이더(glm, claude)만 지원합니다. "
+        "PACKET_ASK_EFFORT 는 기본값이라 그 밖에서는 그냥 적용되지 않습니다."
     ),
     "preview_dry_run": (
         "--preview 와 --dry-run 은 함께 쓸 수 없습니다. --dry-run 은 패킷을 "

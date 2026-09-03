@@ -650,8 +650,9 @@ def _run_task_guarded(
     )
     provider = _task_provider(args)
     spec = lookup_provider(provider)
-    effort, effort_source = _resolve_effort(args.effort)
-    _assert_effort_supported(effort, provider)
+    effort, effort_source = _apply_effort_to_provider(
+        *_resolve_effort(args.effort), provider
+    )
     if require_review_scope:
         _require_explicit_review_scope(args)
     with _packet_pipeline(
@@ -823,13 +824,27 @@ def _cleanup_packet(packet: Packet, parent: Path) -> None:
         raise
 
 
-def _assert_effort_supported(effort: str | None, provider: str) -> None:
-    """받지 못하는 프로바이더에 effort 를 조용히 버리지 않는다.
+def _apply_effort_to_provider(
+    effort: str | None,
+    source: str,
+    provider: str,
+) -> tuple[str | None, str]:
+    """요청은 거절하고 기본값은 적용 가능한 곳에만 적용한다.
 
+    플래그는 이번 실행에 대한 명시 요청이라 못 지키면 거절한다.
     `--include-files` 가 조용히 버려졌던 것이 이 저장소의 실제 결함이었다.
+
+    env 는 상시 설정이지 이번 실행에 대한 요청이 아니다. 특히 `paste` 는
+    벤더를 아예 띄우지 않아 설정할 추론이 없다. 벤더가 안 도는 실행을 벤더
+    노브의 기본값 때문에 거절하면 안전 이득 없이 마찰만 남고, 셸 프로필에 박아
+    둔 변수가 paste 실행을 전부 깨뜨린다. 조용하지도 않다 — `effort_source` 가
+    적용되지 않았음을 그대로 말한다.
     """
-    if effort is not None and provider not in EFFORT_PROVIDERS:
+    if effort is None or provider in EFFORT_PROVIDERS:
+        return effort, source
+    if source == "explicit":
         raise PacketAskError(message("effort_unsupported"), codes.USAGE)
+    return None, "vendor-default"
 
 
 def _credential_state(spec: ProviderSpec, source: str) -> str:
