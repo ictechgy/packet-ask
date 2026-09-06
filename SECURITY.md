@@ -53,6 +53,7 @@ How personal Kimi Code or GLM Coding Plan subscriptions handle data is defined b
 - It does not inspect ZCode, Claude Code, `.env`, arbitrary key files, password-manager stores, or user-defined key commands. External managers must inject the dedicated environment variable.
 - It does not control what the vendor CLI keeps on this machine. A launched or pasted packet can be written to the vendor's own home directory as a session transcript. Deleting the packet directory does not remove that copy, and the receipt does not cover it.
 - It does not hide a question passed as `--question`. Argv is visible in the process table and in shell history. `--question-stdin` keeps the question out of argv, but it does not control what an interactive shell records.
+- It does not ship an OS sandbox or a protected launcher. An external launcher may run an explicitly requested GLM packet under supervision, and that state is reported as supervision without claiming a sandbox.
 
 ## Keys and profiles
 

@@ -194,11 +194,17 @@ misread, not every risk. The failure envelope is unchanged and still carries
 only a fixed code, kind, and message.
 
 `doctor` states its own verification level the same way. After the provider
-rows it prints one fixed line:
+rows it prints a supervision state line and then one fixed line:
 
 ```
+packet-ask supervision state=none
 packet-ask doctor signals=verification:flags-mentioned,sandbox:none,signatures:not-checked
 ```
+
+`supervision state=external` only means the host process supplied extra
+confined environment through the code hook; it does not verify an OS
+sandbox. The receipts carry the same state as a `supervision` field and a
+`supervision=...` token on the human line.
 
 `doctor` runs before any receipt exists, so this is where the offset has to
 arrive. `verification: flags-mentioned` is pinned to real behavior; the other
