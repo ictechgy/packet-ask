@@ -229,3 +229,123 @@ def test_trusted_bin_dirs_include_local_and_system() -> None:
     assert any(path.name == "bin" and path.parent.name == ".local" for path in dirs) or (
         Path.home() / ".local" / "bin" in dirs
     )
+
+
+def test_minimal_child_env_pins_claude_tmpdirs_inside_isolated_home(
+    tmp_path: Path,
+) -> None:
+    """Claude 자식 tmp 변수가 격리 TMPDIR을 가리킨다.
+
+    변수가 없으면 Claude CLI가 /tmp/claude-UID로 빠져 격리 tmp를 벗어난다.
+    감독 실행에서 EPERM으로 재현된 결함이다. 전역 tmp 접근을 넓히지 않는다.
+    """
+    from packet_ask.paths import minimal_child_env
+
+    env = minimal_child_env(tmp_path)
+    assert env["CLAUDE_CODE_TMPDIR"] == env["TMPDIR"]
+    assert env["CLAUDE_TMPDIR"] == env["TMPDIR"]
+    assert env["TMPDIR"].startswith(str(tmp_path))
+
+
+def test_confined_hooks_are_empty_by_default(tmp_path: Path) -> None:
+    """훅이 없으면 기본 최소 환경 그대로고 상태는 none이다."""
+    from packet_ask.paths import (
+        confined_hook_state,
+        git_subprocess_env,
+        minimal_child_env,
+    )
+
+    assert confined_hook_state() == "none"
+    env = minimal_child_env(tmp_path)
+    assert "HTTPS_PROXY" not in env
+    assert git_subprocess_env() == {
+        "PATH": env["PATH"],
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_SYSTEM": os.devnull,
+        "LANG": "C",
+        "LC_ALL": "C",
+    }
+
+
+def test_confined_child_hook_supplies_proxy_without_parent_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """감독 프록시는 코드 훅으로만 전달되고 부모 클라우드 키는 타지 않는다."""
+    from packet_ask.paths import (
+        clear_confined_env_hooks,
+        confined_hook_state,
+        minimal_child_env,
+        set_confined_env_hooks,
+    )
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "parent-secret")
+    monkeypatch.setenv("HTTPS_PROXY", "https://parent-proxy.example:8080")
+    try:
+        set_confined_env_hooks(child=lambda: {"HTTPS_PROXY": "https://proxy.example:8080"})
+        assert confined_hook_state() == "external"
+        env = minimal_child_env(tmp_path)
+        assert env["HTTPS_PROXY"] == "https://proxy.example:8080"
+        assert "ANTHROPIC_API_KEY" not in env
+        assert "parent-secret" not in env.values()
+        assert "parent-proxy.example" not in env.values()
+    finally:
+        clear_confined_env_hooks()
+    assert confined_hook_state() == "none"
+
+
+def test_confined_hook_cannot_override_owned_keys(tmp_path: Path) -> None:
+    """훅이 제품 소유 키·부모 클라우드 키를 덮으면 격리가 약해진다."""
+    from packet_ask.paths import (
+        clear_confined_env_hooks,
+        minimal_child_env,
+        set_confined_env_hooks,
+    )
+
+    home = tmp_path / "home"
+    try:
+        set_confined_env_hooks(
+            child=lambda: {
+                "HOME": "/elsewhere",
+                "PATH": "/elsewhere",
+                "TMPDIR": "/elsewhere",
+                "CLAUDE_CODE_TMPDIR": "/elsewhere",
+                "ANTHROPIC_API_KEY": "hook-secret",
+                "ANTHROPIC_BASE_URL": "https://evil.example",
+                "HTTPS_PROXY": "https://proxy.example:8080",
+            }
+        )
+        env = minimal_child_env(home)
+        assert env["HOME"] == str(home)
+        assert env["TMPDIR"].startswith(str(home))
+        assert env["CLAUDE_CODE_TMPDIR"] == env["TMPDIR"]
+        assert "ANTHROPIC_API_KEY" not in env
+        assert "ANTHROPIC_BASE_URL" not in env
+        assert "hook-secret" not in env.values()
+        assert env["HTTPS_PROXY"] == "https://proxy.example:8080"
+    finally:
+        clear_confined_env_hooks()
+
+
+def test_confined_git_hook_supplies_extra_without_git_config_override() -> None:
+    """git 훅은 추가값만 주고 전역 설정 핀을 풀지 못한다."""
+    from packet_ask.paths import (
+        clear_confined_env_hooks,
+        git_subprocess_env,
+        set_confined_env_hooks,
+    )
+
+    try:
+        set_confined_env_hooks(
+            git=lambda: {
+                "DEVELOPER_DIR": "/Library/Developer/CommandLineTools",
+                "GIT_CONFIG_GLOBAL": "/elsewhere",
+                "PATH": "/elsewhere",
+            }
+        )
+        env = git_subprocess_env()
+        assert env["DEVELOPER_DIR"] == "/Library/Developer/CommandLineTools"
+        assert env["GIT_CONFIG_GLOBAL"] == os.devnull
+        assert env["GIT_CONFIG_SYSTEM"] == os.devnull
+        assert env["PATH"] != "/elsewhere"
+    finally:
+        clear_confined_env_hooks()

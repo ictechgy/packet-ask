@@ -280,3 +280,19 @@ def test_grok_and_agy_stay_paste_only_in_the_registry() -> None:
         adapter = BUILTIN_ADAPTERS[provider_id]
         assert adapter.launcher_name is None
         assert adapter.doctor_kind is None
+
+
+def test_only_glm_is_a_protected_provider() -> None:
+    """외부 보호 실행기가 실제 호출하는 provider는 glm뿐이다.
+
+    kimi·claude도 런치는 되지만 보호 경로 실측이 없다. 늘리려면 설계 합의와
+    실측이 먼저다. 미지원 provider를 보호 지원으로 표시하지 않는다.
+    """
+    from packet_ask.providers import PROTECTED_PROVIDERS, is_protected_provider
+
+    assert PROTECTED_PROVIDERS == frozenset({"glm"})
+    assert is_protected_provider("glm") is True
+    for provider_id in ("kimi", "claude", "paste", "grok", "agy"):
+        assert is_protected_provider(provider_id) is False
+    with pytest.raises(Exception):
+        PROTECTED_PROVIDERS.add("kimi")  # type: ignore[attr-defined]

@@ -163,6 +163,7 @@ def test_ledger_entry_keys_are_frozen(tmp_path: Path, monkeypatch: pytest.Monkey
             "timeout_seconds": 1200,
             "timeout_source": "auto",
             "timeout_applies": False,
+            "supervision": "external",
             "guarantees": {"leakage": "not-guaranteed"},
             "question": "이 필드가 생겨도 새면 안 된다",
         },
@@ -170,7 +171,7 @@ def test_ledger_entry_keys_are_frozen(tmp_path: Path, monkeypatch: pytest.Monkey
     assert set(entry) == {
         "timestamp", "mode", "provider", "selector", "paths", "bytes",
         "sha256_packet_md", "redaction", "timeout_seconds", "timeout_source",
-        "timeout_applies",
+        "timeout_applies", "supervision",
     }
     # receipt 에 새 필드가 생겨도 대장으로 흐르지 않는다.
     assert "question" not in entry
