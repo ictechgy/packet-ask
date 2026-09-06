@@ -22,36 +22,23 @@ _CONFINED_GIT_HOOK: Callable[[], dict[str, str]] | None = None
 _SUPERVISION_NONE = "none"
 _SUPERVISION_EXTERNAL = "external"
 
-# 훅이 덮으면 안 되는 제품 소유 키와 자격증명·설정 네임스페이스. 부모
-# 클라우드 키는 어떤 경로로도 자식에 흐르지 않는다.
-_CHILD_HOOK_DENIED_EXACT = frozenset(
+# 훅이 줄 수 있는 이름은 등록된 것만 받는다. denylist는 로더 주입 계열
+# 키(LD_PRELOAD·PYTHONPATH 등)를 빠뜨리면 격리가 약해지므로, 필요한 이름만
+# allowlist로 연다. 자식은 감독 프록시 8종, git은 DEVELOPER_DIR만이다.
+# 값 검증은 하지 않는다. 훅은 in-process 코드라 값의 책임은 호출자에게 있다.
+_CHILD_HOOK_ALLOWED = frozenset(
     {
-        "HOME",
-        "PATH",
-        "TMPDIR",
-        "LANG",
-        "LC_ALL",
-        "CLAUDE_CODE_TMPDIR",
-        "CLAUDE_TMPDIR",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "no_proxy",
     }
 )
-_CHILD_HOOK_DENIED_PREFIXES = (
-    "ANTHROPIC_",
-    "KIMI_",
-    "PACKET_ASK_",
-    "CLAUDE_",
-    "GIT_",
-)
-_GIT_HOOK_DENIED_EXACT = frozenset(
-    {
-        "PATH",
-        "LANG",
-        "LC_ALL",
-        "GIT_CONFIG_GLOBAL",
-        "GIT_CONFIG_SYSTEM",
-    }
-)
-_GIT_HOOK_DENIED_PREFIXES = ("GIT_", "PACKET_ASK_")
+_GIT_HOOK_ALLOWED = frozenset({"DEVELOPER_DIR"})
 
 
 def set_confined_env_hooks(
@@ -205,29 +192,20 @@ def _child_hook_extra() -> dict[str, str]:
     """등록된 자식 훅의 허용값만 돌려준다. 없으면 빈 dict다."""
     if _CONFINED_CHILD_HOOK is None:
         return {}
-    return _run_confined_hook(
-        _CONFINED_CHILD_HOOK,
-        exact=_CHILD_HOOK_DENIED_EXACT,
-        prefixes=_CHILD_HOOK_DENIED_PREFIXES,
-    )
+    return _run_confined_hook(_CONFINED_CHILD_HOOK, allowed=_CHILD_HOOK_ALLOWED)
 
 
 def _git_hook_extra() -> dict[str, str]:
     """등록된 git 훅의 허용값만 돌려준다. 없으면 빈 dict다."""
     if _CONFINED_GIT_HOOK is None:
         return {}
-    return _run_confined_hook(
-        _CONFINED_GIT_HOOK,
-        exact=_GIT_HOOK_DENIED_EXACT,
-        prefixes=_GIT_HOOK_DENIED_PREFIXES,
-    )
+    return _run_confined_hook(_CONFINED_GIT_HOOK, allowed=_GIT_HOOK_ALLOWED)
 
 
 def _run_confined_hook(
     hook: Callable[[], dict[str, str]],
     *,
-    exact: frozenset[str],
-    prefixes: tuple[str, ...],
+    allowed: frozenset[str],
 ) -> dict[str, str]:
     """훅을 실행하고 허용된 str 쌍만 남긴다. 실패하면 벤더를 실행하지 않는다."""
     try:
@@ -240,18 +218,9 @@ def _run_confined_hook(
     for key, value in produced.items():
         if not isinstance(key, str) or not isinstance(value, str):
             raise PacketAskError(message("confined_hook_failed"), codes.CONFINEMENT)
-        if _is_allowed_hook_key(key, exact=exact, prefixes=prefixes):
+        if key in allowed:
             cleaned[key] = value
     return cleaned
-
-
-def _is_allowed_hook_key(
-    key: str, *, exact: frozenset[str], prefixes: tuple[str, ...]
-) -> bool:
-    """제품 소유·자격증명 네임스페이스를 훅이 덮지 못하게 한다."""
-    if key in exact:
-        return False
-    return not key.startswith(prefixes)
 
 
 def trusted_path_value() -> str:

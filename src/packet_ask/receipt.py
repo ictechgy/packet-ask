@@ -91,7 +91,8 @@ def build_receipt(
         # 패킷은 기본 denylist 보다 넓은 범위를 보낸 것이고, 영수증은 그 사실을
         # 숨기지 않는다. 자격증명 파일 정의(확장자·이름·.env)는 면제 대상이 아니다.
         "secret_name_exempt_used": secret_name_exempt_used,
-        # 감독 훅 등록 여부만 말한다. OS 격리 보장 선언이 아니므로 GUARANTEES의
+        # 감독 훅 등록 여부만 말한다. 영수증 빌드 시점의 스냅샷이지 실행
+        # 감사가 아니며, OS 격리 보장 선언이 아니다. GUARANTEES의
         # `sandbox: none` 과 함께 읽는다. 실행기 존재만으로 바뀌지 않는다.
         "supervision": confined_hook_state(),
         "guarantees": dict(GUARANTEES),

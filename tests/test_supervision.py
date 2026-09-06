@@ -45,7 +45,11 @@ def test_receipt_supervision_defaults_to_none(tmp_path: Path) -> None:
 
 
 def test_receipt_supervision_follows_the_hook(tmp_path: Path) -> None:
-    """훅이 실제로 자식 환경에 닿을 때만 external이다. 술어가 아니라 결로다."""
+    """훅이 등록되면 receipt가 external을 싣는다. 효과 검증이 아니라 결로다.
+
+    프록시가 자식 환경에 실제로 닿는 것까지 함께 고정한다. 다만 빈 훅도
+    external이므로, 상태는 영수증 빌드 시점의 등록 여부지 실행 감사가 아니다.
+    """
     from packet_ask.paths import (
         clear_confined_env_hooks,
         minimal_child_env,
