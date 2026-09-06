@@ -109,6 +109,7 @@ def test_inspect_json_reports_public_redaction_counts(
         "sha256_packet_md",
         "surface",
         "secret_name_exempt_used",
+        "supervision",
         "guarantees",
     }
     assert summary["mode"] == "review"

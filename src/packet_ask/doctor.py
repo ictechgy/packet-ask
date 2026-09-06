@@ -16,6 +16,7 @@ from types import MappingProxyType
 from typing import Mapping
 
 from packet_ask.paths import (
+    confined_hook_state,
     minimal_child_env,
     resolve_trusted_executable,
     trusted_executable_candidate_exists,
@@ -53,6 +54,16 @@ def format_doctor_signals_line() -> str:
     줄 끝에 정규식을 앵커하면 안 된다.
     """
     return f"packet-ask doctor signals={_SIGNALS_LINE_BODY}"
+
+
+def format_supervision_line() -> str:
+    """감독 훅 등록 여부 한 줄. 보장 선언이 아니라 적용 상태 표시다.
+
+    `external` 은 호스트가 코드 훅으로 제한 환경을 더했다는 뜻이고, OS
+    격리를 검증했다는 뜻이 아니다. 그래서 signals 줄 앞에 두고, signals 줄이
+    마지막에 와서 상쇄하도록 둔다.
+    """
+    return f"packet-ask supervision state={confined_hook_state()}"
 
 
 @dataclass(frozen=True)

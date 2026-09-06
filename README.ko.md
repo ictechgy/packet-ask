@@ -189,12 +189,17 @@ receipt 한 줄 끝에 `guarantees=leakage:not-guaranteed,cwd_sandbox:none,redac
 **이 목록은 전부가 아닙니다.** 가장 자주 오독되는 한계를 적은 것이지 모든 위험을
 적은 것이 아닙니다. 실패 봉투는 그대로 고정 code/kind/message 만 담습니다.
 
-`doctor` 도 같은 방식으로 자신의 검증 수준을 밝힙니다. 프로바이더 줄 뒤에 고정된 한
-줄이 나옵니다.
+`doctor` 도 같은 방식으로 자신의 검증 수준을 밝힙니다. 프로바이더 줄 뒤에 감독
+상태 줄과 고정된 한 줄이 나옵니다.
 
 ```
+packet-ask supervision state=none
 packet-ask doctor signals=verification:flags-mentioned,sandbox:none,signatures:not-checked
 ```
+
+`supervision state=external` 은 호스트 프로세스가 코드 훅으로 제한 환경을
+더했다는 뜻일 뿐 OS 격리를 검증했다는 뜻이 아닙니다. 영수증에도 같은 상태가
+`supervision` 필드와 사람 한 줄의 `supervision=...` 토큰으로 실립니다.
 
 `doctor` 는 receipt 가 생기기 전에 돌아갑니다. 상쇄가 도착해야 할 자리가 여기입니다.
 `verification: flags-mentioned` 는 실제 동작에 묶여 있고, 나머지 둘은 `doctor` 가

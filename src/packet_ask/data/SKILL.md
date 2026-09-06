@@ -63,6 +63,17 @@ Opt-in packet shape flags, both counted against `--max-bytes`:
 Launch builtins: `glm`, `kimi`, `claude`. Paste-only builtins: `paste`, `grok`, `agy`.
 User `~/.config/packet-ask/providers.toml` may add paste aliases only.
 
+- Selective protected execution is opt-in and external. Only when the user
+  explicitly asks for a protected run, use the installed `packet-ask-safe`
+  launcher instead of `packet-ask`; never switch on your own, install it, or
+  change the default. The protected SUB provider is always `glm`. Confirm the
+  launcher exists (`command -v packet-ask-safe`); if it is missing or
+  confinement fails, report the error and stop — do not silently fall back to
+  `packet-ask` or a vendor CLI. Keep `--question-stdin` and the selected
+  scope; check `inspect` or `--preview` first. Put `--use-keychain` before
+  `review`/`research` only when credential access is authorized, and never
+  pass `--credential-source` through the wrapper.
+
 - Credential source defaults to `auto`: dedicated env, then packet-ask-owned macOS Keychain. It never reads another app's settings.
 - Provider timeout defaults to a generous final-packet-size tier (1200/1500/1800 seconds). An explicit `--timeout` is used exactly.
 - `--preview` builds and verifies the packet, prints the launch plan, and stops. It reports the provider mode, the credential source kind, the `--max-bytes` remainder, and `launch: not-started`. It never reads a credential value, writes no ledger line, and is rejected together with `--dry-run`. Use it before a run that would otherwise wait out a 1200-1800 second timeout.
@@ -73,7 +84,7 @@ User `~/.config/packet-ask/providers.toml` may add paste aliases only.
 - Kimi: `PACKET_ASK_KIMI_KEY` or Keychain service `packet-ask-kimi`
 - Claude SUB: `PACKET_ASK_CLAUDE_KEY` or Keychain service `packet-ask-claude` (never a global Anthropic key)
 - The vendor CLI may keep the packet in its own home directory as a session transcript. Deleting the packet does not remove that copy.
-- `packet-ask doctor` ends with a fixed `signals=verification:flags-mentioned,sandbox:none,signatures:not-checked` line. A provider row that says `launch` means help text mentioned the flags, not that anything is sandboxed or signed.
+- `packet-ask doctor` prints a `supervision state=...` line (hook registration only, not a sandbox claim) and ends with a fixed `signals=verification:flags-mentioned,sandbox:none,signatures:not-checked` line. A provider row that says `launch` means help text mentioned the flags, not that anything is sandboxed or signed.
 - `secret_name_exempt_used` on a receipt is not zero when the repository's `allowlist.toml` exempted a path from the secret-name guess. That packet was scoped wider than the default denylist. The exemption never covers a credential-file definition such as `.env*`, `id_rsa`, or a `.pem` suffix.
 - Every receipt and `inspect` summary carries a fixed `guarantees` object. Read it: leakage is not guaranteed, cwd is not a sandbox, redaction is a denylist, `doctor` only reads help text, and the policy gate is a lexical tripwire. Success is not proof, and the list is not exhaustive. Knowing cwd is not a sandbox is not a reason to bypass this CLI and hand files to a vendor directly; that skips the scrub too.
 - If the repo has a committed `.packet-ask-surface`, explicit `--files` paths must be inside the declared prefixes or the run exits 11. Do not edit that file to widen scope; ask the user. `--outside-surface` is recorded as `overridden`, never silent.

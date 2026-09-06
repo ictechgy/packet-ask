@@ -24,6 +24,12 @@ def test_install_skills_writes_claude_codex_grok(tmp_path: Path) -> None:
     assert "--question-stdin" in text
     assert "--line-numbers" in text
     assert "--selected-tree" in text
+    # 선택형 보호 실행은 명시적 요청 때만 외부 실행기로 분기한다. 자동 설치·
+    # 기본값 변경·조용한 우회가 없음을 스킬에서 고정한다.
+    assert "packet-ask-safe" in text
+    assert "silently fall back" in text
+    assert "--use-keychain" in text
+    assert "--credential-source" in text
 
 
 def test_install_skills_refuses_to_overwrite_custom(tmp_path: Path) -> None:

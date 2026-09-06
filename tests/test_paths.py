@@ -229,3 +229,174 @@ def test_trusted_bin_dirs_include_local_and_system() -> None:
     assert any(path.name == "bin" and path.parent.name == ".local" for path in dirs) or (
         Path.home() / ".local" / "bin" in dirs
     )
+
+
+def test_minimal_child_env_pins_claude_tmpdirs_inside_isolated_home(
+    tmp_path: Path,
+) -> None:
+    """Claude 자식 tmp 변수가 격리 TMPDIR을 가리킨다.
+
+    변수가 없으면 Claude CLI가 /tmp/claude-UID로 빠져 격리 tmp를 벗어난다.
+    감독 실행에서 EPERM으로 재현된 결함이다. 전역 tmp 접근을 넓히지 않는다.
+    """
+    from packet_ask.paths import minimal_child_env
+
+    env = minimal_child_env(tmp_path)
+    assert env["CLAUDE_CODE_TMPDIR"] == env["TMPDIR"]
+    assert env["CLAUDE_TMPDIR"] == env["TMPDIR"]
+    assert env["TMPDIR"].startswith(str(tmp_path))
+
+
+def test_confined_hooks_are_empty_by_default(tmp_path: Path) -> None:
+    """훅이 없으면 기본 최소 환경 그대로고 상태는 none이다."""
+    from packet_ask.paths import (
+        confined_hook_state,
+        git_subprocess_env,
+        minimal_child_env,
+    )
+
+    assert confined_hook_state() == "none"
+    env = minimal_child_env(tmp_path)
+    assert "HTTPS_PROXY" not in env
+    assert git_subprocess_env() == {
+        "PATH": env["PATH"],
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_SYSTEM": os.devnull,
+        "LANG": "C",
+        "LC_ALL": "C",
+    }
+
+
+def test_confined_child_hook_supplies_proxy_without_parent_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """감독 프록시는 코드 훅으로만 전달되고 부모 클라우드 키는 타지 않는다."""
+    from packet_ask.paths import (
+        clear_confined_env_hooks,
+        confined_hook_state,
+        minimal_child_env,
+        set_confined_env_hooks,
+    )
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "parent-secret")
+    monkeypatch.setenv("HTTPS_PROXY", "https://parent-proxy.example:8080")
+    try:
+        set_confined_env_hooks(child=lambda: {"HTTPS_PROXY": "https://proxy.example:8080"})
+        assert confined_hook_state() == "external"
+        env = minimal_child_env(tmp_path)
+        assert env["HTTPS_PROXY"] == "https://proxy.example:8080"
+        assert "ANTHROPIC_API_KEY" not in env
+        assert "parent-secret" not in env.values()
+        assert "parent-proxy.example" not in env.values()
+    finally:
+        clear_confined_env_hooks()
+    assert confined_hook_state() == "none"
+
+
+def test_confined_hook_passes_only_the_proxy_allowlist(tmp_path: Path) -> None:
+    """훅은 프록시 8종만 전달한다. 소유 키·자격증명·로더 주입 키는 떨어진다."""
+    from packet_ask.paths import (
+        clear_confined_env_hooks,
+        minimal_child_env,
+        set_confined_env_hooks,
+    )
+
+    home = tmp_path / "home"
+    try:
+        set_confined_env_hooks(
+            child=lambda: {
+                "HOME": "/elsewhere",
+                "PATH": "/elsewhere",
+                "TMPDIR": "/elsewhere",
+                "CLAUDE_CODE_TMPDIR": "/elsewhere",
+                "ANTHROPIC_API_KEY": "hook-secret",
+                "ANTHROPIC_BASE_URL": "https://evil.example",
+                "LD_PRELOAD": "/elsewhere/evil.so",
+                "PYTHONPATH": "/elsewhere",
+                "HTTPS_PROXY": "https://proxy.example:8080",
+            }
+        )
+        env = minimal_child_env(home)
+        assert env["HOME"] == str(home)
+        assert env["TMPDIR"].startswith(str(home))
+        assert env["CLAUDE_CODE_TMPDIR"] == env["TMPDIR"]
+        assert "ANTHROPIC_API_KEY" not in env
+        assert "ANTHROPIC_BASE_URL" not in env
+        assert "LD_PRELOAD" not in env
+        assert "PYTHONPATH" not in env
+        assert "hook-secret" not in env.values()
+        assert env["HTTPS_PROXY"] == "https://proxy.example:8080"
+    finally:
+        clear_confined_env_hooks()
+
+
+def test_empty_hook_still_reports_external(tmp_path: Path) -> None:
+    """상태는 등록 여부지 효과가 아니다. 빈 훅도 external이다.
+
+    효과가 있어야 external이라고 쓰면 상수가 기전보다 오래 살아남는다.
+    과대 표기 방향이라 문서에 정직하게 고정한다.
+    """
+    from packet_ask.paths import (
+        clear_confined_env_hooks,
+        confined_hook_state,
+        minimal_child_env,
+        set_confined_env_hooks,
+    )
+
+    try:
+        set_confined_env_hooks(child=lambda: {})
+        assert confined_hook_state() == "external"
+        assert "HTTPS_PROXY" not in minimal_child_env(tmp_path)
+    finally:
+        clear_confined_env_hooks()
+
+
+def test_confined_git_hook_supplies_extra_without_git_config_override() -> None:
+    """git 훅은 DEVELOPER_DIR만 주고 전역 설정 핀을 풀지 못한다."""
+    from packet_ask.paths import (
+        clear_confined_env_hooks,
+        git_subprocess_env,
+        set_confined_env_hooks,
+    )
+
+    try:
+        set_confined_env_hooks(
+            git=lambda: {
+                "DEVELOPER_DIR": "/Library/Developer/CommandLineTools",
+                "HOME": "/elsewhere",
+                "ANTHROPIC_API_KEY": "hook-secret",
+                "GIT_CONFIG_GLOBAL": "/elsewhere",
+                "PATH": "/elsewhere",
+            }
+        )
+        env = git_subprocess_env()
+        assert env["DEVELOPER_DIR"] == "/Library/Developer/CommandLineTools"
+        assert "HOME" not in env
+        assert "ANTHROPIC_API_KEY" not in env
+        assert env["GIT_CONFIG_GLOBAL"] == os.devnull
+        assert env["GIT_CONFIG_SYSTEM"] == os.devnull
+        assert env["PATH"] != "/elsewhere"
+    finally:
+        clear_confined_env_hooks()
+
+
+def test_confined_hook_failure_stops_before_launch(tmp_path: Path) -> None:
+    """훅 실패는 격리 초기화 실패다. 이유를 보고하고 벤더를 실행하지 않는다."""
+    from packet_ask.paths import (
+        clear_confined_env_hooks,
+        minimal_child_env,
+        set_confined_env_hooks,
+    )
+    from packet_ask.text import message
+
+    def _broken() -> dict[str, str]:
+        raise RuntimeError("hook broken")
+
+    try:
+        set_confined_env_hooks(child=_broken)
+        with pytest.raises(PacketAskError) as excinfo:
+            minimal_child_env(tmp_path)
+        assert excinfo.value.code == codes.CONFINEMENT
+        assert str(excinfo.value) == message("confined_hook_failed")
+    finally:
+        clear_confined_env_hooks()
