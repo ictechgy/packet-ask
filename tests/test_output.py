@@ -100,6 +100,7 @@ def test_receipt_escapes_control_characters_in_paths() -> None:
         "paths": ["src/bad\n\x1b[2J.py"],
         "bytes": 10,
         "sha256_packet_md": "a" * 64,
+        "supervision": "none",
     }
     line = format_receipt_line(receipt)
     assert line.count("\n") == 0
@@ -200,6 +201,7 @@ def test_receipt_line_states_limits_inline() -> None:
             "bytes": 10,
             "sha256_packet_md": "a" * 64,
             "surface": "absent",
+            "supervision": "none",
         }
     )
     # 반전 해석이 불가능해야 한다. "leak:no" 는 "유출 없음"으로 읽힌다.

@@ -68,6 +68,7 @@ def build_ledger_entry(mode: str, receipt: dict[str, Any]) -> dict[str, Any]:
         "timeout_seconds",
         "timeout_source",
         "timeout_applies",
+        "supervision",
     ):
         if key in receipt:
             entry[key] = receipt[key]

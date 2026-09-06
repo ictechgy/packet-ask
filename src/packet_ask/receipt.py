@@ -8,6 +8,7 @@ from typing import Any, Mapping
 
 from packet_ask import codes
 from packet_ask.packet import Packet
+from packet_ask.paths import confined_hook_state
 from packet_ask.redact import public_redaction_counts
 from packet_ask.scope import ScopedFile
 
@@ -90,6 +91,9 @@ def build_receipt(
         # 패킷은 기본 denylist 보다 넓은 범위를 보낸 것이고, 영수증은 그 사실을
         # 숨기지 않는다. 자격증명 파일 정의(확장자·이름·.env)는 면제 대상이 아니다.
         "secret_name_exempt_used": secret_name_exempt_used,
+        # 감독 훅 등록 여부만 말한다. OS 격리 보장 선언이 아니므로 GUARANTEES의
+        # `sandbox: none` 과 함께 읽는다. 실행기 존재만으로 바뀌지 않는다.
+        "supervision": confined_hook_state(),
         "guarantees": dict(GUARANTEES),
     }
 
@@ -116,6 +120,9 @@ def build_packet_summary(
         "sha256_packet_md": packet.payload_digest(),
         "surface": surface,
         "secret_name_exempt_used": secret_name_exempt_used,
+        # 영수증과 같은 상태 토큰이다. 대장을 남기지 않는 inspect에서도 호스트
+        # 상태를 말할 뿐 자격증명 값을 읽지 않는다.
+        "supervision": confined_hook_state(),
         "guarantees": dict(GUARANTEES),
     }
     if include_breakdown:
@@ -168,6 +175,7 @@ def format_preview_line(preview: dict[str, Any]) -> str:
         f"credential={preview['credential_source']}:{preview['credential_state']} "
         f"launch={preview['launch']} "
         f"effort={preview['effort'] or 'none'}({preview['effort_source']}) "
+        f"supervision={preview['supervision']} "
         f"surface={preview['surface']}"
         + (
             f" secret_name_exempt={preview['secret_name_exempt_used']}"
@@ -218,6 +226,7 @@ def format_receipt_line(receipt: dict[str, Any]) -> str:
         f" surface={receipt['surface']}"
         f" effort={receipt.get('effort') or 'none'}"
         f"({receipt.get('effort_source', 'vendor-default')})"
+        f" supervision={receipt['supervision']}"
         f" guarantees={_RECEIPT_LINE_GUARANTEES}"
     )
 

@@ -34,6 +34,15 @@ BUILTIN_ADAPTERS: Mapping[str, BuiltinAdapter] = MappingProxyType(
     }
 )
 BUILTIN_IDS = frozenset(BUILTIN_ADAPTERS)
+
+# 외부 보호 실행기가 실제 호출하는 provider. 지금은 glm 실측뿐이다. 늘리려면
+# 설계 합의와 실측이 먼저이며, 미지원 provider를 보호 지원으로 표시하지 않는다.
+PROTECTED_PROVIDERS = frozenset({"glm"})
+
+
+def is_protected_provider(provider_id: str) -> bool:
+    """보호 실행 경로가 실측된 provider인지 본다. 확장용 술어다."""
+    return provider_id in PROTECTED_PROVIDERS
 _FORBIDDEN_TOML_KEYS = frozenset(
     {
         "executable",

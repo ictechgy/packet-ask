@@ -95,6 +95,7 @@ _EN = {
     "cache_symlink": "Symlinks are not allowed in the packet cache path.",
     "cache_owner": "The packet cache directory is not owned by the current user.",
     "cache_invalid": "The packet cache directory could not be secured.",
+    "confined_hook_failed": "The confined environment hook failed, so no vendor ran.",
     "provider_path_symlink": "Symlinks are not allowed in provider profile paths.",
     "provider_path_invalid": "The provider profile path is not a private user-owned directory.",
     "kimi_cleanup_failed": "Could not remove the isolated Kimi session data.",
@@ -263,6 +264,7 @@ _KO = {
     "cache_symlink": "패킷 캐시 경로에 심링크는 허용하지 않습니다.",
     "cache_owner": "캐시 디렉터리 소유자가 현재 사용자가 아닙니다.",
     "cache_invalid": "패킷 캐시 디렉터리를 안전하게 준비하지 못했습니다.",
+    "confined_hook_failed": "제한 환경 훅이 실패해 벤더를 실행하지 않았습니다.",
     "provider_path_symlink": "프로바이더 프로필 경로에 심링크는 허용하지 않습니다.",
     "provider_path_invalid": (
         "프로바이더 프로필 경로가 현재 사용자 소유의 "

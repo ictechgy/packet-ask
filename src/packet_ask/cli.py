@@ -25,7 +25,11 @@ from packet_ask.keysource import (
     credential_status,
     store_macos_keychain,
 )
-from packet_ask.doctor import format_doctor_signals_line, inspect_providers
+from packet_ask.doctor import (
+    format_doctor_signals_line,
+    format_supervision_line,
+    inspect_providers,
+)
 from packet_ask.deadline import Deadline
 from packet_ask.allowlist import load_allowlist
 from packet_ask.errors import PacketAskError
@@ -510,7 +514,9 @@ def _run_doctor() -> int:
             f"installed={item.installed} | {launch} | {item.note}"
         )
     # 위 줄들은 전부 성공 신호다. 무엇을 확인하지 않았는지가 같이 나가지
-    # 않으면 "설치됨"이 "안전함"으로 읽힌다.
+    # 않으면 "설치됨"이 "안전함"으로 읽힌다. 보호 표시는 signals 상쇄보다
+    # 먼저 두고, signals 줄이 마지막에 오도록 유지한다.
+    print(format_supervision_line())
     print(format_doctor_signals_line())
     return codes.SUCCESS
 

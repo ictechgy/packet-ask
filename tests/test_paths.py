@@ -349,3 +349,25 @@ def test_confined_git_hook_supplies_extra_without_git_config_override() -> None:
         assert env["PATH"] != "/elsewhere"
     finally:
         clear_confined_env_hooks()
+
+
+def test_confined_hook_failure_stops_before_launch(tmp_path: Path) -> None:
+    """훅 실패는 격리 초기화 실패다. 이유를 보고하고 벤더를 실행하지 않는다."""
+    from packet_ask.paths import (
+        clear_confined_env_hooks,
+        minimal_child_env,
+        set_confined_env_hooks,
+    )
+    from packet_ask.text import message
+
+    def _broken() -> dict[str, str]:
+        raise RuntimeError("hook broken")
+
+    try:
+        set_confined_env_hooks(child=_broken)
+        with pytest.raises(PacketAskError) as excinfo:
+            minimal_child_env(tmp_path)
+        assert excinfo.value.code == codes.CONFINEMENT
+        assert str(excinfo.value) == message("confined_hook_failed")
+    finally:
+        clear_confined_env_hooks()
