@@ -32,6 +32,7 @@ def test_install_skills_writes_claude_codex_grok(tmp_path: Path) -> None:
     # 미지원으로 보고한다. "설치된 런처"만 적으면 없는 문을 가리키게 된다.
     assert "not shipped with this package" in text
     assert "unsupported" in text
+    assert "report that and stop" in text
     assert "--use-keychain" in text
     assert "--credential-source" in text
 

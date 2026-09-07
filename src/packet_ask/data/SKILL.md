@@ -71,7 +71,7 @@ User `~/.config/packet-ask/providers.toml` may add paste aliases only.
   confinement fails, report the error and stop — do not silently fall back to
   `packet-ask` or a vendor CLI. Keep `--question-stdin` and the selected
   scope; check `inspect` or `--preview` first. Put `--use-keychain` before
-   `review`/`research` only when credential access is authorized, and never
+  `review`/`research` only when credential access is authorized, and never
   pass `--credential-source` through the wrapper. The protected launcher is a
   separate macOS-only installation and is not shipped with this package; where
   it is absent, protected runs are unsupported — report that and stop.
