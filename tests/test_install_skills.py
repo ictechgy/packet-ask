@@ -28,6 +28,11 @@ def test_install_skills_writes_claude_codex_grok(tmp_path: Path) -> None:
     # 기본값 변경·조용한 우회가 없음을 스킬에서 고정한다.
     assert "packet-ask-safe" in text
     assert "silently fall back" in text
+    # 보호 실행기는 별도 macOS 설치물이며 패키지에 실리지 않는다. 없으면
+    # 미지원으로 보고한다. "설치된 런처"만 적으면 없는 문을 가리키게 된다.
+    assert "not shipped with this package" in text
+    assert "unsupported" in text
+    assert "report that and stop" in text
     assert "--use-keychain" in text
     assert "--credential-source" in text
 
