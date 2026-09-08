@@ -555,7 +555,11 @@ def test_redaction_failure_names_the_diff(tmp_path: Path) -> None:
             diff_text=f"+{_RESIDUE}\n",
             parent=tmp_path,
         )
-    assert "changes.patch" in str(excinfo.value)
+    text = str(excinfo.value)
+    assert "changes.patch" in text
+    assert "phone" in text
+    assert "question" not in text
+    assert list(tmp_path.glob("packet-ask-*")) == []
 
 
 def test_assembly_failure_points_away_from_item_contents(tmp_path: Path) -> None:
@@ -576,3 +580,32 @@ def test_assembly_failure_points_away_from_item_contents(tmp_path: Path) -> None
     assert "phone" in text
     assert message("redaction_leftovers_assembled", kinds="phone") in text
     assert list(tmp_path.glob("packet-ask-*")) == []
+
+
+def test_redaction_failure_label_escapes_terminal_controls(tmp_path: Path) -> None:
+    """위치 라벨이 파일명의 제어문자를 원문으로 싣지 않는다.
+
+    실측했다. bidi(U+202E)·개행·ANSI CSI 를 담은 파일명이 있으면 실패 문장이
+    그것을 **원문으로** stderr 에 실어 사용자 터미널 상태를 바꾼다. 이 도구는
+    헤더 경로를 이미 같은 이유로 이스케이프하고, 별칭 라벨에서는 제어문자를
+    거절한다. 새로 만든 출력 지점만 그 관례를 우회하고 있었다.
+    """
+    hostile = [
+        "src/bidi\u202e.py",
+        "src/line\nbreak.py",
+        "src/csi\x1b[31mred.py",
+    ]
+    for relative in hostile:
+        with pytest.raises(RedactionFailed) as excinfo:
+            build_packet(
+                mode="review",
+                question="review",
+                files=[ScopedFile(relative=relative, content=_RESIDUE + "\n")],
+                diff_text=None,
+                parent=tmp_path,
+            )
+        text = str(excinfo.value)
+        assert "\u202e" not in text
+        assert "\n" not in text
+        assert "\x1b" not in text
+        assert "phone" in text

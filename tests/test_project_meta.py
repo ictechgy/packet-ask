@@ -576,3 +576,51 @@ def test_every_tracked_text_file_can_be_sent_in_a_packet() -> None:
             blocked.append(f"{relative}: {exc}")
     assert checked > 50, checked
     assert not blocked, "\n".join(blocked)
+
+
+def test_tracked_paths_are_also_sendable() -> None:
+    """파일 **이름**도 패킷에 실리므로 본문과 같은 기준으로 본다.
+
+    본문만 검사하면 `010-…` 모양으로 이름 지은 추적 파일은 이 검사를 통과한
+    채 패킷을 영구 실패로 막는다. 이름은 헤더로 `packet.md` 에 들어가고, 항목
+    본문 검증은 헤더를 보지 않는다 — 조립 단계에서만 걸린다. 이번 변경의
+    기폭 사례가 바로 그 파일명 케이스였다.
+    """
+    from packet_ask.redact import RedactionError, scrub_text, verify_scrubbed
+
+    if not (ROOT / ".git").exists():
+        pytest.skip("git 저장소가 아니면 추적 파일 목록을 잴 수 없다")
+    listing = subprocess.run(
+        ["git", "ls-files"], cwd=ROOT, check=True, capture_output=True, text=True
+    )
+    tracked = [line for line in listing.stdout.splitlines() if line]
+    assert tracked, "추적 파일을 못 읽었다."
+    blocked = []
+    for relative in tracked:
+        scrubbed, _report = scrub_text(relative)
+        try:
+            verify_scrubbed(scrubbed)
+        except RedactionError as exc:
+            blocked.append(f"{relative}: {exc}")
+    assert not blocked, "\n".join(blocked)
+
+
+def test_sendability_check_can_actually_fail() -> None:
+    """양성 대조: scrub→verify 파이프라인이 이 테스트 안에서 실제로 raise 한다.
+
+    verify 가 no-op 으로 망가지면 "모든 파일이 보낼 수 있다" 는 검사는 공짜로
+    통과한다. 같은 파이프라인으로 알려진 잔여를 올려 그것이 막히는 것을 본다.
+    조각을 이어 붙여 이 파일 자체는 보낼 수 있게 만든다.
+    """
+    from packet_ask.redact import RedactionError, scrub_text, verify_scrubbed
+
+    residue = "call 010-1234" + "." + "5678 now"
+    scrubbed, report = scrub_text(residue)
+    assert report.phones == 0
+    with pytest.raises(RedactionError):
+        verify_scrubbed(scrubbed)
+    # 그리고 정형은 scrub 이 지우므로 보내는 쪽이 통과한다.
+    canonical = "call " + "010" + "-" + "1234" + "-" + "5678"
+    scrubbed_canonical, canonical_report = scrub_text(canonical)
+    assert canonical_report.phones == 1
+    verify_scrubbed(scrubbed_canonical)
