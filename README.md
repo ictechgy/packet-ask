@@ -306,16 +306,21 @@ The question, the file bodies, the vendor's answer, and vendor stderr are never
 written to either line.
 
 `packet-ask ledger summary` reads the file back and prints counters only:
-entries, egress, result, the three outcomes, `unpaired_egress`, `hint_hits`,
-`skipped`, both byte totals, provider ids, and the first and last timestamp. It
-never prints paths, questions, or bodies, even though the egress lines hold
+entries (non-blank lines), egress, result, the three outcomes,
+`unpaired_egress`, `hint_hits`, `skipped`, both byte totals, and the first and
+last timestamp. Provider ids appear in `--json` only; the human line leaves them
+out so a user alias containing a space cannot break token splitting. Neither
+output ever prints paths, questions, or bodies, even though the egress lines hold
 relative paths. `--json` returns the same numbers as a `packet-ask.v1` object.
 The command reads `PACKET_ASK_LEDGER` and exits 2 without it; it never creates
-the file. Reading passes the same confinement checks as writing (absolute path,
-not a symlink, regular file, current-user owner) and stops at an 8 MiB cap
-instead of summarizing a prefix. A line that cannot be parsed, or that carries a
-phase or outcome this version does not know, is counted in `skipped` rather than
-aborting the summary.
+the file. Reading checks the absolute path, rejects symlinks, requires a regular
+file owned by the current user, and stops at an 8 MiB cap instead of summarizing
+a prefix. It does not enforce the file mode and does not re-run the worktree
+check, because the summary carries no file content into any packet. A line that
+cannot be parsed, or that carries a phase, outcome, timestamp shape, or byte
+count this version does not accept, is counted in `skipped` rather than aborting
+the summary or being counted anyway. An egress line without a packet digest is
+never paired, so it always counts toward `unpaired_egress`.
 
 The path must be absolute, must not be inside the git worktree, must not be a
 symlink, and must be owned by the current user. The worktree check compares
@@ -516,6 +521,11 @@ the conventional signal exit status: SIGHUP is 129, SIGINT is 130, and SIGTERM i
 existing `SKILL.md` that could not be read or written) and `2` means a home holds
 a different `SKILL.md` and `--force` was not given. No vendor process is
 involved either way.
+
+`ledger summary` reuses them for reading. There `2` means `PACKET_ASK_LEDGER` is
+unset, `13` means the ledger failed a read check (symlink, not a regular file, or
+not owned by the current user), and `14` means it is larger than the summary cap.
+No vendor process is involved.
 
 ## Development
 
