@@ -1,0 +1,39 @@
+# packet-ask 공개 표면 선언.
+#
+# 이것은 유출 방지 allowlist 가 아니다. 에이전트가 `--files` 를 고를 때 이
+# 선언된 경로 접두어 밖으로 범위를 넓히려면 **커밋된 이 파일**을 고쳐야 하고,
+# 그 편집은 git status 와 diff 에 나타나 기존 사람 리뷰 루프 위로 올라온다.
+# 내용 보증이 아니라 경로에 관한 선언이며, 하드링크와 diff 내용 주입은
+# 잡지 못한다. 우회가 필요하면 `--outside-surface` 를 쓰고 영수증에 남긴다.
+#
+# 이 저장소는 MIT 공개이므로 추적 파일은 전부 선언한다. 선언 밖에 남는 것은
+# 로컬 노트·캐시·스크래치뿐이다: HANDOFF.md, .serena/, .omc/, .venv/, dist/,
+# 그리고 저장소 루트에 임시로 만드는 패킷·diff 조각. 그것들은 .gitignore
+# 대상이거나 애초에 보내려던 것이 아니다.
+#
+# 접두어만 받는다. 글롭(`*?[]`)·절대경로·상위 참조는 surface.py 가 거절한다.
+
+.packet-ask-surface
+.gitignore
+.python-version
+AGENTS.md
+CLAUDE.md
+CONTRIBUTING.md
+LICENSE
+README.md
+README.ko.md
+SECURITY.md
+SECURITY.ko.md
+env.example
+pyproject.toml
+uv.lock
+.github
+docs
+skills
+src
+tests
+
+# 리뷰용 스크래치. .gitignore 대상이지만 여기에 두는 것은 이 저장소 자신의
+# diff 와 패킷이므로 SUB 에 보낼 수 있다고 선언한다. 저장소 루트에 흩뿌리지
+# 않는다 — 루트 scratch 는 선언 밖이라 거절된다.
+.packet-ask-tmp
