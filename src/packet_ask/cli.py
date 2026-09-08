@@ -499,19 +499,20 @@ def _assert_packet_budget(question: str, files: list[ScopedFile], diff_text: str
 
 
 def _run_install_skills(force: bool) -> int:
-    """Claude/Codex/Grok 홈에 스킬을 심고 홈별 결과를 보고한다."""
+    """네 하니스 홈(Claude·Grok·Codex·agents)에 스킬을 심고 홈별 결과를 보고한다."""
     report = install_skills(force=force)
     for path in report.written:
         print(path)
-    # 쓴 경로만 stdout 에 남기고 실패는 stderr 로 보낸다. 성공과 실패가 섞인
-    # 상태를 한 줄로 뭉개지 않는다. 무엇이 설치됐는지 모르면 나머지 홈의 낡은
-    # SKILL.md 를 새것으로 오해한다.
+    # 설치된 경로는 stdout, 실패는 stderr 로 보낸다. 성공과 실패가 섞인 상태를
+    # 한 줄로 뭉개지 않는다. 무엇이 설치됐는지 모르면 나머지 홈의 낡은
+    # SKILL.md 를 새것으로 오해한다. 사유는 실패 시점이 아니라 출력 시점에
+    # 렌더한다 — 보고에 언어 설정을 굳히지 않기 위해서다.
     for failure in report.failures:
         print(
             message(
                 "skill_home_failed",
                 name=failure.relative,
-                reason=failure.reason,
+                reason=message(failure.reason_key),
             ),
             file=sys.stderr,
         )
