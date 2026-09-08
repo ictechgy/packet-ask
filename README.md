@@ -433,8 +433,11 @@ packet was scoped wider than the default denylist. Set `PACKET_ASK_ALLOWLIST_FIL
 point somewhere else.
 
 The implementation/incident question gate is a conservative lexical check, not
-a proof of intent. Launch adapters disable vendor tools and use the packet as
-the child cwd, but this is not OS-level filesystem confinement.
+a proof of intent. A rephrased request passes it, and a question that only asks
+for a review is also blocked when it contains one of the listed words; the
+rejection message says both. Negations are deliberately not interpreted. Launch
+adapters disable vendor tools and use the packet as the child cwd, but this is
+not OS-level filesystem confinement.
 
 ```toml
 version = 1
