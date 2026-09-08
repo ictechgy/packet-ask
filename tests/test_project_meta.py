@@ -320,3 +320,66 @@ def test_readme_sections_do_not_drift_between_languages() -> None:
     assert sum(1 for line in english if line.startswith("```")) == sum(
         1 for line in korean if line.startswith("```")
     )
+
+
+_ENV_NAME_RE = re.compile(r"PACKET_ASK_[A-Z_]+")
+
+
+def _code_env_names() -> set[str]:
+    """코드가 실제로 읽는 `PACKET_ASK_*` 이름 집합을 코드 쪽에서 만든다.
+
+    리터럴 스캔만으로는 `_BIN` 계열을 놓친다. 그 이름은 f-string 으로 만들어져
+    소스에 완성된 형태가 없기 때문이다. 선언 상수를 유일한 출처로 합친다.
+    """
+    from packet_ask import paths
+
+    names: set[str] = set()
+    for source in sorted((ROOT / "src" / "packet_ask").glob("*.py")):
+        names |= set(_ENV_NAME_RE.findall(source.read_text(encoding="utf-8")))
+    return names | set(paths.trusted_executable_override_envs())
+
+
+def test_security_docs_cover_every_variable_the_code_reads() -> None:
+    """양쪽 문서에 **다 같이** 없는 변수를 잡는다.
+
+    영/한 집합 비교는 한쪽만 빠진 경우를 잡는다. `PACKET_ASK_ALLOWLIST_FILE` 이
+    그렇게 빠졌었다. 그런데 `PACKET_ASK_GIT_BIN` 은 두 문서와 env.example 어디에도
+    없었다 — git 실행 파일을 바꾸는 실재 사용자 표면이고 `test_scope.py` 가
+    그 결로를 고정하는데도 말이다. 양쪽 다 없으면 영/한 비교는 공짜로 통과한다.
+
+    그래서 코드에서 만든 집합과 각 문서를 따로 비교한다. 문서에만 있는 이름도
+    걸린다. 오타거나 코드가 더 이상 읽지 않는 폐기 변수다.
+    """
+    expected = _code_env_names()
+    # 스캔이 비면 아래 비교가 공짜로 통과한다.
+    assert len(expected) >= 13, sorted(expected)
+    for name in ("SECURITY.md", "SECURITY.ko.md"):
+        found = set(_ENV_NAME_RE.findall((ROOT / name).read_text(encoding="utf-8")))
+        assert not expected - found, f"{name} 에 없는 변수: {sorted(expected - found)}"
+        assert not found - expected, f"{name} 에만 있는 변수: {sorted(found - expected)}"
+
+
+def test_trusted_executable_declaration_covers_every_call_site() -> None:
+    """선언이 호출 지점·레지스트리와 갈라지면 `_BIN` 문서가 조용히 낡는다.
+
+    `trusted_executable_override_envs()` 는 선언 상수에서만 나오므로 강제 지점이
+    없으면 새 실행 파일을 추가한 사람이 상수를 안 고쳐도 아무 일도 안 일어난다.
+    소스에서 override 를 읽는 함수로 가는 리터럴과 레지스트리 binary 를 모아
+    선언이 덮는지 본다.
+    """
+    from packet_ask import paths
+    from packet_ask.providers import builtin_providers
+
+    call_site_re = re.compile(
+        r"(?:resolve_trusted_executable|trusted_executable_candidate_exists)\("
+        r"\s*[\"']([a-z0-9_-]+)[\"']"
+    )
+    literals: set[str] = set()
+    for source in sorted((ROOT / "src" / "packet_ask").glob("*.py")):
+        literals |= set(call_site_re.findall(source.read_text(encoding="utf-8")))
+    binaries = {spec.binary for spec in builtin_providers() if spec.binary}
+    # 두 수집기가 비면 아래 포함 관계가 공짜로 통과한다.
+    assert literals, "호출 지점 리터럴을 못 찾았다. 수집 패턴이 낡았다."
+    assert binaries, "레지스트리에 binary 가 없다. 수집 패턴이 낡았다."
+    missing = (literals | binaries) - set(paths.TRUSTED_EXECUTABLES)
+    assert not missing, f"선언에 없는 실행 파일: {sorted(missing)}"

@@ -9,6 +9,7 @@ import pytest
 from packet_ask import codes
 from packet_ask.errors import PacketAskError
 from packet_ask.paths import (
+    TRUSTED_EXECUTABLES,
     packet_cache_dir,
     resolve_trusted_executable,
     trusted_bin_dirs,
@@ -133,6 +134,37 @@ def test_trusted_bin_override_must_be_absolute(
     monkeypatch.setenv("PACKET_ASK_KIMI_BIN", "kimi")
     monkeypatch.setattr("packet_ask.paths.trusted_bin_dirs", lambda: [tmp_path])
     assert resolve_trusted_executable("kimi") is None
+
+
+@pytest.mark.parametrize("name", TRUSTED_EXECUTABLES)
+def test_every_declared_executable_reads_its_own_override(
+    name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """선언된 이름마다 override 환경변수가 실제로 읽히는지를 이름별로 본다.
+
+    선언 목록만 단언하면 f-string 이 한 이름에서만 동작해도 녹색이다. 환경변수
+    이름은 제품 헬퍼가 아니라 여기서 다시 만들어 형식 자체도 같이 고정한다.
+    """
+    trusted = tmp_path / "trusted"
+    trusted.mkdir()
+    monkeypatch.setattr("packet_ask.paths.trusted_bin_dirs", lambda: [trusted])
+    env_name = f"PACKET_ASK_{name.upper()}_BIN"
+
+    monkeypatch.setenv(env_name, name)
+    assert resolve_trusted_executable(name) is None
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    binary = outside / name
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(stat.S_IRWXU)
+    monkeypatch.setenv(env_name, str(binary))
+    assert resolve_trusted_executable(name) == binary
+
+    # 양성 대조: override 를 지우면 같은 파일을 못 찾는다. 신뢰 디렉터리 탐색이
+    # 아니라 환경변수가 골랐다는 증거다.
+    monkeypatch.delenv(env_name)
+    assert resolve_trusted_executable(name) is None
 
 
 def test_packet_ask_bin_dirs_ignores_relative(
