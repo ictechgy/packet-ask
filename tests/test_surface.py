@@ -224,7 +224,14 @@ def test_ledger_records_the_surface_state(
         ["review", "--provider", "paste", "--files", "private/notes.txt",
          "--outside-surface", "--question", "이 변경을 리뷰해줘"]
     ) == codes.SUCCESS
-    assert json.loads(target.read_text(encoding="utf-8").strip())["surface"] == "overridden"
+    # 대장은 egress + result 두 줄이다. surface 상태는 egress 줄에 실린다.
+    entries = [
+        json.loads(line)
+        for line in target.read_text(encoding="utf-8").splitlines()
+        if line
+    ]
+    egress = [item for item in entries if item["phase"] == "egress"][0]
+    assert egress["surface"] == "overridden"
 
 
 def test_a_bom_does_not_silently_kill_the_first_declaration(tmp_path: Path) -> None:
