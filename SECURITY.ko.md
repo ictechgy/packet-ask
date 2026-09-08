@@ -67,7 +67,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 | `PACKET_ASK_CLAUDE_BIN` / `PACKET_ASK_KIMI_BIN` / `PACKET_ASK_GIT_BIN` / `PACKET_ASK_GROK_BIN` / `PACKET_ASK_AGY_BIN` | 절대경로 실행 파일 재지정. `PACKET_ASK_GIT_BIN` 은 워크트리 탐색과 diff 에 쓰는 `git` 을 고릅니다. `grok`·`agy` 는 paste 전용이라 override 가 `doctor` 의 installed 줄만 바꾸고 런치에는 영향이 없습니다 |
 | `PACKET_ASK_BIN_DIRS` | allowlist 디렉터리 추가 (`os.pathsep` 구분, 절대경로만) |
 | `PACKET_ASK_EFFORT` | `glm`·`claude` 의 기본 추론 effort. `--effort` 가 이기며, 잘못된 값은 무시하지 않고 거절합니다 |
-| `PACKET_ASK_LEDGER` | opt-in append-only 발송 대장의 절대경로. 질문과 파일 본문은 담지 않습니다 |
+| `PACKET_ASK_LEDGER` | opt-in append-only 대장의 절대경로. 실행마다 벤더 시작 전에 `egress` 줄, 응답이 확정된 뒤 `result` 줄을 덧붙입니다. 질문·파일 본문·벤더 답변·벤더 stderr 는 담지 않습니다 |
 | `PACKET_ASK_PROVIDERS_FILE` | 사용자 provider overlay 경로 재지정. 여전히 paste 별명만 받습니다 |
 | `PACKET_ASK_ALLOWLIST_FILE` | 시크릿 이름 면제 allowlist 경로 재지정. 이름 추정만 면제하며 자격증명 파일 정의는 절대 면제하지 않습니다 |
 | `PACKET_ASK_LANG` | CLI 메시지 언어. `en` 또는 `ko` |

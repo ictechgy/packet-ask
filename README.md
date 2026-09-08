@@ -274,21 +274,38 @@ The receipt goes to stderr once and is gone with the scrollback. When a skill
 drives this CLI, the agent picks `--files`, so there is no surface left for a
 human to ask what actually went out.
 
-Set `PACKET_ASK_LEDGER` to an absolute path and every task run appends one JSON
-line before the vendor starts. The line records a run that reached the point of
+Set `PACKET_ASK_LEDGER` to an absolute path and every task run appends two JSON
+lines: an `egress` line before the vendor starts and a `result` line once the
+response has settled. The egress line records a run that reached the point of
 egress, not a confirmed delivery — a vendor that fails afterwards still leaves
-an entry, which is the safe direction for an audit surface. Each line holds: timestamp, mode, provider, selector, relative
-paths, bytes, packet digest, redaction counts, and the resolved timeout. The
-question and the file bodies are never written.
+an entry, which is the safe direction for an audit surface. It holds: timestamp,
+phase, mode, provider, selector, relative paths, bytes, packet digest, redaction
+counts, and the resolved timeout.
+
+The result line pairs with it by packet digest and holds only timestamp, phase,
+mode, provider, digest, `outcome`, `output_bytes`, `output_hint`, and
+`failure_code` when the run failed. `answered` means the vendor returned output
+that passed the output guard — not that the process exits 0, since a cleanup
+warning can still follow. `failed` carries the exit code and nothing from vendor
+stderr. `not-observable` is `paste`: the answer never passes through this tool,
+so the packet it echoes back is not recorded as output. `output_hint` says the
+instruction-like tripwire fired; the phrase itself is never written. Lines
+written by 0.11.0 and earlier have no `phase` and are egress lines.
+
+The question, the file bodies, the vendor's answer, and vendor stderr are never
+written to either line.
 
 The path must be absolute, must not be inside the git worktree, must not be a
 symlink, and must be owned by the current user. The worktree check compares
 device and inode, not path strings, so a case-insensitive filesystem does not
 bypass it. The file is opened `O_APPEND`, `O_NOFOLLOW`, and `O_NONBLOCK`, and
 its mode is forced to `0600` before the first write even if the file already
-existed. **If the entry cannot be written, the vendor does
+existed. **If the egress line cannot be written, the vendor does
 not run** and the command exits 13. A ledger that silently skips entries is
-worse than none. Leave the variable unset to keep the feature off.
+worse than none. The result line is not symmetric: by then the packet is already
+out and the answer is in hand, so a failed append prints a fixed warning on
+stderr and the run still succeeds — dropping your answer over opt-in
+bookkeeping would cost more. Leave the variable unset to keep the feature off.
 
 ## Usage
 
