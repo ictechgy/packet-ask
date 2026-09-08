@@ -1505,18 +1505,32 @@ def test_review_accepts_files_with_one_diff_scope(
     assert "+++ b/src/app.py" in captured.out
 
 
+@pytest.mark.parametrize(
+    "scopes",
+    [
+        ["--diff", "HEAD", "--staged"],
+        ["--diff", "HEAD", "--unstaged"],
+        ["--staged", "--unstaged"],
+        ["--files", "src/app.py", "--staged", "--unstaged"],
+    ],
+)
 def test_review_still_rejects_two_diff_scopes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    scopes: list[str],
 ) -> None:
-    """diff 계열끼리는 계속 배타다. 결합은 파일 + diff 계열 **하나**다."""
+    """diff 계열끼리는 계속 배타다. 결합은 파일 + diff 계열 **하나**다.
+
+    둘을 붙이면 어떤 과거 시점인지 정의되지 않는다. 그리고 `_collect_scope` 는
+    staged → diff → unstaged 순서의 묵시적 우선순위를 갖고 있어서, 배타를
+    풀면 영수증이 실제로 보낸 것과 다른 말을 하게 된다. 세 쌍과 파일까지
+    얹은 삼중을 다 본다. 한 쌍만 보면 나머지 조합이 조용히 열릴 수 있다.
+    """
     repo = _init_repo(tmp_path)
+    (repo / "src" / "app.py").write_text("print(2)\n", encoding="utf-8")
     monkeypatch.chdir(repo)
-    assert main(
-        ["review", "--provider", "paste", "--diff", "HEAD", "--staged",
-         "--question", "review"]
-    ) == codes.SCOPE
+    assert main(["review", "--provider", "paste", *scopes, "--question", "review"]) == codes.SCOPE
     captured = capsys.readouterr()
     assert message("review_scope") in captured.err
     assert captured.out == ""
@@ -1586,6 +1600,15 @@ def test_combined_selector_is_reported_on_every_machine_surface(
     preview = _json.loads(capsys.readouterr().out)["preview"]
     assert preview["selector"] == "files+diff"
 
+    # 사람 줄도 같은 어휘를 싣는다. JSON 만 보면 한 줄 포맷이 옛 값을
+    # 하드코딩한 채 남아도 아무 테스트도 깨지지 않는다.
+    assert main(["inspect", "review", "--files", "src/app.py", "--diff", "HEAD",
+                 "--question", "review"]) == codes.SUCCESS
+    assert "selector=files+diff" in capsys.readouterr().out
+
+    assert main(["review", *base, "--preview"]) == codes.SUCCESS
+    assert "selector=files+diff" in capsys.readouterr().out
+
     entries = [
         _json.loads(line)
         for line in ledger.read_text(encoding="utf-8").splitlines()
@@ -1627,17 +1650,68 @@ def test_combined_scope_is_still_bound_by_the_final_packet_budget(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """결합한 패킷도 최종 `packet.md` 가 `--max-bytes` 안에 들어야 한다.
+    """결합한 패킷도 최종 렌더링된 `packet.md` 가 `--max-bytes` 를 묶는다.
 
-    수집 단계의 예산은 항목마다 따로 논다. 그래서 결합하면 수집 단계에서만
-    최대 두 배를 볼 수 있다. 실제 상한은 최종 렌더링된 패킷이고 그것이
-    여기서 거절된다.
+    수집 단계의 예산은 항목군마다 따로 돈다. 그래서 "최종 렌더가 상한이다" 를
+    주장하려면 **그 가드**가 걸리는 것을 보여야 한다. 크기만 대충 잡으면
+    수집기 한도나 payload 사전검사가 먼저 걸리고, 최종 렌더 가드를 지워도
+    이 테스트는 녹색이다.
+
+    그래서 먼저 성공 실행의 breakdown 으로 실제 크기를 재고, payload 는
+    넘지만 payload+프레이밍은 넘지 않는 상한을 만들어 마지막 가드만 남긴다.
     """
-    repo = _init_repo(tmp_path)
-    (repo / "src" / "app.py").write_text("x = '" + "a" * 400 + "'\n", encoding="utf-8")
+    import json as _json
+
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "src" / "app.py").write_text("x = '" + "a" * 300 + "'\n", encoding="utf-8")
     monkeypatch.chdir(repo)
-    assert main(
-        ["review", "--provider", "paste", "--files", "src/app.py", "--diff", "HEAD",
-         "--max-bytes", "600", "--question", "review"]
-    ) == codes.BUDGET
+    argv = ["review", "--provider", "paste", "--files", "src/app.py", "--diff", "HEAD",
+            "--question", "review"]
+
+    assert main(["inspect", "review", "--files", "src/app.py", "--diff", "HEAD",
+                 "--breakdown", "--json", "--question", "review"]) == codes.SUCCESS
+    breakdown = _json.loads(capsys.readouterr().out)["summary"]["breakdown"]
+    payload = breakdown["question_bytes"] + sum(
+        item["bytes"] for item in breakdown["items"]
+    )
+    framing = breakdown["framing_bytes"]
+    # 양성 대조: 프레이밍이 실제로 있어야 이 테스트가 마지막 가드를 고를 수 있다.
+    assert framing > 16
+
+    assert main([*argv, "--max-bytes", str(payload + framing + 16)]) == codes.SUCCESS
+    capsys.readouterr()
+
+    # payload 는 넘지 않으므로 수집기·사전검사는 통과하고, 프레이밍이 얹혀
+    # 최종 렌더만 상한을 넘는다.
+    assert main([*argv, "--max-bytes", str(payload + 8)]) == codes.BUDGET
     assert capsys.readouterr().out == ""
+
+
+def test_diff_scope_alone_attaches_no_convention_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """결합을 열어도 **기본 첨부는 없다.**
+
+    시장은 규약 파일을 리뷰에 기본으로 붙인다. 우리는 붙이지 않는다 —
+    선택하지 않은 것을 보내는 순간 "의도적으로 고른 패킷만" 이라는 핵심
+    계약이 깨진다. design 54 의 명분 문장이므로 수용 쪽만 테스트하면 반쪽이다.
+    같은 저장소에서 명시했을 때는 실린다는 것은 형제 테스트가 본다.
+    """
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "AGENTS.md").write_text("# rules\n", encoding="utf-8")
+    subprocess.run(["git", "add", "AGENTS.md"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "rules"], cwd=repo, check=True, capture_output=True)
+    (repo / "src" / "app.py").write_text("print(2)\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+
+    assert main(
+        ["review", "--provider", "paste", "--diff", "HEAD", "--question", "review"]
+    ) == codes.SUCCESS
+    captured = capsys.readouterr()
+    assert "selector=diff" in captured.err
+    assert "AGENTS.md" not in captured.out
+    # 양성 대조: 같은 실행에 diff 본문은 실제로 실렸다. 출력이 비어서
+    # "없다" 가 참이 된 것이 아니다.
+    assert "+++ b/src/app.py" in captured.out
