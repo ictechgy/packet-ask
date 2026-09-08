@@ -20,8 +20,8 @@ uv run pytest
 
 - 범위를 넓히려면 이 커밋된 파일을 고쳐야 합니다. 그 편집은 git status 와 diff 에 남아 사람 리뷰 루프 위로 올라옵니다. 급하면 `--outside-surface` 를 쓰면 되지만 영수증에 `overridden` 으로 남습니다.
 - 추적 파일을 새 최상위 경로에 추가하면 선언에도 추가하세요. `tests/test_project_meta.py` 가 "추적 파일 ⊆ 선언" 을 고정하므로 빠뜨리면 테스트가 실패합니다.
-- 로컬 노트와 캐시(`HANDOFF.md`, `.serena/`, `.omc/`, `.venv/`, `dist/`)는 선언하지 않습니다. 선언하지 않는 것이 그 파일들이 패킷에 섞이는 것을 막는 실제 기제입니다.
-- 리뷰용 diff·패킷 조각은 `.packet-ask-tmp/` 에 두세요. `.gitignore` 대상이면서 선언되어 있습니다. 저장소 루트에 만들면 선언 밖이라 거절됩니다.
+- 로컬 노트와 캐시(`HANDOFF.md`, `.serena/`, `.omc/`, `.venv/`, `dist/`)는 선언하지 않습니다. 선언하지 않으면 기본 선택 경로에서 거절됩니다(`tests/test_project_meta.py` 의 양성 대조가 실측합니다). 다만 이것이 유일한 통제를 막는 것은 아닙니다. 그 파일을 `.packet-ask-tmp/` 로 옮기거나 `--outside-surface` 를 쓰면 지나갑니다. 하드링크와 diff 내용 주입은 애초에 잡지 못합니다.
+- 리뷰용 diff·패킷 조각은 `.packet-ask-tmp/` 에 두세요. `.gitignore` 대상이면서 선언되어 있습니다. 저장소 루트에 만들면 선언 밖이라 거절됩니다. 이곳은 **선언된 유일한 무흔적 통로**입니다. `--outside-surface` 는 영수증에 `overridden` 을 남기지만, 이 디렉터리는 `.gitignore` 대상이라 무엇을 보냈는지 흔적이 남지 않습니다. 그래서 여기에 두는 것은 이 저장소 자신의 diff 와 패킷으로 한정합니다.
 
 ## 범위
 
