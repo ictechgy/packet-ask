@@ -47,7 +47,7 @@ uv sync
 uv run packet-ask doctor
 ```
 
-`install-skills` 가 `~/.claude/skills/packet-ask`, `~/.grok/skills/packet-ask`, `~/.codex/skills/packet-ask`, `~/.agents/skills/packet-ask` 에 `SKILL.md` 를 넣습니다. 각 홈은 독립적으로 시도됩니다. 경로에 심링크가 있는 홈이나 `--force` 없이 다른 내용의 `SKILL.md` 가 있는 홈은 건너뛰고 stderr 로 보고하며, 나머지 홈에는 계속 씁니다. 쓴 경로는 stdout 으로 나갑니다. 종료 코드는 심링크 검사를 실패한 홈이 하나라도 있으면 `13`, 그렇지 않으면 첫 실패의 코드(다른 내용의 `SKILL.md` 는 `2`), 그것도 없으면 `0` 입니다. 여기서 `13` 은 설치 중 격리 검사가 실패했다는 뜻이지 벤더 프로세스를 건너뛰었다는 뜻이 아닙니다. 이후 `/packet-ask` 또는 「kimi로 리뷰」처럼 말하면 메인이 이 CLI를 호출합니다.
+`install-skills` 가 `~/.claude/skills/packet-ask`, `~/.grok/skills/packet-ask`, `~/.codex/skills/packet-ask`, `~/.agents/skills/packet-ask` 에 `SKILL.md` 를 넣습니다. 각 홈은 독립적으로 시도됩니다. 경로에 심링크가 있는 홈, `--force` 없이 다른 내용의 `SKILL.md` 가 있는 홈, 읽거나 쓰지 못한 홈은 건너뛰고 stderr 로 보고하며 나머지 홈에는 계속 설치합니다. 실행 뒤에 `SKILL.md` 가 최신인 경로는 stdout 으로 나갑니다. 이미 패키지 원문과 같던 홈은 다시 쓰지 않지만 설치된 것으로 보고됩니다. 종료 코드는 격리 검사를 실패한 홈이 하나라도 있으면 `13`, 그렇지 않으면 첫 실패의 코드(다른 내용의 `SKILL.md` 는 `2`), 그것도 없으면 `0` 입니다. 여기서 `13` 은 설치 중 격리 검사가 실패했다는 뜻이지 벤더 프로세스를 건너뛰었다는 뜻이 아닙니다. 이후 `/packet-ask` 또는 「kimi로 리뷰」처럼 말하면 메인이 이 CLI를 호출합니다.
 
 ## 범위
 
@@ -452,6 +452,11 @@ receipt·JSON summary·preview 줄에 나타납니다. 이번 패킷이 기본 d
 | 20 | 프로바이더/키 없음 |
 | 21 | 프로바이더 실행 실패 |
 | 22 | 출력 가드 실패 (전용 키 유출 또는 과대 출력) |
+
+`install-skills` 는 이 코드를 런치가 아니라 설치에 재사용합니다. 여기서 `13` 은
+설치 중 격리 검사가 실패했다는 뜻(심링크 경로, 또는 읽거나 쓰지 못한 기존
+`SKILL.md`)이고 `2` 는 어떤 홈에 다른 내용의 `SKILL.md` 가 있는데 `--force` 를
+주지 않았다는 뜻입니다. 둘 다 벤더 프로세스는 관여하지 않습니다.
 
 ## 개발
 
