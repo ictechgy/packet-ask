@@ -51,7 +51,7 @@ uv run packet-ask doctor
 
 ## Scope
 
-`review` and `research` are the only task commands. `review` requires a scope: `--files`, or one diff scope (`--diff`, `--staged`, `--unstaged`), or `--files` together with one diff scope. The two diff scopes are mutually exclusive. It does not send the whole working tree by default, and nothing is attached unless you name it.
+`review` and `research` are the only task commands. `review` requires a scope: `--files`, or one diff scope (`--diff`, `--staged`, `--unstaged`), or `--files` together with one diff scope. The three diff scopes are mutually exclusive with one another. It does not send the whole working tree by default, and nothing is attached unless you name it.
 
 | Flag | What is sent |
 | --- | --- |
@@ -114,7 +114,9 @@ bidi, backtick, and HTML-delimiter characters. The private artifact under
 `files/` keeps the exact selected filename.
 
 `--max-files` applies to explicit files and diff paths. `--max-bytes` applies to
-the final UTF-8 `packet.md`, including framing and path labels. Reads stop at
+the final UTF-8 `packet.md`, including framing and path labels; it is also handed
+to each collector, so with a combined scope the collection stage can look at up to
+twice that many bytes before the final bound rejects the run. Reads stop at
 the configured bound, and explicit binary or non-UTF-8 files are rejected.
 
 `--preflight-timeout` defaults to 30 seconds. One monotonic absolute deadline

@@ -112,7 +112,9 @@ HTML delimiter 문자를 escape합니다. `files/` 아래 private artifact는 �
 파일명을 그대로 유지합니다.
 
 `--max-files`는 명시 파일과 diff 경로 모두에 적용됩니다. `--max-bytes`는
-프레이밍과 경로 라벨을 포함한 최종 UTF-8 `packet.md`에 적용됩니다. 입력은
+프레이밍과 경로 라벨을 포함한 최종 UTF-8 `packet.md`에 적용되며, 각 수집기에도
+그대로 건네집니다. 그래서 스코프를 결합하면 수집 단계에서 그 두 배까지 볼 수
+있고, 실제 거절은 최종 상한에서 일어납니다. 입력은
 설정한 한도에서 읽기를 멈추며, 명시한 바이너리 또는 비 UTF-8 파일은 거절합니다.
 
 `--preflight-timeout` 기본값은 30초입니다. 실제 fd 질문 stdin, worktree 탐색,

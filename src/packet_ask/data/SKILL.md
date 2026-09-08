@@ -42,8 +42,9 @@ packet-ask review --provider <id> --unstaged --question-stdin < <file>
 packet-ask research --provider <id> --question-stdin < <file>
 
 # Review a change against project conventions. `--files` may be combined with
-# one diff scope; the two diff scopes are mutually exclusive. Nothing is
-# attached unless you name it, so add the convention files you want read.
+# one diff scope; the three diff scopes are mutually exclusive with one another.
+# Nothing is attached unless you name it, so add the convention files you want
+# read.
 packet-ask review --provider <id> --diff <ref> --files AGENTS.md --question-stdin < <file>
 
 # Launch plan without starting the vendor. Check this before a long run.
