@@ -235,6 +235,7 @@ def test_task_commands_are_exactly_review_and_research() -> None:
         "providers",
         "install-skills",
         "credentials",
+        "ledger",
     }
     help_text = parser.format_help()
     assert "brainstorm" not in help_text
