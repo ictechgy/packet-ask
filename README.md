@@ -47,7 +47,7 @@ uv sync
 uv run packet-ask doctor
 ```
 
-`install-skills` writes `SKILL.md` to `~/.claude/skills/packet-ask`, `~/.grok/skills/packet-ask`, `~/.codex/skills/packet-ask`, and `~/.agents/skills/packet-ask`. After that, `/packet-ask` or a phrase like "review with kimi" should make MAIN call this CLI.
+`install-skills` writes `SKILL.md` to `~/.claude/skills/packet-ask`, `~/.grok/skills/packet-ask`, `~/.codex/skills/packet-ask`, and `~/.agents/skills/packet-ask`. Each home is attempted on its own. A home whose path contains a symlink, that holds a different `SKILL.md` without `--force`, or that cannot be read or written is skipped and reported on stderr while the other homes are still installed. Paths whose `SKILL.md` is current after the run go to stdout; a home that already matched the packaged skill is reported without being rewritten. The exit code is `13` when any home failed a confinement check, otherwise the first failure's code (`2` for a different existing `SKILL.md`), otherwise `0`. Here `13` means a confinement check failed during installation, not that a vendor process was skipped. After that, `/packet-ask` or a phrase like "review with kimi" should make MAIN call this CLI.
 
 ## Scope
 
@@ -464,6 +464,12 @@ the conventional signal exit status: SIGHUP is 129, SIGINT is 130, and SIGTERM i
 | 20 | provider or key missing |
 | 21 | provider failed |
 | 22 | output guard failed (dedicated key leak or oversized output) |
+
+`install-skills` reuses these codes for installation, not for a launch. There
+`13` means a confinement check failed while installing (a symlinked path, or an
+existing `SKILL.md` that could not be read or written) and `2` means a home holds
+a different `SKILL.md` and `--force` was not given. No vendor process is
+involved either way.
 
 ## Development
 
