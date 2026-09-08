@@ -26,6 +26,12 @@ GUARANTEES: Mapping[str, str] = MappingProxyType(
         "redaction": "denylist",
         "doctor": "help-text-only",
         "policy_gate": "lexical-tripwire",
+        # 질문 쪽 `policy_gate` 의 출력 쪽 짝이다. 벤더 응답을 불신뢰 봉투로
+        # 감싸고 지시문 유사 문구를 목록으로 훑는데, 그 목록은 세 문장뿐이라
+        # 정상 리뷰형 제안은 표시되지 않은 채 지나간다. 기전이 없다는 뜻이
+        # 아니라 어휘 트립와이어라는 뜻이고, 값은 `policy_gate` 와 같은 어휘를
+        # 쓴다. 동작과 한계는 test_output 가 같이 고정한다.
+        "output_screen": "lexical-tripwire",
     }
 )
 # "leak:no" 는 "유출 없음"으로 정반대로 읽힌다. 오독 방지가 유일한 목적인 줄이므로
