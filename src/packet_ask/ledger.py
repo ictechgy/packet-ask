@@ -12,6 +12,7 @@ from __future__ import annotations
 import errno
 import json
 import os
+import re
 import stat
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,6 +20,7 @@ from typing import Any
 
 from packet_ask import codes
 from packet_ask.errors import PacketAskError
+from packet_ask.receipt import SCHEMA
 from packet_ask.text import message
 
 _LEDGER_ENV = "PACKET_ASK_LEDGER"
@@ -227,3 +229,243 @@ def _write_all(descriptor: int, payload: bytes) -> None:
         if count <= 0:
             raise PacketAskError(message("ledger_write"), codes.CONFINEMENT)
         written += count
+
+
+# 요약은 접두어만 세지 않는다. 상한을 넘으면 부분 요약이 전체로 읽히므로
+# 거절한다. 8MiB 는 줄당 수백 byte 로 수만 줄분이다.
+MAX_LEDGER_READ_BYTES = 8 * 1024 * 1024
+
+# 쓰기 쪽 `_timestamp()` 가 만드는 고정 형식. 읽기는 이 모양만 받아 화면에
+# 보간한다. 손으로 고른 줄의 timestamp 에 개행·제어문자·bidi 가 섞이면 한 줄
+# 토큰 계약과 터미널 상태가 깨진다.
+_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$")
+
+_OUTCOME_KEYS = {
+    RESULT_ANSWERED: "answered",
+    RESULT_FAILED: "failed",
+    RESULT_NOT_OBSERVABLE: "not_observable",
+}
+
+
+def read_ledger_summary() -> dict[str, Any]:
+    """대장을 읽어 카운터만 만든다. 경로·질문·본문은 옮기지 않는다.
+
+    대장에는 상대경로가 줄마다 들어 있다. 요약을 읽는 화면은 "얼마나
+    나갔는가" 이지 "무엇이 나갔는가" 가 아니므로 집계만 반환한다. 파일이
+    없으면 0 이다 — 읽기 표면이 파일을 만들면 켜진 적 없는 대장이 생긴다.
+    """
+    path = _require_ledger_path()
+    return _summarize(_read_private_lines(path))
+
+
+def _require_ledger_path() -> Path:
+    """대장 경로는 env 가 유일한 출처다. 없으면 사용 오류다."""
+    path = ledger_path()
+    if path is None:
+        raise PacketAskError(message("ledger_summary_unset"), codes.USAGE)
+    return path
+
+
+def _read_private_lines(path: Path) -> list[str]:
+    """쓰기와 같은 격리 검사로 연다. 남의 파일이나 심링크는 요약하지 않는다."""
+    try:
+        # O_NOFOLLOW 는 심링크를, O_NONBLOCK 은 리더 없는 FIFO 의 블로킹을 막는다.
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return []
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise PacketAskError(message("ledger_symlink"), codes.CONFINEMENT) from exc
+        raise PacketAskError(message("ledger_summary_read"), codes.CONFINEMENT) from exc
+    try:
+        info = os.fstat(descriptor)
+        if info.st_uid != os.getuid():
+            raise PacketAskError(message("ledger_owner"), codes.CONFINEMENT)
+        if not stat.S_ISREG(info.st_mode):
+            raise PacketAskError(message("ledger_summary_read"), codes.CONFINEMENT)
+        raw = _read_bounded(descriptor)
+    finally:
+        os.close(descriptor)
+    return raw.decode("utf-8", errors="replace").splitlines()
+
+
+def _read_bounded(descriptor: int) -> bytes:
+    """상한까지 읽는다. 넘으면 접두어로 요약하지 않고 거절한다."""
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = os.read(descriptor, 65536)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_LEDGER_READ_BYTES:
+            raise PacketAskError(message("ledger_summary_bytes"), codes.BUDGET)
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _parse_line(line: str) -> dict[str, Any] | None:
+    """한 줄을 해석한다. 모르는 형태는 None 이고 호출자가 skipped 로 센다.
+
+    `phase` 가 없으면 egress 다 — 0.11.0 이전 형식이다. 모르는 phase 나 모르는
+    outcome 은 이 버전이 해석할 수 없는 줄이므로 세기만 하고 넘어간다. 한 줄
+    때문에 요약 전체를 못 읽으면 감사 표면이 못 쓴다.
+
+    읽기는 파일 내용을 **다시 신뢰한다.** 쓰기 쪽이 만든 줄이라도 손으로
+    고쳤거나 동기화로 섞였을 수 있으므로, 화면에 그대로 보간되는 timestamp 는
+    쓰기 쪽 `_timestamp()` 의 고정 형식과 맞을 때만 받고 카운터에 더할 수치도
+    형을 본다. 맞지 않으면 그 줄은 해석 불가로 넘긴다. 억지로 세면 카운터가
+    조용히 틀리고, 그대로 보간하면 한 줄 토큰 계약과 터미널이 깨진다.
+    """
+    try:
+        record = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(record, dict):
+        return None
+    phase = record.get("phase", PHASE_EGRESS)
+    if phase not in (PHASE_EGRESS, PHASE_RESULT):
+        return None
+    if phase == PHASE_RESULT and record.get("outcome") not in _OUTCOME_KEYS:
+        return None
+    if not _is_optional_timestamp(record.get("timestamp")):
+        return None
+    size_key = "bytes" if phase == PHASE_EGRESS else "output_bytes"
+    if not _is_optional_count(record.get(size_key)):
+        return None
+    return record
+
+
+def _is_optional_timestamp(value: Any) -> bool:
+    """없거나 쓰기 쪽 고정 형식이어야 한다."""
+    if value is None:
+        return True
+    return isinstance(value, str) and _TIMESTAMP_RE.match(value) is not None
+
+
+def _is_optional_count(value: Any) -> bool:
+    """없거나 bool 이 아닌 음이 아닌 정수여야 한다."""
+    if value is None:
+        return True
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _summarize(lines: list[str]) -> dict[str, Any]:
+    """줄을 세어 고정 키 집계만 만든다."""
+    summary: dict[str, Any] = {
+        "entries": 0,
+        "egress": 0,
+        "result": 0,
+        "answered": 0,
+        "failed": 0,
+        "not_observable": 0,
+        "unpaired_egress": 0,
+        "hint_hits": 0,
+        "skipped": 0,
+        "packet_bytes_total": 0,
+        "output_bytes_total": 0,
+        "providers": [],
+        "first_timestamp": None,
+        "last_timestamp": None,
+    }
+    providers: set[str] = set()
+    egress_by_digest: dict[str, int] = {}
+    result_by_digest: dict[str, int] = {}
+    timestamps: list[str] = []
+    unpaired_without_digest = 0
+    for line in lines:
+        if not line.strip():
+            continue
+        summary["entries"] += 1
+        record = _parse_line(line)
+        if record is None:
+            summary["skipped"] += 1
+            continue
+        unpaired_without_digest += _fold(
+            summary, record, providers, egress_by_digest, result_by_digest, timestamps
+        )
+    summary["providers"] = sorted(providers)
+    # 짝은 digest 별로 센다. 같은 패킷의 동시 실행은 순서가 interleaving 할 수
+    # 있어 digest + 시각 순서로도 모호해지는데, 그때도 차이는 보수적으로
+    # unpaired 에 남는다. digest 가 없는 줄은 **짝짓지 않는다.** 빈 키 한
+    # 버킷으로 모으면 digest 없는 egress 와 result 가 서로를 상쇄해 짝이 있는
+    # 것처럼 보인다. 짝을 지을 수 없으면 짝이 없다고 말한다.
+    summary["unpaired_egress"] = unpaired_without_digest + sum(
+        max(0, count - result_by_digest.get(digest, 0))
+        for digest, count in egress_by_digest.items()
+    )
+    if timestamps:
+        summary["first_timestamp"] = min(timestamps)
+        summary["last_timestamp"] = max(timestamps)
+    return summary
+
+
+def _fold(
+    summary: dict[str, Any],
+    record: dict[str, Any],
+    providers: set[str],
+    egress_by_digest: dict[str, int],
+    result_by_digest: dict[str, int],
+    timestamps: list[str],
+) -> int:
+    """한 줄을 집계에 접는다. 값은 이름으로 골라 담는다.
+
+    반환값은 "digest 가 없어 짝을 지을 수 없는 egress" 개수다. caller 가
+    `unpaired_egress` 에 더한다. timestamp 와 수치는 `_parse_line` 에서 형을
+    확인했으므로 여기서 다시 검증하지 않는다.
+    """
+    phase = record.get("phase", PHASE_EGRESS)
+    provider = record.get("provider")
+    if isinstance(provider, str):
+        providers.add(provider)
+    timestamp = record.get("timestamp")
+    if isinstance(timestamp, str) and timestamp:
+        timestamps.append(timestamp)
+    digest = record.get("sha256_packet_md")
+    bucket = digest if isinstance(digest, str) and digest else None
+    if phase == PHASE_EGRESS:
+        summary["egress"] += 1
+        summary["packet_bytes_total"] += _count(record.get("bytes"))
+        if bucket is None:
+            return 1
+        egress_by_digest[bucket] = egress_by_digest.get(bucket, 0) + 1
+        return 0
+    summary["result"] += 1
+    summary[_OUTCOME_KEYS[record["outcome"]]] += 1
+    summary["output_bytes_total"] += _count(record.get("output_bytes"))
+    if record.get("output_hint") is True:
+        summary["hint_hits"] += 1
+    if bucket is not None:
+        result_by_digest[bucket] = result_by_digest.get(bucket, 0) + 1
+    return 0
+
+
+def _count(value: Any) -> int:
+    """bool 이 아닌 음이 아닌 정수만 더한다. else 0."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return 0
+    return value
+
+
+def format_ledger_summary_line(summary: dict[str, Any]) -> str:
+    """사람이 읽는 한 줄. 영수증과 같은 append-only 토큰 나열이다.
+
+    provider 목록은 의도적으로 싣지 않는다. 사용자 별명이 공백을 담으면
+    토큰 분리가 깨지므로 기계 판독은 JSON 쪽에 둔다.
+    """
+    return (
+        f"packet-ask ledger entries={summary['entries']} egress={summary['egress']}"
+        f" result={summary['result']} answered={summary['answered']}"
+        f" failed={summary['failed']} not_observable={summary['not_observable']}"
+        f" unpaired_egress={summary['unpaired_egress']} hint_hits={summary['hint_hits']}"
+        f" skipped={summary['skipped']} packet_bytes={summary['packet_bytes_total']}"
+        f" output_bytes={summary['output_bytes_total']}"
+        f" first={summary['first_timestamp'] or 'none'}"
+        f" last={summary['last_timestamp'] or 'none'}"
+    )
+
+
+def json_ledger_envelope(summary: dict[str, Any]) -> str:
+    """stdout 전용 versioned JSON. 본문은 싣지 않는다."""
+    body = {"schema": SCHEMA, "ok": True, "ledger": summary}
+    return json.dumps(body, ensure_ascii=False, indent=2) + "\n"

@@ -305,6 +305,23 @@ only thing that distinguishes it from the first two.
 The question, the file bodies, the vendor's answer, and vendor stderr are never
 written to either line.
 
+`packet-ask ledger summary` reads the file back and prints counters only:
+entries (non-blank lines), egress, result, the three outcomes,
+`unpaired_egress`, `hint_hits`, `skipped`, both byte totals, and the first and
+last timestamp. Provider ids appear in `--json` only; the human line leaves them
+out so a user alias containing a space cannot break token splitting. Neither
+output ever prints paths, questions, or bodies, even though the egress lines hold
+relative paths. `--json` returns the same numbers as a `packet-ask.v1` object.
+The command reads `PACKET_ASK_LEDGER` and exits 2 without it; it never creates
+the file. Reading checks the absolute path, rejects symlinks, requires a regular
+file owned by the current user, and stops at an 8 MiB cap instead of summarizing
+a prefix. It does not enforce the file mode and does not re-run the worktree
+check, because the summary carries no file content into any packet. A line that
+cannot be parsed, or that carries a phase, outcome, timestamp shape, or byte
+count this version does not accept, is counted in `skipped` rather than aborting
+the summary or being counted anyway. An egress line without a packet digest is
+never paired, so it always counts toward `unpaired_egress`.
+
 The path must be absolute, must not be inside the git worktree, must not be a
 symlink, and must be owned by the current user. The worktree check compares
 device and inode, not path strings, so a case-insensitive filesystem does not
@@ -366,6 +383,10 @@ packet-ask review --provider grok --files src/app.py --question "Review this cod
 packet-ask research --provider paste --question "What usually breaks in a Tailwind v4 migration?"
 
 packet-ask doctor
+
+# Counters only, from the opt-in ledger; no paths, no question, no bodies
+packet-ask ledger summary
+packet-ask ledger summary --json
 ```
 
 Kimi is official `kimi --quiet` one-shot. It does not open an interactive session. It refuses to run without a resolved dedicated Kimi credential. Tools are disabled with a `tools: []` agent file and a non-matching `[tools] enabled` list. `KIMI_CODE_HOME` is only the isolated profile `~/.config/packet-ask/providers/kimi/kimi-code`. Do not run `kimi` in the real repo.
@@ -500,6 +521,11 @@ the conventional signal exit status: SIGHUP is 129, SIGINT is 130, and SIGTERM i
 existing `SKILL.md` that could not be read or written) and `2` means a home holds
 a different `SKILL.md` and `--force` was not given. No vendor process is
 involved either way.
+
+`ledger summary` reuses them for reading. There `2` means `PACKET_ASK_LEDGER` is
+unset, `13` means the ledger failed a read check (symlink, not a regular file, or
+not owned by the current user), and `14` means it is larger than the summary cap.
+No vendor process is involved.
 
 ## Development
 

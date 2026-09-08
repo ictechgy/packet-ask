@@ -673,3 +673,468 @@ def test_output_bytes_counts_the_body_that_is_actually_printed(
     # "answer  \n\n"(10 bytes)을 재면 사용자가 보는 것보다 크게 기록된다.
     assert result["output_bytes"] == 6
     assert len(body.encode("utf-8")) == 10
+
+
+def _run_task(
+    monkeypatch: pytest.MonkeyPatch,
+    repo: Path,
+    provider: str = "paste",
+    answer: str | None = None,
+    fail_with: int | None = None,
+) -> int:
+    """대장을 켜고 task 를 한 번 돌린다. 벤더는 시임으로 대신한다."""
+    from packet_ask import cli
+
+    monkeypatch.chdir(repo)
+    if fail_with is not None:
+        def raise_failure(*_args: object) -> str:
+            raise PacketAskError("fixed", fail_with)
+
+        monkeypatch.setattr(cli, "_execute_provider", raise_failure)
+    elif answer is not None:
+        monkeypatch.setattr(cli, "_execute_provider", lambda *_args: answer)
+    return main(
+        ["review", "--provider", provider, "--files", "src/app.py", "--question", "리뷰해줘"]
+    )
+
+
+def test_ledger_summary_requires_the_env_var(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """대장 경로는 env 가 유일한 출처다. 없으면 usage 거절이고 파일을 만들지 않는다."""
+    from packet_ask.text import message
+
+    monkeypatch.delenv("PACKET_ASK_LEDGER", raising=False)
+    monkeypatch.chdir(tmp_path)
+    assert main(["ledger", "summary"]) == codes.USAGE
+    captured = capsys.readouterr()
+    assert message("ledger_summary_unset") in captured.err
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_ledger_summary_counts_phases_and_outcomes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """실제 실행으로 만든 대장을 요약한다. 술어가 아니라 결로다.
+
+    paste(not-observable) 한 번, glm answered 한 번, glm failed 한 번을 돌리고
+    카운터를 전부 정확히 본다. 개수만 세는 요약은 짝이 안 맞아도 녹색이다.
+    """
+    repo = _init_repo(tmp_path / "repo")
+    target = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+
+    assert _run_task(monkeypatch, repo) == codes.SUCCESS
+    assert _run_task(monkeypatch, repo, "glm", answer="답변") == codes.SUCCESS
+    assert _run_task(monkeypatch, repo, "glm", fail_with=codes.PROVIDER_FAILED) == codes.PROVIDER_FAILED
+    # 앞선 task 출력을 비운다. capsys 는 누적되므로 요약 출력만 남긴다.
+    capsys.readouterr()
+
+    assert main(["ledger", "summary", "--json"]) == codes.SUCCESS
+    data = json.loads(capsys.readouterr().out)
+    assert set(data) == {"schema", "ok", "ledger"}
+    summary = data["ledger"]
+    assert summary["entries"] == 6
+    assert summary["egress"] == 3
+    assert summary["result"] == 3
+    assert summary["answered"] == 1
+    assert summary["failed"] == 1
+    assert summary["not_observable"] == 1
+    assert summary["unpaired_egress"] == 0
+    assert summary["hint_hits"] == 0
+    assert summary["skipped"] == 0
+    assert summary["providers"] == ["glm", "paste"]
+    assert summary["output_bytes_total"] == len("답변".encode("utf-8"))
+    assert summary["packet_bytes_total"] > 0
+    assert summary["first_timestamp"].endswith("Z")
+    assert summary["last_timestamp"] >= summary["first_timestamp"]
+
+
+def test_ledger_summary_human_line_is_append_only_tokens(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """사람 줄도 영수증과 같은 규약이다. 한 줄, key=value, 본문 없음."""
+    repo = _init_repo(tmp_path / "repo")
+    target = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    assert _run_task(monkeypatch, repo, "glm", answer="답변") == codes.SUCCESS
+    capsys.readouterr()
+
+    assert main(["ledger", "summary"]) == codes.SUCCESS
+    line = capsys.readouterr().out.strip()
+    assert "\n" not in line
+    assert line.startswith("packet-ask ledger ")
+    for token in ("entries=2", "egress=1", "result=1", "answered=1", "unpaired_egress=0"):
+        assert f" {token}" in line, token
+
+
+def test_ledger_summary_reports_unpaired_egress(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """result 가 없는 egress 를 센다. 이 상태는 세 가지 뜻이 겹친다.
+
+    죽임당한 실행, 처리된 오류 경로 밖의 죽음, 결과 기록 실패. 파일에서는
+    구별되지 않으므로 요약이 그 수를 따로 말한다. 실제 쓰기 실패(os.write
+    EIO)로 만든 파일로 본다.
+    """
+    import errno
+
+    from packet_ask import cli
+    from packet_ask import ledger as ledger_module
+
+    repo = _init_repo(tmp_path / "repo")
+    target = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    monkeypatch.chdir(repo)
+    monkeypatch.setattr(cli, "_execute_provider", lambda *_args: "답변")
+    real_write = os.write
+
+    def fail_on_result(descriptor: int, payload: bytes) -> int:
+        if b'"phase":"result"' in payload:
+            raise OSError(errno.EIO, "simulated")
+        return real_write(descriptor, payload)
+
+    monkeypatch.setattr(ledger_module.os, "write", fail_on_result)
+    assert main(
+        ["review", "--provider", "glm", "--files", "src/app.py", "--question", "리뷰해줘"]
+    ) == codes.SUCCESS
+    # undo() 는 PACKET_ASK_LEDGER 까지 되돌려 요약을 usage 로 만든다. write 만 복구한다.
+    monkeypatch.setattr(ledger_module.os, "write", real_write)
+    capsys.readouterr()
+
+    assert main(["ledger", "summary", "--json"]) == codes.SUCCESS
+    summary = json.loads(capsys.readouterr().out)["ledger"]
+    assert summary["egress"] == 1
+    assert summary["result"] == 0
+    assert summary["unpaired_egress"] == 1
+
+
+def test_ledger_summary_reads_legacy_lines_without_phase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """0.11.0 이전 줄에는 phase 가 없다. egress 로 읽고 skipped 로 세지 않는다."""
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(tmp_path / "egress.jsonl"))
+    append_ledger_entry({"provider": "paste", "mode": "review"}, worktree=None)
+
+    assert main(["ledger", "summary", "--json"]) == codes.SUCCESS
+    summary = json.loads(capsys.readouterr().out)["ledger"]
+    assert summary["egress"] == 1
+    assert summary["skipped"] == 0
+    assert summary["unpaired_egress"] == 1
+
+
+def test_ledger_summary_skips_garbage_and_unknown_phases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """깨어진 줄과 모르는 phase 는 세기만 하고 요약은 계속한다.
+
+    한 줄 때문에 요약 전체를 못 읽으면 감사 표면이 못 쓴다. 반대로 조용히
+    버리면 대장이 잘렸는지 알 수 없으므로 `skipped` 로 드러낸다.
+    """
+    target = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    append_ledger_entry({"provider": "paste", "mode": "review"}, worktree=None)
+    with target.open("a", encoding="utf-8") as handle:
+        handle.write("{not json}\n")
+        handle.write('{"phase":"future","timestamp":"2026-01-01T00:00:00.000000Z"}\n')
+
+    assert main(["ledger", "summary", "--json"]) == codes.SUCCESS
+    summary = json.loads(capsys.readouterr().out)["ledger"]
+    assert summary["entries"] == 3
+    assert summary["egress"] == 1
+    assert summary["skipped"] == 2
+
+
+def test_ledger_summary_missing_file_reports_zeros(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """파일이 없으면 0 이다. 읽기 표면이 파일을 만들면 안 된다."""
+    target = tmp_path / "absent.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["ledger", "summary", "--json"]) == codes.SUCCESS
+    summary = json.loads(capsys.readouterr().out)["ledger"]
+    assert summary["entries"] == 0
+    assert summary["first_timestamp"] is None
+    assert not target.exists()
+
+
+def test_ledger_summary_rejects_symlink_and_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """읽기도 쓰기처럼 격리 검사를 지난다. 남의 파일을 요약하지 않는다."""
+    real = tmp_path / "real.jsonl"
+    real.write_text("", encoding="utf-8")
+    link = tmp_path / "link.jsonl"
+    link.symlink_to(real)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(link))
+    assert main(["ledger", "summary"]) == codes.CONFINEMENT
+    assert capsys.readouterr().out == ""
+
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(tmp_path))
+    assert main(["ledger", "summary"]) == codes.CONFINEMENT
+
+
+def test_ledger_summary_never_prints_paths_or_bodies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """요약은 카운터만 낸다. 상대경로도 질문도 본문도 싣지 않는다.
+
+    대장 파일에는 상대경로가 실제로 들어 있다. 그래서 이 단언은 설정이
+    잘못돼도 참이 되는 부재 단언이 아니다 — 같은 데이터에서 경로가 파일에는
+    있고 출력에는 없음을 같이 본다.
+    """
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "src" / "app.py").write_text("초민감한본문 = 1\n", encoding="utf-8")
+    target = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    assert _run_task(monkeypatch, repo, "glm", answer="초민감한답변") == codes.SUCCESS
+
+    raw = target.read_text(encoding="utf-8")
+    assert "src/app.py" in raw  # 양성 대조: 파일에는 경로가 있다
+    capsys.readouterr()
+
+    assert main(["ledger", "summary", "--json"]) == codes.SUCCESS
+    payload = capsys.readouterr().out
+    assert "src/app.py" not in payload
+    assert "초민감한본문" not in payload
+    assert "초민감한답변" not in payload
+    assert "리뷰해줘" not in payload
+
+
+def test_ledger_summary_is_bounded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """상한을 넘으면 접두어만 요약하지 않고 거절한다.
+
+    부분 요약은 전체로 읽힌다. 대장이 크면 조용히 일부만 세는 것보다
+    실패가 낫다.
+    """
+    from packet_ask import ledger as ledger_module
+    from packet_ask.text import message
+
+    target = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    monkeypatch.chdir(tmp_path)
+    filler = "x" * 4096
+    lines_needed = ledger_module.MAX_LEDGER_READ_BYTES // 4096 + 2
+    with target.open("w", encoding="utf-8") as handle:
+        for _ in range(lines_needed):
+            handle.write(json.dumps({"phase": "egress", "provider": "paste", "note": filler}) + "\n")
+    target.chmod(0o600)
+
+    assert main(["ledger", "summary"]) == codes.BUDGET
+    assert message("ledger_summary_bytes") in capsys.readouterr().err
+
+
+def test_ledger_summary_refuses_a_file_owned_by_another_user(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """읽기도 소유자를 본다. 남의 대장을 요약해 화면에 옮기지 않는다.
+
+    쓰기 경로에는 이 검사가 있고 테스트도 있지만, 읽기 경로는 무테스트였다 —
+    검사를 지워도 전체 스위트가 녹색이었다. 다른 uid 를 만들 수 없으므로
+    현재 uid 조회를 옮겨 그 분기를 실제로 탄다.
+    """
+    from packet_ask import ledger as ledger_module
+    from packet_ask.text import message
+
+    target = tmp_path / "egress.jsonl"
+    target.write_text("", encoding="utf-8")
+    target.chmod(0o600)
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    monkeypatch.chdir(tmp_path)
+    # ledger_module.os 는 전역 os 와 같은 객체다. lambda 안에서 os.getuid() 를
+    # 부르면 자기 자신을 불러 재귀가 나므로 실제 uid 를 먼저 잡아 둔다.
+    real_uid = os.getuid()
+    monkeypatch.setattr(ledger_module.os, "getuid", lambda: real_uid + 1)
+
+    assert main(["ledger", "summary"]) == codes.CONFINEMENT
+    captured = capsys.readouterr()
+    assert message("ledger_owner") in captured.err
+    assert captured.out == ""
+
+
+def test_ledger_summary_skips_lines_it_cannot_interpret(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """모르는 outcome·깨진 시각·비정수 byte 는 세지 않고 skipped 로 넘긴다.
+
+    이 버전이 해석할 수 없는 줄을 억지로 세면 카운터가 조용히 틀린다. 반대로
+    요약 전체를 중단하면 감사 표면을 못 쓴다. 둘 다 아니고 드러내면서 계속한다.
+    """
+    target = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    monkeypatch.chdir(tmp_path)
+    append_ledger_entry({"provider": "paste", "mode": "review"}, worktree=None)
+    rows = [
+        {"phase": "result", "outcome": "settled", "provider": "glm"},
+        {"phase": "result", "provider": "glm"},
+        {"phase": "egress", "provider": "glm", "timestamp": "2026-01-01T00:00:00Z"},
+        {"phase": "egress", "provider": "glm", "bytes": "1024"},
+        {"phase": "result", "outcome": "answered", "output_bytes": -5},
+    ]
+    with target.open("a", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row) + "\n")
+
+    assert main(["ledger", "summary", "--json"]) == codes.SUCCESS
+    summary = json.loads(capsys.readouterr().out)["ledger"]
+    assert summary["entries"] == 6
+    assert summary["egress"] == 1
+    assert summary["skipped"] == 5
+
+
+def test_ledger_summary_human_line_survives_a_hostile_timestamp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """손으로 만진 대장의 timestamp 가 사람 줄의 한 줄 계약을 깨지 못한다.
+
+    쓰기 쪽 `_timestamp()` 는 고정 형식이다. 읽기는 파일 내용을 다시 신뢰하므로
+    개행·제어문자·bidi 가 섞인 timestamp 를 그대로 보간하면 한 줄 토큰 나열이
+    깨지고 터미널 상태가 바뀐다. 별칭 라벨에 제어문자를 거절하는 기존 출력
+    규율과 같은 이유다. 형식에 맞지 않으면 그 줄은 skipped 다.
+    """
+    target = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    monkeypatch.chdir(tmp_path)
+    hostile = {
+        "phase": "egress",
+        "provider": "glm",
+        "timestamp": "2026-01-01T00:00:00.000000Z\npacket-ask ledger FAKE",
+    }
+    target.write_text(json.dumps(hostile) + "\n", encoding="utf-8")
+
+    assert main(["ledger", "summary"]) == codes.SUCCESS
+    line = capsys.readouterr().out.strip()
+    assert "FAKE" not in line
+    assert "\n" not in line
+    assert line.count("packet-ask ledger ") == 1
+    assert " skipped=1" in line
+
+
+def test_ledger_summary_does_not_pair_lines_without_a_digest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """digest 가 없는 줄끼리 짝짓지 않는다.
+
+    빈 문자열 한 버킷으로 모으면 digest 없는 egress 와 result 가 서로를
+    상쇄해 unpaired 가 0 이 된다. 정상 쓰기는 항상 digest 를 넣으므로 실재
+    입력은 아니지만, 짝을 지을 수 없으면 짝이 없다고 말하는 쪽이 보수적이다.
+    """
+    target = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    monkeypatch.chdir(tmp_path)
+    rows = [
+        {"phase": "egress", "provider": "paste"},
+        {"phase": "result", "outcome": "answered", "provider": "paste", "output_bytes": 3},
+    ]
+    target.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
+    )
+
+    assert main(["ledger", "summary", "--json"]) == codes.SUCCESS
+    summary = json.loads(capsys.readouterr().out)["ledger"]
+    assert summary["egress"] == 1
+    assert summary["result"] == 1
+    assert summary["unpaired_egress"] == 1
+
+
+def test_ledger_summary_human_line_carries_no_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """사람 줄도 경로를 싣지 않는다. 토큰 존재만 보면 끝에 붙어도 통과한다."""
+    repo = _init_repo(tmp_path / "repo")
+    target = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    assert _run_task(monkeypatch, repo, "glm", answer="답변") == codes.SUCCESS
+    capsys.readouterr()
+
+    assert main(["ledger", "summary"]) == codes.SUCCESS
+    line = capsys.readouterr().out
+    assert "src/app.py" not in line
+    assert "답변" not in line
+
+
+def test_ledger_summary_over_budget_prints_no_partial_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """상한 초과에서 부분 요약을 흘리지 않는다.
+
+    `--json` 의 실패는 27 번 설계대로 stdout 에 고정 봉투로 나간다. 그래서
+    "stdout 이 비어 있다" 가 아니라 "요약 키가 없고 실패 봉투만 있다" 를 본다.
+    """
+    from packet_ask import ledger as ledger_module
+
+    target = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    monkeypatch.chdir(tmp_path)
+    filler = "x" * 4096
+    lines_needed = ledger_module.MAX_LEDGER_READ_BYTES // 4096 + 2
+    with target.open("w", encoding="utf-8") as handle:
+        for _ in range(lines_needed):
+            handle.write(json.dumps({"phase": "egress", "provider": "paste", "note": filler}) + "\n")
+    target.chmod(0o600)
+
+    assert main(["ledger", "summary", "--json"]) == codes.BUDGET
+    data = json.loads(capsys.readouterr().out)
+    assert set(data) == {"schema", "ok", "error"}
+    assert data["ok"] is False
+    assert data["error"]["code"] == codes.BUDGET
+
+
+def test_ledger_summary_leaves_the_file_untouched(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """읽기 표면은 파일을 고치지 않는다. 내용도 모드도 그대로다.
+
+    쓰기는 append 마다 0600 을 강제한다. 읽기가 그걸 따라 하면 "요약은
+    부작용이 없다" 가 거짓이 되고, 사용자가 일부러 풀어 둔 모드를 조용히
+    바꾼다. 그래서 읽기는 강제하지 않고, 강제하지 않는다는 것을 고정한다.
+    """
+    target = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    monkeypatch.chdir(tmp_path)
+    append_ledger_entry({"provider": "paste", "mode": "review"}, worktree=None)
+    target.chmod(0o644)
+    before = target.read_bytes()
+
+    assert main(["ledger", "summary"]) == codes.SUCCESS
+    assert target.read_bytes() == before
+    assert stat.S_IMODE(target.stat().st_mode) == 0o644

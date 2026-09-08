@@ -42,7 +42,10 @@ from packet_ask.ledger import (
     append_ledger_entry,
     build_ledger_entry,
     build_ledger_result,
+    format_ledger_summary_line,
+    json_ledger_envelope,
     ledger_path,
+    read_ledger_summary,
 )
 from packet_ask.lifecycle import reap_stale_packets
 from packet_ask.providers import (
@@ -185,6 +188,12 @@ def _parser() -> argparse.ArgumentParser:
     providers_cmd.add_argument("--json", action="store_true")
     skills_cmd = sub.add_parser("install-skills", help="Install harness skills")
     skills_cmd.add_argument("--force", action="store_true")
+    ledger_cmd = sub.add_parser("ledger", help="Summarize the opt-in ledger")
+    ledger_sub = ledger_cmd.add_subparsers(dest="ledger_command", required=True)
+    ledger_summary_cmd = ledger_sub.add_parser(
+        "summary", help="Print ledger counters without content"
+    )
+    ledger_summary_cmd.add_argument("--json", action="store_true")
     credentials_cmd = sub.add_parser("credentials", help="Manage credential sources")
     credentials_sub = credentials_cmd.add_subparsers(
         dest="credentials_command",
@@ -532,6 +541,24 @@ def _run_install_skills(force: bool) -> int:
             file=sys.stderr,
         )
     return install_exit_code(report.failures)
+
+
+def _run_ledger_summary(args: argparse.Namespace) -> int:
+    """대장을 읽어 카운터만 낸다. 파일을 만들거나 고치지 않는다.
+
+    읽기 표면은 벤더·자격증명·워크트리를 건드리지 않는다. 워크트리 내부
+    검사를 하지 않는 이유는 "쓰는 쪽에서 이미 거절됐다" 가 아니다 — 대장
+    위치에 나중에 `git init` 이 되거나 디렉터리가 옮겨질 수 있다. 진짜
+    이유는 그 검사의 위협 모델이 읽기에는 적용되지 않기 때문이다. 검사가
+    막으려는 것은 대장이 packet 범위로 들어가 벤더로 따라나가는 것이고,
+    요약은 파일 내용을 어디에도 싣지 않는다.
+    """
+    summary = read_ledger_summary()
+    if getattr(args, "json", False):
+        sys.stdout.write(json_ledger_envelope(summary))
+    else:
+        print(format_ledger_summary_line(summary))
+    return codes.SUCCESS
 
 
 def _run_doctor() -> int:
@@ -1123,6 +1150,8 @@ def main(argv: list[str] | None = None) -> int:
             return _run_doctor()
         if args.command == "install-skills":
             return _run_install_skills(force=getattr(args, "force", False))
+        if args.command == "ledger":
+            return _run_ledger_summary(args)
         if args.command == "providers":
             return _run_providers(args.json)
         if args.command == "credentials":
