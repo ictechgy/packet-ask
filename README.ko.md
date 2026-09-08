@@ -47,7 +47,7 @@ uv sync
 uv run packet-ask doctor
 ```
 
-`install-skills` 가 `~/.claude/skills/packet-ask`, `~/.grok/skills/packet-ask`, `~/.codex/skills/packet-ask`, `~/.agents/skills/packet-ask` 에 `SKILL.md` 를 넣습니다. 이후 `/packet-ask` 또는 「kimi로 리뷰」처럼 말하면 메인이 이 CLI를 호출합니다.
+`install-skills` 가 `~/.claude/skills/packet-ask`, `~/.grok/skills/packet-ask`, `~/.codex/skills/packet-ask`, `~/.agents/skills/packet-ask` 에 `SKILL.md` 를 넣습니다. 각 홈은 독립적으로 시도됩니다. 경로에 심링크가 있는 홈이나 `--force` 없이 다른 내용의 `SKILL.md` 가 있는 홈은 건너뛰고 stderr 로 보고하며, 나머지 홈에는 계속 씁니다. 쓴 경로는 stdout 으로 나갑니다. 종료 코드는 심링크 검사를 실패한 홈이 하나라도 있으면 `13`, 그렇지 않으면 첫 실패의 코드(다른 내용의 `SKILL.md` 는 `2`), 그것도 없으면 `0` 입니다. 여기서 `13` 은 설치 중 격리 검사가 실패했다는 뜻이지 벤더 프로세스를 건너뛰었다는 뜻이 아닙니다. 이후 `/packet-ask` 또는 「kimi로 리뷰」처럼 말하면 메인이 이 CLI를 호출합니다.
 
 ## 범위
 
