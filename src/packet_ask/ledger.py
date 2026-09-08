@@ -12,6 +12,7 @@ from __future__ import annotations
 import errno
 import json
 import os
+import re
 import stat
 from datetime import datetime, timezone
 from pathlib import Path
@@ -234,6 +235,11 @@ def _write_all(descriptor: int, payload: bytes) -> None:
 # 거절한다. 8MiB 는 줄당 수백 byte 로 수만 줄분이다.
 MAX_LEDGER_READ_BYTES = 8 * 1024 * 1024
 
+# 쓰기 쪽 `_timestamp()` 가 만드는 고정 형식. 읽기는 이 모양만 받아 화면에
+# 보간한다. 손으로 고른 줄의 timestamp 에 개행·제어문자·bidi 가 섞이면 한 줄
+# 토큰 계약과 터미널 상태가 깨진다.
+_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$")
+
 _OUTCOME_KEYS = {
     RESULT_ANSWERED: "answered",
     RESULT_FAILED: "failed",
@@ -304,6 +310,12 @@ def _parse_line(line: str) -> dict[str, Any] | None:
     `phase` 가 없으면 egress 다 — 0.11.0 이전 형식이다. 모르는 phase 나 모르는
     outcome 은 이 버전이 해석할 수 없는 줄이므로 세기만 하고 넘어간다. 한 줄
     때문에 요약 전체를 못 읽으면 감사 표면이 못 쓴다.
+
+    읽기는 파일 내용을 **다시 신뢰한다.** 쓰기 쪽이 만든 줄이라도 손으로
+    고쳤거나 동기화로 섞였을 수 있으므로, 화면에 그대로 보간되는 timestamp 는
+    쓰기 쪽 `_timestamp()` 의 고정 형식과 맞을 때만 받고 카운터에 더할 수치도
+    형을 본다. 맞지 않으면 그 줄은 해석 불가로 넘긴다. 억지로 세면 카운터가
+    조용히 틀리고, 그대로 보간하면 한 줄 토큰 계약과 터미널이 깨진다.
     """
     try:
         record = json.loads(line)
@@ -316,7 +328,26 @@ def _parse_line(line: str) -> dict[str, Any] | None:
         return None
     if phase == PHASE_RESULT and record.get("outcome") not in _OUTCOME_KEYS:
         return None
+    if not _is_optional_timestamp(record.get("timestamp")):
+        return None
+    size_key = "bytes" if phase == PHASE_EGRESS else "output_bytes"
+    if not _is_optional_count(record.get(size_key)):
+        return None
     return record
+
+
+def _is_optional_timestamp(value: Any) -> bool:
+    """없거나 쓰기 쪽 고정 형식이어야 한다."""
+    if value is None:
+        return True
+    return isinstance(value, str) and _TIMESTAMP_RE.match(value) is not None
+
+
+def _is_optional_count(value: Any) -> bool:
+    """없거나 bool 이 아닌 음이 아닌 정수여야 한다."""
+    if value is None:
+        return True
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 def _summarize(lines: list[str]) -> dict[str, Any]:
@@ -341,6 +372,7 @@ def _summarize(lines: list[str]) -> dict[str, Any]:
     egress_by_digest: dict[str, int] = {}
     result_by_digest: dict[str, int] = {}
     timestamps: list[str] = []
+    unpaired_without_digest = 0
     for line in lines:
         if not line.strip():
             continue
@@ -349,12 +381,16 @@ def _summarize(lines: list[str]) -> dict[str, Any]:
         if record is None:
             summary["skipped"] += 1
             continue
-        _fold(summary, record, providers, egress_by_digest, result_by_digest, timestamps)
+        unpaired_without_digest += _fold(
+            summary, record, providers, egress_by_digest, result_by_digest, timestamps
+        )
     summary["providers"] = sorted(providers)
     # 짝은 digest 별로 센다. 같은 패킷의 동시 실행은 순서가 interleaving 할 수
     # 있어 digest + 시각 순서로도 모호해지는데, 그때도 차이는 보수적으로
-    # unpaired 에 남는다.
-    summary["unpaired_egress"] = sum(
+    # unpaired 에 남는다. digest 가 없는 줄은 **짝짓지 않는다.** 빈 키 한
+    # 버킷으로 모으면 digest 없는 egress 와 result 가 서로를 상쇄해 짝이 있는
+    # 것처럼 보인다. 짝을 지을 수 없으면 짝이 없다고 말한다.
+    summary["unpaired_egress"] = unpaired_without_digest + sum(
         max(0, count - result_by_digest.get(digest, 0))
         for digest, count in egress_by_digest.items()
     )
@@ -371,8 +407,13 @@ def _fold(
     egress_by_digest: dict[str, int],
     result_by_digest: dict[str, int],
     timestamps: list[str],
-) -> None:
-    """한 줄을 집계에 접는다. 값은 이름으로 골라 담는다."""
+) -> int:
+    """한 줄을 집계에 접는다. 값은 이름으로 골라 담는다.
+
+    반환값은 "digest 가 없어 짝을 지을 수 없는 egress" 개수다. caller 가
+    `unpaired_egress` 에 더한다. timestamp 와 수치는 `_parse_line` 에서 형을
+    확인했으므로 여기서 다시 검증하지 않는다.
+    """
     phase = record.get("phase", PHASE_EGRESS)
     provider = record.get("provider")
     if isinstance(provider, str):
@@ -381,18 +422,22 @@ def _fold(
     if isinstance(timestamp, str) and timestamp:
         timestamps.append(timestamp)
     digest = record.get("sha256_packet_md")
-    bucket = digest if isinstance(digest, str) else ""
+    bucket = digest if isinstance(digest, str) and digest else None
     if phase == PHASE_EGRESS:
         summary["egress"] += 1
-        egress_by_digest[bucket] = egress_by_digest.get(bucket, 0) + 1
         summary["packet_bytes_total"] += _count(record.get("bytes"))
-        return
+        if bucket is None:
+            return 1
+        egress_by_digest[bucket] = egress_by_digest.get(bucket, 0) + 1
+        return 0
     summary["result"] += 1
-    result_by_digest[bucket] = result_by_digest.get(bucket, 0) + 1
     summary[_OUTCOME_KEYS[record["outcome"]]] += 1
     summary["output_bytes_total"] += _count(record.get("output_bytes"))
     if record.get("output_hint") is True:
         summary["hint_hits"] += 1
+    if bucket is not None:
+        result_by_digest[bucket] = result_by_digest.get(bucket, 0) + 1
+    return 0
 
 
 def _count(value: Any) -> int:

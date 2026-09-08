@@ -546,9 +546,12 @@ def _run_install_skills(force: bool) -> int:
 def _run_ledger_summary(args: argparse.Namespace) -> int:
     """대장을 읽어 카운터만 낸다. 파일을 만들거나 고치지 않는다.
 
-    읽기 표면은 벤더·자격증명·워크트리를 건드리지 않는다. `inspect` 와 같은
-    이유로, 대장 경로가 워크트리 안이면 쓰는 쪽에서 이미 거절됐으므로 여기서
-    다시 검사하지 않는다.
+    읽기 표면은 벤더·자격증명·워크트리를 건드리지 않는다. 워크트리 내부
+    검사를 하지 않는 이유는 "쓰는 쪽에서 이미 거절됐다" 가 아니다 — 대장
+    위치에 나중에 `git init` 이 되거나 디렉터리가 옮겨질 수 있다. 진짜
+    이유는 그 검사의 위협 모델이 읽기에는 적용되지 않기 때문이다. 검사가
+    막으려는 것은 대장이 packet 범위로 들어가 벤더로 따라나가는 것이고,
+    요약은 파일 내용을 어디에도 싣지 않는다.
     """
     summary = read_ledger_summary()
     if getattr(args, "json", False):
