@@ -144,6 +144,11 @@ def _scrub_or_raise(text: str, location: str) -> tuple[str, RedactionReport]:
     지운 뒤 훑으므로 잔여가 여러 줄에 걸쳐 만들어질 수 있고, 그때 줄 단위로
     재검증하면 아무 줄도 걸리지 않는다. 없는 위치를 가리키는 것보다 항목
     단위로 말하는 것이 정직하다.
+
+    라벨은 이스케이프해서 싣는다. 파일명에는 bidi·개행·ANSI 가 들어갈 수 있고
+    그대로 보간하면 실패 문장이 사용자 터미널 상태를 바꾼다. 헤더 경로를
+    같은 이유로 이스케이프하는 기존 관례를 따른다. `question` 과
+    `changes.patch` 는 고정 문자열이라 이스케이프가 항등이다.
     """
     try:
         scrubbed, report = scrub_text(text)
@@ -153,7 +158,7 @@ def _scrub_or_raise(text: str, location: str) -> tuple[str, RedactionReport]:
             message(
                 "redaction_leftovers_at",
                 kinds=", ".join(exc.kinds),
-                name=location,
+                name=_escape_file_header_path(location),
             )
         ) from exc
     return scrubbed, report

@@ -100,7 +100,9 @@ _VERIFY_EMAIL_RE = re.compile(
 # 다른 상태로 도착한다. 모양까지 scrub 의 정형으로 좁히면 compact 에서 점
 # 위치가 바뀐 mixed separator 형태를 verify 가 못 잡고 scrub 도 못 지워서
 # 누락된다. 이 주석에 번호 모양 리터럴을 쓰면 이 파일 자체가 재검증을 못
-# 통과하므로 예시는 테스트에 둔다.
+# 통과한다. 테스트도 마찬가지다 — 추적 파일 전체가 scrub+verify 를 통과해야
+# 한다는 메타 테스트가 있으므로, 비정형 예시는 어디에 두든 조각을 이어 붙여
+# 만든다. 정형은 scrub 이 지우므로 리터럴로 적어도 된다.
 _VERIFY_PHONE_RE = re.compile(r"(?<!\d)(?:\+82|0)1[016789]\d{7,8}(?!\d)")
 _VERIFY_PHONE_DOT_CANDIDATE_RE = re.compile(
     r"(?<!\d)(?P<number>(?:\+82|0)1[016789][\d.]{7,10})(?!\d|\.\d)"
