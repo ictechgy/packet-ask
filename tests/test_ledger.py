@@ -509,4 +509,167 @@ def test_disabled_ledger_records_no_result_and_warns_nothing(
     ) == codes.SUCCESS
     captured = capsys.readouterr()
     assert "reviewed body" in captured.out
-    assert "ledger" not in captured.err.lower()
+    # stderr 가 비어도 통과하는 부정 부분열 검사면 아무것도 증명하지 못한다.
+    # 영수증 줄이 실제로 stderr 에 있음을 먼저 보고, 그 위에 경고가 없음을 본다.
+    from packet_ask.text import message
+
+    assert "packet-ask receipt" in captured.err
+    assert message("ledger_result_warning") not in captured.err
+
+
+def test_result_entry_rejects_inconsistent_combinations() -> None:
+    """어긋난 조합은 조용히 쌓이지 않는다.
+
+    `build_receipt` 의 effort/effort_source 검사와 같은 규약이다. answered 가
+    아닌데 출력 필드가 채워지면 paste 의 echo 를 답으로 기록한 것이고, failed
+    인데 코드가 없거나 반대면 그 줄은 아무것도 말하지 않는다.
+    """
+    from packet_ask.ledger import (
+        RESULT_ANSWERED,
+        RESULT_FAILED,
+        RESULT_NOT_OBSERVABLE,
+        build_ledger_result,
+    )
+
+    receipt = {"provider": "glm", "sha256_packet_md": "a" * 64}
+
+    with pytest.raises(ValueError):
+        build_ledger_result("review", receipt, "settled", 0, False)
+    with pytest.raises(ValueError):
+        build_ledger_result("review", receipt, RESULT_NOT_OBSERVABLE, 12, False)
+    with pytest.raises(ValueError):
+        build_ledger_result("review", receipt, RESULT_NOT_OBSERVABLE, 0, True)
+    with pytest.raises(ValueError):
+        build_ledger_result("review", receipt, RESULT_FAILED, 0, False)
+    with pytest.raises(ValueError):
+        build_ledger_result(
+            "review", receipt, RESULT_ANSWERED, 5, False, failure_code=21
+        )
+    # 양성 대조: 맞는 조합은 통과한다. 거부만 단언하면 항상 던지는 구현도 통과한다.
+    answered = build_ledger_result("review", receipt, RESULT_ANSWERED, 5, True)
+    assert answered["outcome"] == RESULT_ANSWERED
+    assert answered["output_bytes"] == 5
+    assert answered["output_hint"] is True
+    failed = build_ledger_result(
+        "review", receipt, RESULT_FAILED, 0, False, failure_code=21
+    )
+    assert failed["failure_code"] == 21
+
+
+def test_dry_run_records_like_paste(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """dry-run 은 대장을 건너뛰지 않는다. provider 를 paste 로 강제해 같은 경로를 탄다.
+
+    design 51 은 처음에 "dry-run 은 egress 에 도달하지 않는다" 고 적었는데
+    실측하니 거짓이었다 — egress 와 result 가 다 남는다. stdout 이 paste 와
+    같은데 대장만 다르면 같은 행동이 두 가지로 기록된다. preview 와의 차이가
+    여기 있다. preview 는 본문을 절대 내지 않고 대장도 남기지 않는다.
+    """
+    repo = _init_repo(tmp_path / "repo")
+    target = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    monkeypatch.chdir(repo)
+
+    assert main(
+        ["review", "--provider", "paste", "--files", "src/app.py", "--dry-run",
+         "--question", "리뷰해줘"]
+    ) == codes.SUCCESS
+
+    assert [item["phase"] for item in _ledger_lines(target)] == ["egress", "result"]
+    assert _only_result(target)["outcome"] == "not-observable"
+
+
+def test_repeated_packet_produces_two_pairs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """같은 패킷을 두 번 보내면 두 쌍이 생긴다.
+
+    실행 식별자를 도입하지 않은 결과이고 의도다. 짝은 digest 와 시각 순서로
+    짓는다. 같은 패킷을 **동시에** 두 프로세스로 보내면 순서가 interleaving
+    할 수 있어 짝이 모호해진다 — 문서가 그것을 밝힌다.
+    """
+    repo = _init_repo(tmp_path / "repo")
+    target = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    monkeypatch.chdir(repo)
+    argv = ["review", "--provider", "paste", "--files", "src/app.py", "--question", "리뷰해줘"]
+
+    assert main(list(argv)) == codes.SUCCESS
+    assert main(list(argv)) == codes.SUCCESS
+
+    lines = _ledger_lines(target)
+    assert [item["phase"] for item in lines] == ["egress", "result", "egress", "result"]
+    digests = {item["sha256_packet_md"] for item in lines}
+    assert len(digests) == 1
+
+
+def test_result_write_failure_at_the_os_layer_warns_and_keeps_the_answer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """결과 줄 쓰기 실패를 파일시스템 계층에서 만든다.
+
+    경계 함수를 패치한 쌍둥이 테스트와 같은 결론이어야 한다. egress 쪽 쌍둥이
+    (`test_ledger_failure_blocks_the_vendor`)는 chmod 로 실제 실패를 만들므로
+    이쪽도 `os.write` 에서 만든다. egress 줄은 실제로 쓰이고 result 줄의
+    payload 에서만 EIO 가 나게 한다.
+    """
+    import errno
+
+    from packet_ask import cli
+    from packet_ask import ledger as ledger_module
+    from packet_ask.text import message
+
+    repo = _init_repo(tmp_path / "repo")
+    target = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    monkeypatch.chdir(repo)
+    monkeypatch.setattr(cli, "_execute_provider", lambda *_args: "reviewed body")
+
+    real_write = os.write
+
+    def fail_on_result_payload(descriptor: int, payload: bytes) -> int:
+        if b'"phase":"result"' in payload:
+            raise OSError(errno.EIO, "simulated device failure")
+        return real_write(descriptor, payload)
+
+    monkeypatch.setattr(ledger_module.os, "write", fail_on_result_payload)
+
+    assert main(
+        ["review", "--provider", "glm", "--files", "src/app.py", "--question", "리뷰해줘"]
+    ) == codes.SUCCESS
+    captured = capsys.readouterr()
+    assert message("ledger_result_warning") in captured.err
+    assert "reviewed body" in captured.out
+    assert [item["phase"] for item in _ledger_lines(target)] == ["egress"]
+
+
+def test_output_bytes_counts_the_body_that_is_actually_printed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """output_bytes 는 봉투에 들어가는 본문 크기다. rstrip 전이 아니다.
+
+    벤더 응답은 끝에 개행이 붙어 오는 것이 보통이다. 정규화 본문을 그대로
+    재면 기록값이 사용자가 보는 본문보다 커지고, 대장의 크기를 출력과
+    대조할 수 없게 된다. 앞뒤 공백이 있는 응답으로 차이를 고정한다.
+    """
+    from packet_ask import cli
+
+    repo = _init_repo(tmp_path / "repo")
+    target = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(target))
+    monkeypatch.chdir(repo)
+    body = "answer  \n\n"
+    monkeypatch.setattr(cli, "_execute_provider", lambda *_args: body)
+
+    assert main(
+        ["review", "--provider", "glm", "--files", "src/app.py", "--question", "리뷰해줘"]
+    ) == codes.SUCCESS
+
+    result = _only_result(target)
+    # 봉투에 들어가는 본문은 rstrip 뒤 "answer"(6 bytes) 다. 정규화 원문
+    # "answer  \n\n"(10 bytes)을 재면 사용자가 보는 것보다 크게 기록된다.
+    assert result["output_bytes"] == 6
+    assert len(body.encode("utf-8")) == 10
