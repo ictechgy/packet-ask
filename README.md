@@ -180,14 +180,19 @@ Every success surface states its own limits. `receipt` and `inspect` summaries
 carry a fixed `guarantees` object — `leakage: not-guaranteed`,
 `vendor_training: not-restricted`, `vendor_local_copy: uncontrolled`,
 `cwd_sandbox: none`, `redaction: denylist`, `doctor: help-text-only`,
-`policy_gate: lexical-tripwire` — and the human receipt line ends with
-`guarantees=leakage:not-guaranteed,cwd_sandbox:none,redaction:denylist`.
+`policy_gate: lexical-tripwire`, `output_screen: lexical-tripwire` — and the
+human receipt line ends with
+`guarantees=leakage:not-guaranteed,vendor_training:not-restricted,vendor_local_copy:uncontrolled,cwd_sandbox:none,redaction:denylist`.
 
 These are code constants, not computed results. The disclaimer keys therefore
-cannot drift into a promise. The three keys that assert a mechanism exists
-(`redaction`, `doctor`, `policy_gate`) are additionally pinned to real behavior
-by tests, because a constant that outlives its mechanism would be a
-machine-readable falsehood.
+cannot drift into a promise. The four keys that assert a mechanism exists
+(`redaction`, `doctor`, `policy_gate`, `output_screen`) are additionally pinned
+to real behavior by tests, because a constant that outlives its mechanism would
+be a machine-readable falsehood. The human line carries the limit keys only and
+is assembled from the same constant, so it cannot quote a stale value.
+`inspect` never launches a vendor and still carries the vendor keys: the object
+lists the limits of the tool, not a measurement of one run. Read it together
+with that surface's own launch state.
 
 **This list is not exhaustive.** It names the limits that are most often
 misread, not every risk. The failure envelope is unchanged and still carries
