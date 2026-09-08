@@ -57,6 +57,9 @@ CLI 에는 **의도적으로 고른 뒤 스크럽한 패킷만** 넘긴다.
 - **로컬 변경을 리뷰할 때는 `uv run --offline packet-ask` 를 쓴다.** PATH 의
   `packet-ask` 는 PyPI 설치본이라 방금 고친 코드가 없다. 이것 때문에 고친
   결함이 그대로 재현돼 한참 헤맨 적이 있다.
+- 리뷰용 diff·패킷 조각은 `.packet-ask-tmp/` 에 둔다. 루트의
+  `.packet-ask-surface` 가 선언한 접두어 밖은 exit 11 로 거절되므로, 저장소
+  루트에 흩뿌리면 자기 diff 를 리뷰하지 못한다.
 - 질문은 `--question-stdin` 으로 넘긴다. `--question` 은 argv 라 프로세스
   목록과 셸 히스토리에 보인다.
 - **질문에 "너에게는 도구가 없다" 를 적는다.** SUB 는 무도구 원샷으로 돌지만

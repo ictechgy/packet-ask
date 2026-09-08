@@ -8,6 +8,8 @@ import subprocess
 import tomllib
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -428,3 +430,84 @@ def test_paste_only_overrides_really_never_launch() -> None:
             continue
         adapter = resolve_provider_adapter(spec)
         assert adapter is None or adapter.launcher_name is None, spec.provider_id
+
+
+def test_repository_declares_its_own_public_surface() -> None:
+    """이 저장소가 자기 기능을 쓴다. 추적 파일 전체가 선언 안에 있어야 한다.
+
+    `.packet-ask-surface` 는 유출 방지 allowlist 가 아니라 공개 범위 선언이다.
+    이 저장소는 MIT 공개이므로 **추적 파일은 전부 선언 가능**하고, 선언 밖에
+    남는 것은 로컬 노트·캐시·스크래치뿐이다. 그래서 "추적 파일 ⊆ 선언" 을
+    고정하면 새 최상위 경로를 추가한 사람이 선언을 의도적으로 고치게 된다.
+    무엇을 선언해야 하는지 발견할 방법이 없어서 이 기능이 적용되지 않은 채
+    남아 있었다.
+    """
+    from packet_ask.errors import ScopeError
+    from packet_ask.surface import SURFACE_FILENAME, assert_within_surface, load_surface
+
+    surface = load_surface(ROOT)
+    assert surface is not None, f"{SURFACE_FILENAME} 이 없다. 자기 기능을 안 쓴다."
+    assert surface, "선언이 비어 있다."
+
+    # 양성 대조: 같은 함수가 선언 밖 경로를 실제로 거절한다. 이것 없으면 위
+    # 포함 관계는 선언이 전부일 때뿐만 아니라 **고장 났을 때**도 통과한다.
+    for local_only in (
+        "HANDOFF.md",
+        ".serena/notes.md",
+        ".omc/state.json",
+        ".venv/bin/python",
+        "dist/packet_ask-0.0.0-py3-none-any.whl",
+        "review-diff.patch",
+    ):
+        with pytest.raises(ScopeError):
+            assert_within_surface([local_only], surface)
+    # 반대쪽 대조: 선언한 스크래치는 실제로 받아들여진다. 이것 없으면 선언이
+    # 아무것도 받아들이지 않아도 위 거절 단언은 전부 통과한다.
+    assert_within_surface([".packet-ask-tmp/review-diff.patch"], surface)
+
+    if not (ROOT / ".git").exists():
+        pytest.skip("git 저장소가 아니면 추적 파일 목록을 잴 수 없다")
+    listing = subprocess.run(
+        ["git", "ls-files"], cwd=ROOT, check=True, capture_output=True, text=True
+    )
+    tracked = [line for line in listing.stdout.splitlines() if line]
+    assert tracked, "추적 파일을 못 읽었다. 빈 입력이면 포함 관계가 공짜로 통과한다."
+    # 술어(_is_declared)를 직접 부르지 않고 CLI 가 쓰는 그 함수로 본다.
+    assert_within_surface(tracked, surface)
+
+    # 역방향: 추적 파일을 하나도 덮지 않는 선언 항목은 남은 것이다. 임시로
+    # 넓힌 선언이 그대로 남으면 아무 테스트도 실패하지 않는다. 스크래치처럼
+    # 의도적으로 미추적 경로를 선언하는 경우가 있으니 화이트리스트를 둔다.
+    declared_untracked = {".packet-ask-tmp"}
+    stale = [
+        entry
+        for entry in surface
+        if entry not in declared_untracked
+        and not any(path == entry or path.startswith(entry + "/") for path in tracked)
+    ]
+    assert not stale, f"추적 파일을 덮지 않는 선언: {stale}"
+
+
+def test_gitignore_covers_local_material_the_surface_excludes() -> None:
+    """선언이 제외한 로컬 물질을 .gitignore 가 실제로 무시하는지 고정한다.
+
+    선언과 CONTRIBUTING 은 `.packet-ask-tmp` 이 ".gitignore 대상" 이라고 말한다.
+    그 상태를 고정하는 테스트가 없으면 gitignore 에서 빠진 채 리뷰 패킷·diff
+    조각이 공개 저장소에 커밋돼도 아무 테스트도 실패하지 않는다.
+    """
+    if not (ROOT / ".git").exists():
+        pytest.skip("git 저장소가 아니면 check-ignore 를 쓸 수 없다")
+    for relative in (
+        ".packet-ask-tmp/review-diff.patch",
+        ".venv/bin/python",
+        "dist/packet_ask-0.0.0-py3-none-any.whl",
+        ".serena/notes.md",
+        ".omc/state.json",
+        "HANDOFF.md",
+    ):
+        ignored = subprocess.run(
+            ["git", "check-ignore", "-q", "--", relative],
+            cwd=ROOT,
+            check=False,
+        )
+        assert ignored.returncode == 0, relative
