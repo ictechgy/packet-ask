@@ -91,7 +91,13 @@ def test_effort_is_recorded_on_every_machine_surface(
     assert receipt["effort"] == "high"
     assert receipt["effort_source"] == "explicit"
     assert receipt["timeout_seconds"] == 1800
-    entry = json.loads(ledger.read_text(encoding="utf-8").strip())
+    # 대장은 이제 egress + result 두 줄이다. effort 는 egress 줄에 실린다.
+    entries = [
+        json.loads(line)
+        for line in ledger.read_text(encoding="utf-8").splitlines()
+        if line
+    ]
+    entry = [item for item in entries if item["phase"] == "egress"][0]
     assert entry["effort"] == "high"
     assert entry["effort_source"] == "explicit"
 

@@ -35,7 +35,15 @@ from packet_ask.allowlist import load_allowlist
 from packet_ask.errors import PacketAskError
 from packet_ask.install_skills import install_exit_code, install_skills
 from packet_ask.launch import launch_claude, launch_glm, launch_kimi
-from packet_ask.ledger import append_ledger_entry, build_ledger_entry, ledger_path
+from packet_ask.ledger import (
+    RESULT_ANSWERED,
+    RESULT_FAILED,
+    RESULT_NOT_OBSERVABLE,
+    append_ledger_entry,
+    build_ledger_entry,
+    build_ledger_result,
+    ledger_path,
+)
 from packet_ask.lifecycle import reap_stale_packets
 from packet_ask.providers import (
     ProviderSpec,
@@ -43,7 +51,7 @@ from packet_ask.providers import (
     lookup_provider,
     resolve_provider_adapter,
 )
-from packet_ask.output import wrap_untrusted
+from packet_ask.output import wrap_untrusted_with_state
 from packet_ask.packet import Packet, build_packet
 from packet_ask.policy import assert_allowed_task
 from packet_ask.errors import BudgetError
@@ -120,10 +128,17 @@ def _resolve_effort(flag: str | None) -> tuple[str | None, str]:
 
 @dataclass(frozen=True)
 class TaskResult:
-    """cleanup 뒤에만 공개할 provider 결과와 timing."""
+    """cleanup 뒤에만 공개할 provider 결과와 timing.
+
+    `output_bytes` 와 `output_hint` 는 대장 결과 줄이 본문 없이 "무엇이
+    돌아왔나" 를 말하기 위한 사실 값이다. 판정(answered 인지 not-observable
+    인지)은 호출자가 provider mode 로 한다. 이 함수는 mode 를 모른다.
+    """
 
     wrapped: str
     timing: dict[str, int]
+    output_bytes: int
+    output_hint: bool
 
 
 @dataclass(frozen=True)
@@ -742,15 +757,38 @@ def _run_task_guarded(
             prepared.worktree,
         )
         print(format_receipt_line(receipt), file=sys.stderr)
-        result = _finish_task(
-            args,
-            provider,
-            prepared.packet,
-            timeout_seconds,
-            started,
-            prepared.preflight_ms,
-            packet_ms,
-            effort,
+        # 응답 쪽 줄은 egress 줄과 짝이다. 실패해도 남긴다 — egress 만 있고
+        # 결과가 없으면 "벤더가 실패했다" 와 "프로세스가 죽었다" 가 대장에서
+        # 구별되지 않는다. paste 는 답이 이 도구를 지나지 않으므로 관찰
+        # 불가능으로 남기고, echo 되는 패킷 본문을 출력 크기로 기록하지 않는다.
+        observable = spec.mode == "launch"
+        try:
+            result = _finish_task(
+                args,
+                provider,
+                prepared.packet,
+                timeout_seconds,
+                started,
+                prepared.preflight_ms,
+                packet_ms,
+                effort,
+            )
+        except PacketAskError as exc:
+            _record_ledger_result(
+                mode,
+                receipt,
+                prepared.worktree,
+                RESULT_FAILED,
+                failure_code=exc.code,
+            )
+            raise
+        _record_ledger_result(
+            mode,
+            receipt,
+            prepared.worktree,
+            RESULT_ANSWERED if observable else RESULT_NOT_OBSERVABLE,
+            output_bytes=result.output_bytes if observable else 0,
+            output_hint=result.output_hint if observable else False,
         )
     result.timing["total_ms"] = _ms_since(started)
     return _emit_task_result(args, receipt, result)
@@ -945,9 +983,55 @@ def _finish_task(
             args.credential_source,
             effort,
         )
-    wrapped = wrap_untrusted(raw)
+    wrapped, output_bytes, output_hint = wrap_untrusted_with_state(raw)
     timing = _phase_timing(started, preflight_ms, packet_ms, launch_started)
-    return TaskResult(wrapped=wrapped, timing=timing)
+    return TaskResult(
+        wrapped=wrapped,
+        timing=timing,
+        output_bytes=output_bytes,
+        output_hint=output_hint,
+    )
+
+
+def _record_ledger_result(
+    mode: str,
+    receipt: dict[str, Any],
+    worktree: Path | None,
+    outcome: str,
+    output_bytes: int = 0,
+    output_hint: bool = False,
+    failure_code: int | None = None,
+) -> None:
+    """대장에 응답 쪽 한 줄을 남긴다. 못 남기면 경고만 하고 답은 버리지 않는다.
+
+    egress 줄과 실패 의미가 **다르다**. egress 는 기록에 실패하면 벤더를
+    띄우지 않는다 — 아직 아무것도 나가지 않았으므로 되돌릴 수 있다. 여기는
+    이미 나갔고 답도 손에 있다. opt-in 기록을 못 썼다고 답을 버리면 사용자가
+    더 큰 것을 잃는다. 대신 고정 경고로 빠뜨렸다고 말한다. 조용히 빠뜨리는
+    대장은 없느니만 못하다는 규칙은 egress 쪽 규칙이고 여기서는 경고가 그
+    역할을 한다.
+
+    대장이 꺼져 있으면 아무것도 하지 않는다. 경고도 내지 않는다.
+
+    `build_ledger_result` 는 일부러 try 밖에 있다. 그것이 던지는 ValueError 는
+    I/O 실패가 아니라 호출자가 어긋난 조합을 만든 프로그래밍 오류다. 경고로
+    삼키면 I/O 실패와 구별되지 않아 버그가 조용해진다. 답을 잃는 대가가 크지만
+    그 조합은 유닛 테스트와 흐름 테스트가 둘 다 잡고 있어서 도달할 수 없다.
+    """
+    if ledger_path() is None:
+        return
+    entry = build_ledger_result(
+        mode,
+        receipt,
+        outcome,
+        output_bytes=output_bytes,
+        output_hint=output_hint,
+        failure_code=failure_code,
+    )
+    try:
+        append_ledger_entry(entry, worktree)
+    except PacketAskError:
+        print(message("ledger_result_warning"), file=sys.stderr)
 
 
 @contextlib.contextmanager

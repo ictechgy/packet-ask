@@ -105,14 +105,38 @@ def sanitize_provider_output(
 
 def wrap_untrusted(text: str) -> str:
     """메인 에이전트가 명령으로 실행하지 않도록 nonce 봉투로 표시한다."""
-    text = sanitize_provider_output(text)
+    return wrap_untrusted_with_state(text)[0]
+
+
+def wrap_untrusted_with_state(text: str) -> tuple[str, int, bool]:
+    """봉투 문자열과 (정규화 본문 bytes, 힌트 적중 여부)를 같이 돌려준다.
+
+    대장 결과 줄이 "무엇이 돌아왔나" 를 본문 없이 기록하려면 이 두 값이
+    필요하다. 봉투 문자열에서 다시 재면 프레임 문구와 힌트 문장이 섞이고,
+    힌트 문장을 `in` 으로 찾으면 벤더가 그 문장을 에코했을 때 오판한다.
+    판정을 한 곳에서만 하려고 상태를 같이 반환한다.
+    """
+    body, hint_hit = _untrusted_body(text)
+    header = message("untrusted_header")
+    if hint_hit:
+        header += " " + message("untrusted_hint")
     nonce = secrets.token_hex(8)
     begin = f"-----BEGIN UNTRUSTED PROVIDER OUTPUT {nonce}-----"
     end = f"-----END UNTRUSTED PROVIDER OUTPUT {nonce}-----"
+    # 크기는 실제로 봉투에 들어가는 본문을 잰다. rstrip 전을 재면 대장의
+    # output_bytes 가 사용자가 보는 본문보다 커져서 정의가 갈라진다.
+    payload = body.rstrip()
+    return (
+        f"{header}\n{begin}\n{payload}\n{end}\n",
+        len(payload.encode("utf-8")),
+        hint_hit,
+    )
+
+
+def _untrusted_body(text: str) -> tuple[str, bool]:
+    """정규화·구분자 무력화까지 마친 본문과 힌트 적중 여부를 만든다."""
+    text = sanitize_provider_output(text)
     body = text.replace("BEGIN UNTRUSTED PROVIDER OUTPUT", "[stripped begin]")
     body = body.replace("END UNTRUSTED PROVIDER OUTPUT", "[stripped end]")
     hints = [hint for hint in _INJECTION_HINTS if hint.lower() in body.lower()]
-    header = message("untrusted_header")
-    if hints:
-        header += " " + message("untrusted_hint")
-    return f"{header}\n{begin}\n{body.rstrip()}\n{end}\n"
+    return body, bool(hints)

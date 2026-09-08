@@ -27,6 +27,23 @@ MAX_LEDGER_LINE_BYTES = 64 * 1024
 # 조상 탐색이 이상한 마운트에서 끝나지 않는 일이 없게 한다.
 _MAX_ANCESTOR_WALK = 64
 
+# 대장에는 두 종류의 줄이 있다. `egress` 는 "무엇이 나갔나", `result` 는
+# "무엇이 돌아왔나" 다. 섞이면 두 질문 다 흐려지므로 줄마다 밝힌다. 0.11.0
+# 이전 줄에는 `phase` 가 없고 전부 egress 다 — 읽는 쪽은 그것을 유지한다.
+# 읽는 쪽 규칙은 둘이다: `phase` 가 없으면 egress 로 읽고, **모르는 phase 는
+# 건너뛴다.** result 줄에는 `selector`·`paths` 가 없으므로 모든 줄을 egress 로
+# 해석하면 KeyError 가 난다.
+PHASE_EGRESS = "egress"
+PHASE_RESULT = "result"
+
+# 결과 줄의 결말. `answered` 는 벤더가 응답을 돌려주고 출력 가드를 통과했다는
+# 뜻이지 프로세스가 0 으로 끝난다는 뜻이 아니다(cleanup 경고는 뒤에 올 수 있다).
+# `not-observable` 은 paste 처럼 답이 이 도구를 지나지 않는 경우다.
+RESULT_ANSWERED = "answered"
+RESULT_FAILED = "failed"
+RESULT_NOT_OBSERVABLE = "not-observable"
+RESULT_OUTCOMES = frozenset({RESULT_ANSWERED, RESULT_FAILED, RESULT_NOT_OBSERVABLE})
+
 
 def ledger_path() -> Path | None:
     """설정된 대장 경로. 설정하지 않으면 기능 자체가 꺼져 있다."""
@@ -40,13 +57,14 @@ def ledger_path() -> Path | None:
 
 
 def build_ledger_entry(mode: str, receipt: dict[str, Any]) -> dict[str, Any]:
-    """영수증에서 비밀 값 없는 필드만 골라 한 줄을 만든다.
+    """영수증에서 비밀 값 없는 필드만 골라 egress 한 줄을 만든다.
 
     receipt 전체를 복사하지 않는다. receipt 가 나중에 민감한 필드를 갖더라도
     이름으로 고르는 구조라 대장으로 흐르지 않는다.
     """
     entry: dict[str, Any] = {
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+        "timestamp": _timestamp(),
+        "phase": PHASE_EGRESS,
         "mode": mode,
         "provider": receipt["provider"],
         "selector": receipt["selector"],
@@ -73,6 +91,51 @@ def build_ledger_entry(mode: str, receipt: dict[str, Any]) -> dict[str, Any]:
         if key in receipt:
             entry[key] = receipt[key]
     return entry
+
+
+def build_ledger_result(
+    mode: str,
+    receipt: dict[str, Any],
+    outcome: str,
+    output_bytes: int,
+    output_hint: bool,
+    failure_code: int | None = None,
+) -> dict[str, Any]:
+    """응답 쪽 한 줄을 만든다. 본문·질문·벤더 stderr 는 담지 않는다.
+
+    짝 짓는 키는 packet digest 다. 새 실행 식별자를 만들지 않는다 — 같은
+    패킷을 두 번 보내면 두 쌍이 생기고, 그것이 실제 일이다.
+
+    어긋난 조합은 거절한다. `answered` 가 아닌데 출력 크기나 힌트가 채워지면
+    paste 의 패킷 echo 를 "돌아온 답" 으로 기록한 것이므로 조용히 잘못된
+    데이터가 쌓인다. `build_receipt` 의 effort/effort_source 검사와 같은
+    이유로 사용자 메시지가 아니라 ValueError 다 — 호출자 쪽 프로그래밍 오류다.
+    """
+    if outcome not in RESULT_OUTCOMES:
+        raise ValueError(f"unknown ledger result outcome: {outcome!r}")
+    answered = outcome == RESULT_ANSWERED
+    if not answered and (int(output_bytes) != 0 or bool(output_hint)):
+        raise ValueError("output fields are only valid for an answered result")
+    if (failure_code is None) != (outcome != RESULT_FAILED):
+        raise ValueError("failure_code is required exactly when the result failed")
+    entry: dict[str, Any] = {
+        "timestamp": _timestamp(),
+        "phase": PHASE_RESULT,
+        "mode": mode,
+        "provider": receipt["provider"],
+        "sha256_packet_md": str(receipt["sha256_packet_md"]),
+        "outcome": outcome,
+        "output_bytes": int(output_bytes),
+        "output_hint": bool(output_hint),
+    }
+    if failure_code is not None:
+        entry["failure_code"] = int(failure_code)
+    return entry
+
+
+def _timestamp() -> str:
+    """UTC 초·마이크로초 시각. 기계 표면이라 언어 설정과 무관하다."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def append_ledger_entry(entry: dict[str, Any], worktree: Path | None) -> None:

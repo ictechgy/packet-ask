@@ -94,7 +94,14 @@ def test_preview_writes_no_ledger_entry(
     argv[argv.index("glm")] = "paste"
     assert main(argv) == codes.SUCCESS
     assert ledger.exists()
-    assert len(ledger.read_text(encoding="utf-8").strip().splitlines()) == 1
+    # 양성 대조는 "줄이 생긴다" 여야 한다. 개수만 보면 결과 줄이 새로 붙은
+    # 것인지 egress 가 두 번 찍힌 것인지 구별되지 않으므로 phase 를 본다.
+    phases = [
+        json.loads(line)["phase"]
+        for line in ledger.read_text(encoding="utf-8").splitlines()
+        if line
+    ]
+    assert phases == ["egress", "result"]
 
 
 def test_preview_reports_the_launch_plan_without_secrets(
