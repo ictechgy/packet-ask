@@ -611,10 +611,16 @@ def test_collect_scope_research_rejects_diff_without_policy_dependency(
     assert exc.value.code == codes.USAGE
 
 
-def test_review_rejects_files_and_diff_together(
+def test_review_combines_files_with_one_diff_scope(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """review 는 스코프 플래그를 하나만 받는다."""
+    """`--files` + diff 계열 하나는 함께 받는다. 예전에는 배타였다.
+
+    이 테스트는 원래 "files 와 diff 를 같이 주면 SCOPE 로 거절한다" 를
+    고정했다. design 7 을 열어 계약을 바꿨으므로 반대 방향으로 갱신한다.
+    배타가 남은 곳은 diff 계열 **끼리**다 — 둘을 붙이면 어떤 과거 시점인지
+    정의되지 않는다. 그것은 아래 별도 테스트가 고정한다.
+    """
     repo = _init_repo(tmp_path)
     (repo / "src" / "app.py").write_text("print(2)\n", encoding="utf-8")
     monkeypatch.chdir(repo)
@@ -631,7 +637,7 @@ def test_review_rejects_files_and_diff_together(
             "리뷰해줘",
         ]
     )
-    assert code == codes.SCOPE
+    assert code == codes.SUCCESS
 
 
 def test_review_budget_counts_question_and_files(
@@ -1449,3 +1455,189 @@ def test_redaction_failure_localizes_on_stderr_but_not_in_json(
     # 봉투에는 위치가 없다. 키 집합도 message 도 고정이다.
     assert "src/bad.py" not in captured.out
     assert captured.err == ""
+
+
+@pytest.mark.parametrize(
+    ("diff_args", "expected_selector"),
+    [
+        (["--diff", "HEAD"], "files+diff"),
+        (["--staged"], "files+staged"),
+        (["--unstaged"], "files+unstaged"),
+    ],
+)
+def test_review_accepts_files_with_one_diff_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    diff_args: list[str],
+    expected_selector: str,
+) -> None:
+    """diff 계열 하나와 `--files` 를 함께 명시할 수 있다.
+
+    diff 리뷰에 프로젝트 규약 파일(AGENTS.md 등)을 붙이지 못하는 것이 실제
+    통증이었다. 시장은 그 조합을 기본으로 한다. 대신 **기본 첨부는 하지
+    않는다** — 선택하지 않은 것을 보내는 순간 "의도적으로 고른 패킷만" 이라는
+    핵심 계약이 깨진다. 결합도 사용자가 둘 다 명시할 때만이다.
+    """
+    repo = _init_repo(tmp_path)
+    (repo / "AGENTS.md").write_text("# rules\n", encoding="utf-8")
+    subprocess.run(["git", "add", "AGENTS.md"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "rules"], cwd=repo, check=True, capture_output=True)
+    (repo / "src" / "app.py").write_text("print(2)\n", encoding="utf-8")
+    # `--staged` 는 staged diff 를 보므로 실제로 스테이징해야 빈 스코프가 아니다.
+    subprocess.run(["git", "add", "src/app.py"], cwd=repo, check=True, capture_output=True)
+    # `--unstaged` 도 비어 있으면 안 되므로 스테이징 뒤에 한 번 더 고친다.
+    (repo / "src" / "app.py").write_text("print(3)\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+
+    argv = [
+        "review", "--provider", "paste", "--files", "AGENTS.md", *diff_args,
+        "--question", "review",
+    ]
+    assert main(argv) == codes.SUCCESS
+    captured = capsys.readouterr()
+    assert f"selector={expected_selector}" in captured.err
+    # 두 항목이 실제로 한 패킷에 담긴다. selector 값만 바꾸면 헛통과다.
+    # 파일은 `## File:` 절로, diff 는 `## Diff` 절로 렌더된다.
+    assert "## File: AGENTS.md" in captured.out
+    assert "## Diff" in captured.out
+    # 내용 대신 diff 표지를 본다. 픽스처가 몇 번 고쳤는지에 의존하지 않는다.
+    assert "+++ b/src/app.py" in captured.out
+
+
+def test_review_still_rejects_two_diff_scopes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """diff 계열끼리는 계속 배타다. 결합은 파일 + diff 계열 **하나**다."""
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    assert main(
+        ["review", "--provider", "paste", "--diff", "HEAD", "--staged",
+         "--question", "review"]
+    ) == codes.SCOPE
+    captured = capsys.readouterr()
+    assert message("review_scope") in captured.err
+    assert captured.out == ""
+
+
+def test_review_still_requires_a_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """셀렉터가 없으면 계속 거절한다. 결합을 열었다고 암묵적 수집이 열리지 않는다."""
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    assert main(["review", "--provider", "paste", "--question", "review"]) == codes.SCOPE
+    assert message("review_scope") in capsys.readouterr().err
+
+
+def test_review_rejects_include_files_even_with_a_diff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`--include-files` 는 research 전용이다. 결합을 열어도 그대로다."""
+    repo = _init_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    assert main(
+        ["review", "--provider", "paste", "--include-files", "src/app.py",
+         "--diff", "HEAD", "--question", "review"]
+    ) == codes.POLICY
+    assert message("review_include_files") in capsys.readouterr().err
+
+
+def test_combined_selector_is_reported_on_every_machine_surface(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """결합 값은 영수증·inspect·preview·대장에 같은 어휘로 실린다.
+
+    한 표면만 옛 어휘를 쓰면 "무엇이 나갔나" 를 읽는 쪽이 조합을 모른다.
+    """
+    import json as _json
+
+    # 대장은 워크트리 밖에 있어야 한다. tmp_path 자체가 저장소면 대장 경로가
+    # 워크트리 안이라 confinement 로 거절되고 테스트가 헛통과한다.
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "src" / "app.py").write_text("print(2)\n", encoding="utf-8")
+    ledger = tmp_path / "egress.jsonl"
+    monkeypatch.setenv("PACKET_ASK_LEDGER", str(ledger))
+    monkeypatch.chdir(repo)
+    # paste 를 쓴다. 이 표면들은 selector 어휘를 보는 것이지 런치를 보는 것이
+    # 아니고, glm 은 벤더 바이너리가 없는 환경에서 confinement 로 끝난다.
+    base = ["--provider", "paste", "--files", "src/app.py", "--diff", "HEAD",
+            "--question", "review"]
+
+    assert main(["review", *base, "--json"]) == codes.SUCCESS
+    captured = capsys.readouterr()
+    assert _json.loads(captured.out)["receipt"]["selector"] == "files+diff"
+    assert "selector=files+diff" in captured.err
+
+    assert main(["inspect", "review", "--files", "src/app.py", "--diff", "HEAD",
+                 "--json", "--question", "review"]) == codes.SUCCESS
+    summary = _json.loads(capsys.readouterr().out)["summary"]
+    assert summary["selector"] == "files+diff"
+
+    assert main(["review", *base, "--preview", "--json"]) == codes.SUCCESS
+    preview = _json.loads(capsys.readouterr().out)["preview"]
+    assert preview["selector"] == "files+diff"
+
+    entries = [
+        _json.loads(line)
+        for line in ledger.read_text(encoding="utf-8").splitlines()
+        if line
+    ]
+    egress = [item for item in entries if item["phase"] == "egress"]
+    assert [item["selector"] for item in egress] == ["files+diff"]
+    # 대장에는 두 항목이 다 실린다. 경로 목록에 changes.patch 가 포함된다.
+    assert "changes.patch" in egress[0]["paths"]
+    assert "src/app.py" in egress[0]["paths"]
+
+
+def test_combined_scope_still_enforces_the_surface_declaration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """결합해도 표면 선언은 양쪽에 다 걸린다(41번).
+
+    결합이 선언을 느슨하게 만들면 공개 범위 통제가 새 길로 우회된다.
+    """
+    repo = _init_repo(tmp_path)
+    (repo / ".packet-ask-surface").write_text("src\n", encoding="utf-8")
+    (repo / "AGENTS.md").write_text("# rules\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "surface"], cwd=repo, check=True, capture_output=True)
+    (repo / "src" / "app.py").write_text("print(3)\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+
+    assert main(
+        ["review", "--provider", "paste", "--files", "AGENTS.md", "--diff", "HEAD",
+         "--question", "review"]
+    ) == codes.SCOPE
+    assert message("surface_outside") in capsys.readouterr().err
+
+
+def test_combined_scope_is_still_bound_by_the_final_packet_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """결합한 패킷도 최종 `packet.md` 가 `--max-bytes` 안에 들어야 한다.
+
+    수집 단계의 예산은 항목마다 따로 논다. 그래서 결합하면 수집 단계에서만
+    최대 두 배를 볼 수 있다. 실제 상한은 최종 렌더링된 패킷이고 그것이
+    여기서 거절된다.
+    """
+    repo = _init_repo(tmp_path)
+    (repo / "src" / "app.py").write_text("x = '" + "a" * 400 + "'\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+    assert main(
+        ["review", "--provider", "paste", "--files", "src/app.py", "--diff", "HEAD",
+         "--max-bytes", "600", "--question", "review"]
+    ) == codes.BUDGET
+    assert capsys.readouterr().out == ""
