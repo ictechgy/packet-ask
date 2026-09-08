@@ -33,7 +33,7 @@ from packet_ask.doctor import (
 from packet_ask.deadline import Deadline
 from packet_ask.allowlist import load_allowlist
 from packet_ask.errors import PacketAskError
-from packet_ask.install_skills import install_skills
+from packet_ask.install_skills import install_exit_code, install_skills
 from packet_ask.launch import launch_claude, launch_glm, launch_kimi
 from packet_ask.ledger import append_ledger_entry, build_ledger_entry, ledger_path
 from packet_ask.lifecycle import reap_stale_packets
@@ -499,10 +499,23 @@ def _assert_packet_budget(question: str, files: list[ScopedFile], diff_text: str
 
 
 def _run_install_skills(force: bool) -> int:
-    """Claude/Codex/Grok 홈에 스킬을 심는다."""
-    for path in install_skills(force=force):
+    """Claude/Codex/Grok 홈에 스킬을 심고 홈별 결과를 보고한다."""
+    report = install_skills(force=force)
+    for path in report.written:
         print(path)
-    return codes.SUCCESS
+    # 쓴 경로만 stdout 에 남기고 실패는 stderr 로 보낸다. 성공과 실패가 섞인
+    # 상태를 한 줄로 뭉개지 않는다. 무엇이 설치됐는지 모르면 나머지 홈의 낡은
+    # SKILL.md 를 새것으로 오해한다.
+    for failure in report.failures:
+        print(
+            message(
+                "skill_home_failed",
+                name=failure.relative,
+                reason=failure.reason,
+            ),
+            file=sys.stderr,
+        )
+    return install_exit_code(report.failures)
 
 
 def _run_doctor() -> int:
