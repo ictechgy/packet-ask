@@ -152,7 +152,16 @@ _SHADOW_IGNORABLE_CODEPOINTS = frozenset({0x034F, 0x115F, 0x1160, 0x2800, 0x3164
 
 
 class RedactionError(Exception):
-    """스크럽 실패 또는 재검증에서 민감 값이 남은 경우."""
+    """스크럽 실패 또는 재검증에서 민감 값이 남은 경우.
+
+    `kinds` 는 남은 종류 이름이다. 렌더된 문장만 나르면 호출자가 위치를 더해
+    다시 말할 수 없고, 문구를 파싱해 되찾는 것은 문장이 바뀔 때 조용히
+    깨진다. 그래서 종류 자체를 구조로 싣는다.
+    """
+
+    def __init__(self, message_text: str, kinds: tuple[str, ...] = ()) -> None:
+        super().__init__(message_text)
+        self.kinds = kinds
 
 
 @dataclass
@@ -448,4 +457,7 @@ def verify_scrubbed(text: str, home: str | None = None) -> None:
     if _VERIFY_URL_USERINFO_RE.search(shadow):
         leftovers.append("secret")
     if leftovers:
-        raise RedactionError(message("redaction_leftovers", kinds=", ".join(leftovers)))
+        raise RedactionError(
+            message("redaction_leftovers", kinds=", ".join(leftovers)),
+            kinds=tuple(leftovers),
+        )
