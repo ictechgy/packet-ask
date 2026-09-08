@@ -911,6 +911,11 @@ def test_review_json_envelope(
     assert data["receipt"]["timeout_seconds"] == 1200
     assert data["receipt"]["timeout_source"] == "auto"
     assert data["receipt"]["timeout_applies"] is False
+    # task 영수증도 inspect 와 같은 상수를 그대로 싣는다. 한 표면만 키 집합이
+    # 갈라지면 additive 계약이 무의미해진다.
+    from packet_ask.receipt import GUARANTEES
+
+    assert data["receipt"]["guarantees"] == dict(GUARANTEES)
 
 
 def test_json_parse_error_is_single_generic_envelope(

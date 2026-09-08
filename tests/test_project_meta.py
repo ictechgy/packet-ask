@@ -511,3 +511,25 @@ def test_gitignore_covers_local_material_the_surface_excludes() -> None:
             check=False,
         )
         assert ignored.returncode == 0, relative
+
+
+def test_readme_documents_every_guarantee_pair() -> None:
+    """README 의 한계 절이 상수와 갈라지는 것을 막는다.
+
+    `output_screen` 을 추가했을 때 SECURITY 는 고치고 README 의 키 열거는
+    일곱 개로 남았다. README 의 절·코드블록 **개수**만 비교하는 기존 테스트는
+    이것을 못 잡는다. SECURITY 쪽과 같은 사각이다 — 개수 비교는 문단 단위
+    누락을 모른다. 키:값 쌍을 하나씩 찾아 presence 로 보고, 사람이 읽는 한 줄의
+    토큰 문자열도 그대로 적혀 있는지 본다.
+    """
+    from packet_ask.receipt import GUARANTEES, _RECEIPT_LINE_GUARANTEES
+
+    for name in ("README.md", "README.ko.md"):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        missing = [
+            f"{key}: {value}"
+            for key, value in GUARANTEES.items()
+            if f"{key}: {value}" not in text
+        ]
+        assert not missing, f"{name} 에 없는 guarantee: {missing}"
+        assert _RECEIPT_LINE_GUARANTEES in text, f"{name} 에 낡은 한 줄 토큰"

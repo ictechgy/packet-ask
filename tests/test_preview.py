@@ -7,6 +7,7 @@ import pytest
 
 from packet_ask import codes
 from packet_ask.cli import main
+from packet_ask.receipt import GUARANTEES
 from packet_ask.text import message
 
 from test_cli import _init_repo
@@ -122,7 +123,7 @@ def test_preview_reports_the_launch_plan_without_secrets(
     assert preview["budget_remaining_bytes"] >= 0
     assert preview["budget_remaining_bytes"] == preview["max_bytes"] - preview["bytes"]
     assert len(preview["sha256_packet_md"]) == 64
-    assert preview["guarantees"]["leakage"] == "not-guaranteed"
+    assert preview["guarantees"] == dict(GUARANTEES)
     # 키 값도 패킷 본문도 실리지 않는다.
     assert "x" * 40 not in json.dumps(data)
     assert "print(1)" not in json.dumps(data)
@@ -188,13 +189,15 @@ def test_preview_line_is_append_only_tokens(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """영수증과 같은 규약이다. 한계 축약도 같이 붙는다."""
+    from packet_ask.receipt import _RECEIPT_LINE_GUARANTEES
+
     repo = _init_repo(tmp_path)
     monkeypatch.chdir(repo)
     assert main(_preview(repo)) == codes.SUCCESS
     line = capsys.readouterr().out.strip()
     assert line.startswith("packet-ask preview provider=glm ")
     assert " launch=not-started " in line
-    assert line.endswith(
-        " guarantees=leakage:not-guaranteed,cwd_sandbox:none,redaction:denylist"
-    )
+    # 여기서는 **위치**만 고정한다. 토큰 내용은 test_output 와 README 대조
+    # 테스트가 잡으므로 세 곳에서 같은 문자열을 다시 적지 않는다.
+    assert line.endswith(f" guarantees={_RECEIPT_LINE_GUARANTEES}")
     assert "\n" not in line

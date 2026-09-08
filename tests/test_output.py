@@ -261,7 +261,7 @@ def test_failure_envelope_stays_exactly_fixed() -> None:
 
 
 def test_receipt_line_states_limits_inline() -> None:
-    """stderr 한 줄에도 가장 오독되는 세 가지가 고정 문자열로 붙는다."""
+    """stderr 한 줄에도 가장 오독되는 한계가 고정 문자열로 붙는다."""
     from packet_ask.receipt import format_receipt_line
 
     line = format_receipt_line(
@@ -276,8 +276,43 @@ def test_receipt_line_states_limits_inline() -> None:
         }
     )
     # 반전 해석이 불가능해야 한다. "leak:no" 는 "유출 없음"으로 읽힌다.
-    assert " guarantees=leakage:not-guaranteed,cwd_sandbox:none,redaction:denylist" in line
+    assert (
+        " guarantees=leakage:not-guaranteed,vendor_training:not-restricted,"
+        "vendor_local_copy:uncontrolled,cwd_sandbox:none,redaction:denylist"
+    ) in line
     assert "leak:no" not in line
+
+
+def test_receipt_line_selection_is_declared_and_derived() -> None:
+    """사람 줄에 실을 키는 선언이고, 기전 서술 키는 이름으로 제외된다.
+
+    줄은 지금까지 문자열을 직접 적었다. 그래서 `GUARANTEES` 값을 바꿔도 줄은
+    옛 값을 말한 채 남는다. 그리고 선택 기준이 코드에 없어 SECURITY 의
+    does-not-do 절이 가장 긴 `vendor_local_copy` 가 줄에서 빠져 있었다.
+
+    규칙은 **기전 서술 키를 뺀 나머지를 모두 싣는다**다. 아래 여집합 단언이
+    그 규칙의 이빨이다. 키를 추가하는 사람은 줄에 싣거나 여기 이름으로
+    제외 목록에 넣거나 둘 중 하나를 고르지 않으면 깨진다. SECURITY 절 길이는
+    이 규칙이 왜 오독 방지에 도움이 되는지를 보여주는 보강 근거이고, 값은
+    재지 않는다 — SECURITY 가 바뀌면 수치는 조용히 썩는다.
+    """
+    from packet_ask.receipt import GUARANTEES, _RECEIPT_LINE_KEYS, _RECEIPT_LINE_GUARANTEES
+
+    # 조립식을 다시 계산하면 같은 식을 쓰는 한 항상 참이다. 리터럴로 고정한다.
+    assert _RECEIPT_LINE_GUARANTEES == (
+        "leakage:not-guaranteed,"
+        "vendor_training:not-restricted,"
+        "vendor_local_copy:uncontrolled,"
+        "cwd_sandbox:none,"
+        "redaction:denylist"
+    )
+    assert set(_RECEIPT_LINE_KEYS) <= set(GUARANTEES)
+    # 기전 서술 키는 한계 키와 성격이 다르므로 줄에 싣지 않는다.
+    assert set(GUARANTEES) - set(_RECEIPT_LINE_KEYS) == {
+        "doctor",
+        "policy_gate",
+        "output_screen",
+    }
 
 
 def test_positive_guarantee_keys_match_real_behaviour() -> None:
