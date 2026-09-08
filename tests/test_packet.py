@@ -14,6 +14,7 @@ from packet_ask.packet import (
     build_packet,
 )
 from packet_ask.scope import ScopedFile
+from packet_ask.text import message
 
 
 def test_packet_rewrites_home_and_has_boundary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -498,3 +499,79 @@ def test_built_packet_reuses_cached_payload(
     assert packet.payload_bytes().startswith(b"# Task")
     assert len(packet.payload_digest()) == 64
     packet.destroy()
+
+
+# scrub 이 못 지우고 verify 만 잡는 혼합 구분자 형태. 이 패킷은 영구 실패라서
+# 어디를 고쳐야 하는지가 유일한 탈출구다. 아래 테스트들의 공통 재료다.
+_RESIDUE = "call 010-1234.5678 now"
+
+
+def test_redaction_failure_names_the_offending_file(tmp_path: Path) -> None:
+    """영구 실패에서 어느 항목인지 말한다. 종류만 말하면 찾을 방법이 없다.
+
+    verify 가 실패했다는 것은 잔여 매치를 이미 찾았다는 뜻이다. 그러니 이
+    보고는 새 탐지가 아니라 **이미 계산한 것의 공개**다. exit 12 는 egress 가
+    차단된 상태라 이 메시지는 로컬 터미널로만 나가고 SUB 채널에 가지 않는다.
+    """
+    files = [
+        ScopedFile(relative="src/clean.py", content="print(1)\n"),
+        ScopedFile(relative="src/bad.py", content=f"log('{_RESIDUE}')\n"),
+    ]
+    with pytest.raises(RedactionFailed) as excinfo:
+        build_packet(
+            mode="review", question="review", files=files, diff_text=None, parent=tmp_path
+        )
+    text = str(excinfo.value)
+    assert "phone" in text
+    assert "src/bad.py" in text
+    assert "src/clean.py" not in text
+    assert list(tmp_path.glob("packet-ask-*")) == []
+
+
+def test_redaction_failure_names_the_question(tmp_path: Path) -> None:
+    """질문에 잔여가 있으면 질문을 지목한다. 파일만 뒤지면 못 찾는다."""
+    with pytest.raises(RedactionFailed) as excinfo:
+        build_packet(
+            mode="review",
+            question=_RESIDUE,
+            files=[ScopedFile(relative="src/app.py", content="print(1)\n")],
+            diff_text=None,
+            parent=tmp_path,
+        )
+    text = str(excinfo.value)
+    assert "phone" in text
+    assert "question" in text
+    assert "src/app.py" not in text
+
+
+def test_redaction_failure_names_the_diff(tmp_path: Path) -> None:
+    """diff 잔여는 패킷 안 이름(changes.patch)으로 지목한다."""
+    with pytest.raises(RedactionFailed) as excinfo:
+        build_packet(
+            mode="review",
+            question="review",
+            files=[],
+            diff_text=f"+{_RESIDUE}\n",
+            parent=tmp_path,
+        )
+    assert "changes.patch" in str(excinfo.value)
+
+
+def test_assembly_failure_points_away_from_item_contents(tmp_path: Path) -> None:
+    """항목이 다 통과했는데 조립에서 실패하면 그것을 다르게 말한다.
+
+    실측한 사례다. 본문이 `print(1)` 인 파일이 **파일명** 때문에 exit 12 로
+    막힌다. 파일명은 항목 본문 검증에 들어가지 않고 조립된 packet.md 의
+    헤더에 실리기 때문이다. 같은 메시지면 사용자는 본문을 grep 하고 아무것도
+    못 찾는다. 항목별 검증은 이미 끝났으므로 조립 실패의 원인은 항목 본문
+    밖에 있다는 것이 구조적으로 참이고, 그것을 말한다.
+    """
+    files = [ScopedFile(relative="010-1234.5678.py", content="print(1)\n")]
+    with pytest.raises(RedactionFailed) as excinfo:
+        build_packet(
+            mode="review", question="review", files=files, diff_text=None, parent=tmp_path
+        )
+    text = str(excinfo.value)
+    assert "phone" in text
+    assert message("redaction_leftovers_assembled", kinds="phone") in text
+    assert list(tmp_path.glob("packet-ask-*")) == []

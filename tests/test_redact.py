@@ -638,3 +638,24 @@ def test_digit_adjacent_numbers_are_the_accepted_narrowing() -> None:
     scrubbed, report = scrub_text("주문번호 20260902\n010-1234-5678", home="/home/nobody")
     assert report.phones == 1
     assert "1234" not in scrubbed
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["call 010-1234.\n5678 now", "x 010-\n1234.\n5678 y"],
+)
+def test_line_level_localization_would_lie(source: str) -> None:
+    """줄 번호를 보고하지 않는 이유를 측정으로 고정한다.
+
+    verify 는 공백·하이픈·괄호를 **텍스트 전체에서** 지운 뒤 훑는다. 그래서
+    잔여가 여러 줄에 걸쳐 만들어질 수 있다. 아래 두 입력은 scrub 이 못 지우고
+    전체 검증은 막히는데,     **어느 한 줄도 단독으로는 걸리지 않는다.** 줄 번호를 보고하면 사용자는
+    아무것도 없는 줄을 열어 보게 된다. 그래서 실패 보고는
+    항목(파일) 단위까지만 말하고 줄은 말하지 않는다.
+    """
+    scrubbed, report = scrub_text(source)
+    assert report.phones == 0
+    with pytest.raises(RedactionError, match="phone"):
+        verify_scrubbed(scrubbed)
+    for line in scrubbed.splitlines():
+        verify_scrubbed(line)
