@@ -474,10 +474,19 @@ def _require_explicit_review_scope(
     args: argparse.Namespace,
     mode: str | None = None,
 ) -> None:
-    """review 는 스코프 플래그를 정확히 하나만 받는다."""
+    """review 는 스코프를 명시해야 한다. 파일과 diff 계열 하나는 함께 쓸 수 있다.
+
+    원래는 넷 중 정확히 하나였다. 그러면 diff 리뷰에 프로젝트 규약 파일
+    (AGENTS.md 등)을 붙일 수 없었다. 결합을 열되 **기본 첨부는 열지 않는다** —
+    선택하지 않은 것을 보내는 순간 "의도적으로 고른 패킷만" 이라는 핵심 계약이
+    깨진다. diff 계열끼리는 계속 배타다. 둘을 붙이면 어떤 과거인지 정의되지
+    않는다. 암묵적 수집(`--all`)은 여전히 없다.
+    """
     if (mode or args.command) != "review":
         return
-    if len(_review_selectors(args)) == 1:
+    selectors = _review_selectors(args)
+    diff_scopes = [name for name in selectors if name != "files"]
+    if selectors and len(diff_scopes) <= 1:
         return
     raise PacketAskError(message("review_scope"), codes.SCOPE)
 
@@ -886,7 +895,10 @@ def _packet_pipeline(
                 selected_tree=getattr(args, "selected_tree", False),
             )
         selectors = _review_selectors(args)
-        selector = selectors[0] if selectors else inputs.files_flag or "none"
+        # 결합 선택은 `files+diff` 처럼 이어 붙인다. 첫째만 보고하면 대장과
+        # 영수증이 실제로 보낸 범위의 절반만 말하게 된다. 순서는
+        # `_review_selectors` 가 정한 고정 순서라 결정적이다.
+        selector = "+".join(selectors) if selectors else inputs.files_flag or "none"
         yield PreparedPacket(
             packet,
             scoped_files,
