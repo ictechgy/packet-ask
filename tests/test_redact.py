@@ -377,7 +377,7 @@ def test_dot_prefixed_dotted_phone_is_scrubbed(prefix: str) -> None:
     verify_scrubbed(scrubbed)
 
 
-@pytest.mark.parametrize("prefix", ["v1.", "a.", "1.", "1.2."])
+@pytest.mark.parametrize("prefix", ["v1.", "a.", "1.", "1.2.", "+82."])
 def test_dot_prefixed_dotted_phone_fails_closed_in_verify(prefix: str) -> None:
     """scrub 을 건너뛴 원문도 verifier 가 잡는다. scrub 경유 측정이 아니다."""
     source = prefix + ".".join(("010", "1234", "5678"))
@@ -396,6 +396,20 @@ def test_widened_dot_prefix_keeps_longer_dotted_run() -> None:
     assert unchanged == trailing_run
     assert report.phones == 0
     verify_scrubbed(unchanged)
+
+
+@pytest.mark.parametrize("source", ["9010.1234.5678", "9010.1234.567"])
+def test_digit_adjacent_dotted_run_stays_allowed(source: str) -> None:
+    """양성 대조: 숫자에 바로 붙은 dotted run 은 계속 두 단계를 통과한다.
+
+    왼쪽 경계를 `(?<!\\d)` 에서 더 넓히지 않는 이유를 고정한다. 여기까지
+    넓히면 긴 숫자열 한가운데를 전화번호로 읽는다. 두 입력은 각각 scrub 패턴과
+    verify 후보 패턴 쪽을 지키므로 lookbehind 를 통째로 지우면 둘 다 깨진다.
+    """
+    scrubbed, report = scrub_text(source)
+    assert scrubbed == source
+    assert report.phones == 0
+    verify_scrubbed(scrubbed)
 
 
 @pytest.mark.parametrize(
