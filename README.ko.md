@@ -291,6 +291,16 @@ digest 와 시각 순서로 짓습니다. 같은 패킷을 **동시에** 두 프
 
 질문·파일 본문·벤더 답변·벤더 stderr 는 어느 줄에도 기록하지 않습니다.
 
+`packet-ask ledger summary` 는 그 파일을 다시 읽어 카운터만 출력합니다: 줄 수,
+egress, result, outcome 세 개, `unpaired_egress`, `hint_hits`, `skipped`, 두 byte
+합계, provider id, 첫·마지막 시각. egress 줄에는 상대경로가 들어 있지만 요약은
+경로·질문·본문을 절대 출력하지 않습니다. `--json` 은 같은 수치를
+`packet-ask.v1` 객체로 돌려줍니다. 이 명령은 `PACKET_ASK_LEDGER` 를 읽고 그것이
+없으면 exit 2 이며, 파일을 만들지는 않습니다. 읽기도 쓰기와 같은 격리 검사를
+지납니다(절대경로, 심링크 아님, 일반 파일, 현재 사용자 소유). 그리고 접두어만
+요약하는 대신 8 MiB 상한에서 멈춥니다. 해석하지 못하는 줄이나 이 버전이 모르는
+phase·outcome 을 가진 줄은 요약을 중단하는 대신 `skipped` 로 셉니다.
+
 경로는 절대 경로여야 하고, git 워크트리 안이면 안 되고, 심링크여도 안 되며, 현재
 사용자 소유여야 합니다. 워크트리 검사는 경로 문자열이 아니라 device·inode 를
 비교하므로 대소문자 비구분 파일시스템에서 우회되지 않습니다. 파일은 `O_APPEND`
@@ -351,6 +361,10 @@ packet-ask review --provider grok --files src/app.py --question "이 코드를 �
 packet-ask research --provider paste --question "Tailwind v4 마이그레이션에서 자주 깨지는 점"
 
 packet-ask doctor
+
+# opt-in 대장에서 카운터만. 경로·질문·본문 없음
+packet-ask ledger summary
+packet-ask ledger summary --json
 ```
 
 Kimi는 공식 `kimi --quiet` 원샷입니다. 대화형 세션을 열지 않습니다. 전용 Kimi credential을 resolve하지 못하면 실행하지 않습니다. 도구는 `tools: []` 에이전트 파일과 매칭되지 않는 `[tools] enabled` 로 끄고, `KIMI_CODE_HOME` 은 `~/.config/packet-ask/providers/kimi/kimi-code` 격리 프로필만 씁니다. 실제 레포에서 `kimi`를 직접 실행하지 마세요.

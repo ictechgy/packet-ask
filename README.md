@@ -305,6 +305,18 @@ only thing that distinguishes it from the first two.
 The question, the file bodies, the vendor's answer, and vendor stderr are never
 written to either line.
 
+`packet-ask ledger summary` reads the file back and prints counters only:
+entries, egress, result, the three outcomes, `unpaired_egress`, `hint_hits`,
+`skipped`, both byte totals, provider ids, and the first and last timestamp. It
+never prints paths, questions, or bodies, even though the egress lines hold
+relative paths. `--json` returns the same numbers as a `packet-ask.v1` object.
+The command reads `PACKET_ASK_LEDGER` and exits 2 without it; it never creates
+the file. Reading passes the same confinement checks as writing (absolute path,
+not a symlink, regular file, current-user owner) and stops at an 8 MiB cap
+instead of summarizing a prefix. A line that cannot be parsed, or that carries a
+phase or outcome this version does not know, is counted in `skipped` rather than
+aborting the summary.
+
 The path must be absolute, must not be inside the git worktree, must not be a
 symlink, and must be owned by the current user. The worktree check compares
 device and inode, not path strings, so a case-insensitive filesystem does not
@@ -366,6 +378,10 @@ packet-ask review --provider grok --files src/app.py --question "Review this cod
 packet-ask research --provider paste --question "What usually breaks in a Tailwind v4 migration?"
 
 packet-ask doctor
+
+# Counters only, from the opt-in ledger; no paths, no question, no bodies
+packet-ask ledger summary
+packet-ask ledger summary --json
 ```
 
 Kimi is official `kimi --quiet` one-shot. It does not open an interactive session. It refuses to run without a resolved dedicated Kimi credential. Tools are disabled with a `tools: []` agent file and a non-matching `[tools] enabled` list. `KIMI_CODE_HOME` is only the isolated profile `~/.config/packet-ask/providers/kimi/kimi-code`. Do not run `kimi` in the real repo.
