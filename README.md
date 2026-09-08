@@ -51,7 +51,7 @@ uv run packet-ask doctor
 
 ## Scope
 
-`review` and `research` are the only task commands. `review` requires **one** of the flags below. It does not send the whole working tree by default.
+`review` and `research` are the only task commands. `review` requires a scope: `--files`, or one diff scope (`--diff`, `--staged`, `--unstaged`), or `--files` together with one diff scope. The three diff scopes are mutually exclusive with one another. It does not send the whole working tree by default, and nothing is attached unless you name it.
 
 | Flag | What is sent |
 | --- | --- |
@@ -59,6 +59,12 @@ uv run packet-ask doctor
 | `--diff` | the given git range |
 | `--staged` | staged diff |
 | `--unstaged` | uncommitted working-tree diff |
+| `--files` + one diff scope | both, as separate packet items. The receipt and ledger report `selector=files+diff` (or `files+staged`, `files+unstaged`) |
+
+Combining is useful for reviewing a change against project conventions, for
+example `--diff origin/main...HEAD --files AGENTS.md`. Each collector still has
+its own `--max-bytes` and `--max-files` budget, so the real bound is the final
+rendered `packet.md`: if it exceeds `--max-bytes`, the run is rejected.
 
 `research` does not attach local files or diffs by default. The only exception is `--include-files`. `--diff` and `--staged` are rejected.
 
@@ -108,7 +114,9 @@ bidi, backtick, and HTML-delimiter characters. The private artifact under
 `files/` keeps the exact selected filename.
 
 `--max-files` applies to explicit files and diff paths. `--max-bytes` applies to
-the final UTF-8 `packet.md`, including framing and path labels. Reads stop at
+the final UTF-8 `packet.md`, including framing and path labels; it is also handed
+to each collector, so with a combined scope the collection stage can look at up to
+twice that many bytes before the final bound rejects the run. Reads stop at
 the configured bound, and explicit binary or non-UTF-8 files are rejected.
 
 `--preflight-timeout` defaults to 30 seconds. One monotonic absolute deadline

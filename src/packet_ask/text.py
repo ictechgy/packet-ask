@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 _EN = {
-    "review_scope": "review requires exactly one of --files, --diff, --staged, --unstaged.",
+    "review_scope": "review requires one scope: --files, --diff, --staged, or --unstaged. --files may be combined with one diff scope.",
     "research_question": "research requires --question.",
     "research_files": "research uses --include-files instead of --files.",
     "research_diff": "research does not send local diffs. Use --include-files only.",
@@ -182,7 +182,7 @@ _EN = {
 }
 
 _KO = {
-    "review_scope": "review는 --files, --diff, --staged, --unstaged 중 정확히 하나가 필요합니다.",
+    "review_scope": "review는 스코프 하나가 필요합니다: --files, --diff, --staged, --unstaged. --files는 diff 스코프 하나와 함께 쓸 수 있습니다.",
     "research_question": "research는 --question 이 필요합니다.",
     "research_files": "research는 --files 대신 --include-files 를 쓰세요.",
     "research_diff": "research는 로컬 diff를 보내지 않습니다. --include-files 만 허용합니다.",

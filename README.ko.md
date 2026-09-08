@@ -51,7 +51,7 @@ uv run packet-ask doctor
 
 ## 범위
 
-task 명령은 `review` 와 `research` 둘뿐입니다. `review` 는 아래 중 **하나를 명시**해야 합니다. 플래그 없이 워킹 트리 전체를 보내지 않습니다.
+task 명령은 `review` 와 `research` 둘뿐입니다. `review` 는 스코프가 필요합니다: `--files`, 또는 diff 스코프 하나(`--diff`, `--staged`, `--unstaged`), 또는 `--files` 와 diff 스코프 하나를 함께. diff 스코프끼리는 함께 쓸 수 없습니다. 플래그 없이 워킹 트리 전체를 보내지 않으며, 명시하지 않은 것은 실리지 않습니다.
 
 | 플래그 | 보내는 것 |
 | --- | --- |
@@ -59,6 +59,12 @@ task 명령은 `review` 와 `research` 둘뿐입니다. `review` 는 아래 중 
 | `--diff` | 지정한 git 범위 |
 | `--staged` | 스테이징된 diff |
 | `--unstaged` | 워킹 트리 미커밋 diff |
+| `--files` + diff 스코프 하나 | 둘 다, 각각 별도 항목으로. 영수증과 대장에 `selector=files+diff`(또는 `files+staged`, `files+unstaged`)로 남습니다 |
+
+결합은 변경을 프로젝트 규약과 대조해 리뷰할 때 쓰입니다. 예: `--diff
+origin/main...HEAD --files AGENTS.md`. 수집 단계의 `--max-bytes`·`--max-files`
+예산은 항목군마다 따로 돌므로, 실제 상한은 최종 렌더링된 `packet.md` 입니다.
+그것이 `--max-bytes` 를 넘으면 실행이 거절됩니다.
 
 `research` 는 로컬 파일·diff를 기본으로 넣지 않습니다. 예외는 `--include-files` 뿐입니다. `--diff` / `--staged` 는 거절합니다.
 
@@ -106,7 +112,9 @@ HTML delimiter 문자를 escape합니다. `files/` 아래 private artifact는 �
 파일명을 그대로 유지합니다.
 
 `--max-files`는 명시 파일과 diff 경로 모두에 적용됩니다. `--max-bytes`는
-프레이밍과 경로 라벨을 포함한 최종 UTF-8 `packet.md`에 적용됩니다. 입력은
+프레이밍과 경로 라벨을 포함한 최종 UTF-8 `packet.md`에 적용되며, 각 수집기에도
+그대로 건네집니다. 그래서 스코프를 결합하면 수집 단계에서 그 두 배까지 볼 수
+있고, 실제 거절은 최종 상한에서 일어납니다. 입력은
 설정한 한도에서 읽기를 멈추며, 명시한 바이너리 또는 비 UTF-8 파일은 거절합니다.
 
 `--preflight-timeout` 기본값은 30초입니다. 실제 fd 질문 stdin, worktree 탐색,
