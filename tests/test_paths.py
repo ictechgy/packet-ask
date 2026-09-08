@@ -9,6 +9,7 @@ import pytest
 from packet_ask import codes
 from packet_ask.errors import PacketAskError
 from packet_ask.paths import (
+    TRUSTED_EXECUTABLES,
     packet_cache_dir,
     resolve_trusted_executable,
     trusted_bin_dirs,
@@ -132,6 +133,68 @@ def test_trusted_bin_override_must_be_absolute(
     """PACKET_ASK_*_BIN 은 절대경로만 받는다."""
     monkeypatch.setenv("PACKET_ASK_KIMI_BIN", "kimi")
     monkeypatch.setattr("packet_ask.paths.trusted_bin_dirs", lambda: [tmp_path])
+    assert resolve_trusted_executable("kimi") is None
+
+
+@pytest.mark.parametrize("name", TRUSTED_EXECUTABLES)
+def test_every_declared_executable_reads_its_own_override(
+    name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """선언된 이름마다 override 환경변수가 실제로 읽히는지를 이름별로 본다.
+
+    선언 목록만 단언하면 f-string 이 한 이름에서만 동작해도 녹색이다. 환경변수
+    이름은 제품 헬퍼가 아니라 여기서 다시 만들어 형식 자체도 같이 고정한다.
+    """
+    trusted = tmp_path / "trusted"
+    trusted.mkdir()
+    # umask 002 에서 기본 mkdir 이 0775 가 되면 검사에 걸려 헛실패한다.
+    trusted.chmod(0o755)
+    monkeypatch.setattr("packet_ask.paths.trusted_bin_dirs", lambda: [trusted])
+    env_name = f"PACKET_ASK_{name.upper()}_BIN"
+
+    monkeypatch.setenv(env_name, name)
+    assert resolve_trusted_executable(name) is None
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside.chmod(0o755)
+    binary = outside / name
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(stat.S_IRWXU)
+    monkeypatch.setenv(env_name, str(binary))
+    assert resolve_trusted_executable(name) == binary
+
+    # 같은 override 를 존재 진단도 읽는다. doctor 의 help 실패 분기가 쓴다.
+    assert trusted_executable_candidate_exists(name) is True
+
+    # 양성 대조: override 를 지우면 같은 파일을 못 찾는다. 신뢰 디렉터리 탐색이
+    # 아니라 환경변수가 골랐다는 증거다.
+    monkeypatch.delenv(env_name)
+    assert resolve_trusted_executable(name) is None
+    assert trusted_executable_candidate_exists(name) is False
+
+
+def test_candidate_existence_skips_owner_and_mode_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """존재 진단은 canonical·소유자·mode 검사를 거치지 않는다.
+
+    doctor 는 `--help` 를 읽지 못했을 때 설치 여부를 이 함수로 말한다. 그래서
+    보안 문서는 그 줄을 검사가 아니라 "존재만" 으로 적는다. 검사를 거치는
+    resolve 와의 차이를 같은 파일로 대조해서 고정한다.
+    """
+    trusted = tmp_path / "trusted"
+    trusted.mkdir()
+    trusted.chmod(0o755)
+    loose = tmp_path / "loose"
+    loose.mkdir()
+    loose.chmod(0o777)
+    binary = loose / "kimi"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(0o777)
+    monkeypatch.setattr("packet_ask.paths.trusted_bin_dirs", lambda: [trusted])
+    monkeypatch.setenv("PACKET_ASK_KIMI_BIN", str(binary))
+    assert trusted_executable_candidate_exists("kimi") is True
     assert resolve_trusted_executable("kimi") is None
 
 

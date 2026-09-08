@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 import subprocess
 import tomllib
@@ -320,3 +321,110 @@ def test_readme_sections_do_not_drift_between_languages() -> None:
     assert sum(1 for line in english if line.startswith("```")) == sum(
         1 for line in korean if line.startswith("```")
     )
+
+
+_ENV_NAME_RE = re.compile(r"PACKET_ASK_[A-Z_]+")
+
+
+def _source_files() -> list[Path]:
+    """패키지 소스 전체. 서브패키지가 생겨도 사각이 남지 않게 재귀로 돈다."""
+    return sorted((ROOT / "src" / "packet_ask").rglob("*.py"))
+
+
+def _literal_env_names() -> set[str]:
+    """**문자열 리터럴**에만 나타난 `PACKET_ASK_*` 이름을 모은다.
+
+    정규식으로 파일 전체를 훑으면 주석에 쓴 이름까지 줍는다. 그러면 선언에서
+    이름을 빼도 주석이 남는 한 그 변수는 "코드가 읽는 것"으로 남아서, 문서에
+    없는 변수를 주석 한 줄로 정당화할 수 있다. 실측하니 `_BIN` 세 이름이
+    주석에서만 잡혔다. AST 로 리터럴만 본다.
+    """
+    names: set[str] = set()
+    for source in _source_files():
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                names |= set(_ENV_NAME_RE.findall(node.value))
+    return names
+
+
+def _code_env_names() -> set[str]:
+    """코드가 실제로 읽는 `PACKET_ASK_*` 이름 집합을 코드 쪽에서 만든다.
+
+    리터럴 스캔만으로는 `_BIN` 계열을 놓친다. 그 이름은 f-string 으로 만들어져
+    소스에 완성된 형태가 없기 때문이다. 선언 상수를 유일한 출처로 합친다.
+    """
+    from packet_ask import paths
+
+    return _literal_env_names() | set(paths.trusted_executable_override_envs())
+
+
+def test_security_docs_cover_every_variable_the_code_reads() -> None:
+    """양쪽 문서에 **다 같이** 없는 변수를 잡는다.
+
+    영/한 집합 비교는 한쪽만 빠진 경우를 잡는다. `PACKET_ASK_ALLOWLIST_FILE` 이
+    그렇게 빠졌었다. 그런데 `PACKET_ASK_GIT_BIN` 은 두 문서와 env.example 어디에도
+    없었다 — git 실행 파일을 바꾸는 실재 사용자 표면이고 `test_scope.py` 가
+    그 결로를 고정하는데도 말이다. 양쪽 다 없으면 영/한 비교는 공짜로 통과한다.
+
+    그래서 코드에서 만든 집합과 각 문서를 따로 비교한다. 문서에만 있는 이름도
+    걸린다. 오타거나 코드가 더 이상 읽지 않는 폐기 변수다.
+    """
+    expected = _code_env_names()
+    # 스캔이 비면 아래 비교가 공짜로 통과한다.
+    assert len(expected) >= 13, sorted(expected)
+    for name in ("SECURITY.md", "SECURITY.ko.md"):
+        found = set(_ENV_NAME_RE.findall((ROOT / name).read_text(encoding="utf-8")))
+        assert not expected - found, f"{name} 에 없는 변수: {sorted(expected - found)}"
+        assert not found - expected, f"{name} 에만 있는 변수: {sorted(found - expected)}"
+    # 예시 파일은 의도적으로 부분 목록이라 등가 비교는 하지 않는다. 대신 코드에
+    # 없는 이름을 싣는 것(오타·폐기 변수)만 막는다.
+    example = set(_ENV_NAME_RE.findall((ROOT / "env.example").read_text(encoding="utf-8")))
+    assert example, "예시 파일에 변수가 없다. 수집이 낡았다."
+    assert not example - expected, f"env.example 에만 있는 변수: {sorted(example - expected)}"
+
+
+def test_trusted_executable_declaration_matches_call_sites_and_registry() -> None:
+    """선언이 호출 지점·레지스트리와 **양방향으로** 일치해야 한다.
+
+    `trusted_executable_override_envs()` 는 선언 상수에서만 나오므로 강제 지점이
+    없으면 새 실행 파일을 추가한 사람이 상수를 안 고쳐도 아무 일도 안 일어난다.
+    반대 방향도 본다. 레지스트리에서 이름을 바꾸면서 선언에 옛 이름을 남기면
+    그 이름은 문서와 함께 영구 생존한다.
+    """
+    from packet_ask import paths
+    from packet_ask.providers import builtin_providers
+
+    call_site_re = re.compile(
+        r"(?:resolve_trusted_executable|trusted_executable_candidate_exists)\("
+        r"\s*[\"']([a-z0-9_-]+)[\"']"
+    )
+    literals: set[str] = set()
+    for source in _source_files():
+        literals |= set(call_site_re.findall(source.read_text(encoding="utf-8")))
+    binaries = {spec.binary for spec in builtin_providers() if spec.binary}
+    # 두 수집기가 비면 아래 포함 관계가 공짜로 통과한다.
+    assert literals, "호출 지점 리터럴을 못 찾았다. 수집 패턴이 낡았다."
+    assert binaries, "레지스트리에 binary 가 없다. 수집 패턴이 낡았다."
+    declared = set(paths.TRUSTED_EXECUTABLES)
+    assert not (literals | binaries) - declared, sorted((literals | binaries) - declared)
+    assert not declared - (literals | binaries), sorted(declared - (literals | binaries))
+
+
+def test_paste_only_overrides_really_never_launch() -> None:
+    """SECURITY 가 "paste 전용이라 override 가 런치에 영향 없다"고 적은 것을 고정한다.
+
+    그 문장은 선언이 아니라 레지스트리 상태에 달려 있다. grok 을 런치 경로에
+    연결하고 선언에만 남겨 두면 모든 테스트가 녹색인 채로 문서가 거짓말이 된다.
+    """
+    from packet_ask.providers import builtin_providers, resolve_provider_adapter
+
+    paste_only = {
+        spec.binary for spec in builtin_providers() if spec.mode == "paste" and spec.binary
+    }
+    assert {"grok", "agy"} <= paste_only, sorted(paste_only)
+    for spec in builtin_providers():
+        if spec.binary not in paste_only:
+            continue
+        adapter = resolve_provider_adapter(spec)
+        assert adapter is None or adapter.launcher_name is None, spec.provider_id

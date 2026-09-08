@@ -228,9 +228,30 @@ def trusted_path_value() -> str:
     return os.pathsep.join(str(path) for path in trusted_bin_dirs()) or "/usr/bin:/bin"
 
 
+# override 환경변수(`PACKET_ASK_<NAME>_BIN`)가 존재하는 신뢰 실행 파일 이름.
+# 이 이름은 f-string 으로 만들어지므로 소스 스캔으로는 열거되지 않는다. 문서
+# parity 테스트가 이 선언을 유일한 출처로 쓰고, 같은 테스트가 선언이 실제
+# 호출 지점과 레지스트리를 덮는지 검사한다. 선언 없이 이름을 추가하면 그
+# 변수는 어떤 문서에도 나타나지 않는다 — `PACKET_ASK_GIT_BIN` 과 paste 전용
+# `PACKET_ASK_GROK_BIN`·`PACKET_ASK_AGY_BIN` 이 실제로 두 SECURITY 문서와
+# env.example 어디에도 없이 동작하고 있었다.
+# grok·agy 는 paste 전용이라 override 가 doctor 의 installed 판정만 바꾼다.
+TRUSTED_EXECUTABLES: tuple[str, ...] = ("claude", "kimi", "git", "grok", "agy")
+
+
+def _trusted_executable_override_env(name: str) -> str:
+    """override 환경변수 이름을 만든다. 코드와 문서 대조가 같은 함수를 쓴다."""
+    return f"PACKET_ASK_{name.upper()}_BIN"
+
+
+def trusted_executable_override_envs() -> tuple[str, ...]:
+    """선언된 override 환경변수 이름 전부. 문서 대조의 유일한 출처다."""
+    return tuple(_trusted_executable_override_env(name) for name in TRUSTED_EXECUTABLES)
+
+
 def resolve_trusted_executable(name: str) -> Path | None:
     """허용된 디렉터리에서만 실행 파일을 찾는다."""
-    override = os.environ.get(f"PACKET_ASK_{name.upper()}_BIN", "").strip()
+    override = os.environ.get(_trusted_executable_override_env(name), "").strip()
     if override:
         return _executable_if_valid(Path(override))
     for directory in trusted_bin_dirs():
@@ -242,7 +263,7 @@ def resolve_trusted_executable(name: str) -> Path | None:
 
 def trusted_executable_candidate_exists(name: str) -> bool:
     """경로를 공개하지 않고 allowlist entry 존재만 진단한다."""
-    override = os.environ.get(f"PACKET_ASK_{name.upper()}_BIN", "").strip()
+    override = os.environ.get(_trusted_executable_override_env(name), "").strip()
     candidates = [Path(override)] if override and Path(override).is_absolute() else []
     if not candidates:
         candidates = [directory / name for directory in trusted_bin_dirs()]
