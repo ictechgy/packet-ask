@@ -13,6 +13,7 @@ import pytest
 from packet_ask import cli, codes
 from packet_ask.cli import main
 from packet_ask.packet import _logical_line_count
+from packet_ask.receipt import GUARANTEES
 
 
 def _init_repo(root: Path, body: str = "print(1)\n") -> Path:
@@ -118,6 +119,12 @@ def test_inspect_json_reports_public_redaction_counts(
     assert summary["file_count"] == 1
     assert summary["redaction"]["emails"] == 1
     assert "owner@example.com" not in captured.out
+    # inspect 는 벤더를 띄우지 않지만 `vendor_training`·`vendor_local_copy` 를
+    # 그대로 싣는다. GUARANTEES 가 실행마다 달라지는 산출값이 아니라 도구
+    # 전체의 한계 목록이라는 뜻이고, 39 가 정한 상수 규약이다. 여기만 빼면
+    # 표면별로 키 집합이 갈라져 additive 계약이 무의미해진다. 읽는 쪽은
+    # preview 의 `launch=not-started` 처럼 그 표면의 런치 상태와 같이 읽는다.
+    assert summary["guarantees"] == dict(GUARANTEES)
 
 
 def test_inspect_breakdown_reports_per_item_bytes_without_content(

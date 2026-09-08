@@ -261,7 +261,7 @@ def test_failure_envelope_stays_exactly_fixed() -> None:
 
 
 def test_receipt_line_states_limits_inline() -> None:
-    """stderr 한 줄에도 가장 오독되는 세 가지가 고정 문자열로 붙는다."""
+    """stderr 한 줄에도 가장 오독되는 한계가 고정 문자열로 붙는다."""
     from packet_ask.receipt import format_receipt_line
 
     line = format_receipt_line(
@@ -276,8 +276,35 @@ def test_receipt_line_states_limits_inline() -> None:
         }
     )
     # 반전 해석이 불가능해야 한다. "leak:no" 는 "유출 없음"으로 읽힌다.
-    assert " guarantees=leakage:not-guaranteed,cwd_sandbox:none,redaction:denylist" in line
+    assert (
+        " guarantees=leakage:not-guaranteed,vendor_training:not-restricted,"
+        "vendor_local_copy:uncontrolled,cwd_sandbox:none,redaction:denylist"
+    ) in line
     assert "leak:no" not in line
+
+
+def test_receipt_line_selection_is_declared_and_derived() -> None:
+    """사람 줄에 실을 키는 선언이고, 값은 상수에서 파생한다.
+
+    줄은 지금까지 문자열을 직접 적었다. 그래서 `GUARANTEES` 값을 바꿔도 줄은
+    옛 값을 말한 채 남는다. 그리고 선택 기준이 코드에 없어 SECURITY 가 가장
+    길게 설명하는 `vendor_local_copy`(259자)가 줄에서 빠져 있었다.
+
+    값은 상수에서 조립하고, 선택은 튜플로 선언하며, **줄에 싣지 않는 키**를
+    테스트가 이름으로 고정한다. 키를 추가하는 사람은 둘 중 어디에 넣을지
+    고르지 않으면 테스트가 깨진다.
+    """
+    from packet_ask.receipt import GUARANTEES, _RECEIPT_LINE_KEYS, _RECEIPT_LINE_GUARANTEES
+
+    assert _RECEIPT_LINE_GUARANTEES == ",".join(
+        f"{key}:{GUARANTEES[key]}" for key in _RECEIPT_LINE_KEYS
+    )
+    # 기전 서술 키는 한계 키와 성격이 다르므로 줄에 싣지 않는다.
+    assert set(GUARANTEES) - set(_RECEIPT_LINE_KEYS) == {
+        "doctor",
+        "policy_gate",
+        "output_screen",
+    }
 
 
 def test_positive_guarantee_keys_match_real_behaviour() -> None:
