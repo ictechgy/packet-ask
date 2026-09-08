@@ -461,9 +461,12 @@ def test_repository_declares_its_own_public_surface() -> None:
     ):
         with pytest.raises(ScopeError):
             assert_within_surface([local_only], surface)
+    # 반대쪽 대조: 선언한 스크래치는 실제로 받아들여진다. 이것 없으면 선언이
+    # 아무것도 받아들이지 않아도 위 거절 단언은 전부 통과한다.
+    assert_within_surface([".packet-ask-tmp/review-diff.patch"], surface)
 
     if not (ROOT / ".git").exists():
-        return
+        pytest.skip("git 저장소가 아니면 추적 파일 목록을 잴 수 없다")
     listing = subprocess.run(
         ["git", "ls-files"], cwd=ROOT, check=True, capture_output=True, text=True
     )
@@ -471,3 +474,40 @@ def test_repository_declares_its_own_public_surface() -> None:
     assert tracked, "추적 파일을 못 읽었다. 빈 입력이면 포함 관계가 공짜로 통과한다."
     # 술어(_is_declared)를 직접 부르지 않고 CLI 가 쓰는 그 함수로 본다.
     assert_within_surface(tracked, surface)
+
+    # 역방향: 추적 파일을 하나도 덮지 않는 선언 항목은 남은 것이다. 임시로
+    # 넓힌 선언이 그대로 남으면 아무 테스트도 실패하지 않는다. 스크래치처럼
+    # 의도적으로 미추적 경로를 선언하는 경우가 있으니 화이트리스트를 둔다.
+    declared_untracked = {".packet-ask-tmp"}
+    stale = [
+        entry
+        for entry in surface
+        if entry not in declared_untracked
+        and not any(path == entry or path.startswith(entry + "/") for path in tracked)
+    ]
+    assert not stale, f"추적 파일을 덮지 않는 선언: {stale}"
+
+
+def test_gitignore_covers_local_material_the_surface_excludes() -> None:
+    """선언이 제외한 로컬 물질을 .gitignore 가 실제로 무시하는지 고정한다.
+
+    선언과 CONTRIBUTING 은 `.packet-ask-tmp` 이 ".gitignore 대상" 이라고 말한다.
+    그 상태를 고정하는 테스트가 없으면 gitignore 에서 빠진 채 리뷰 패킷·diff
+    조각이 공개 저장소에 커밋돼도 아무 테스트도 실패하지 않는다.
+    """
+    if not (ROOT / ".git").exists():
+        pytest.skip("git 저장소가 아니면 check-ignore 를 쓸 수 없다")
+    for relative in (
+        ".packet-ask-tmp/review-diff.patch",
+        ".venv/bin/python",
+        "dist/packet_ask-0.0.0-py3-none-any.whl",
+        ".serena/notes.md",
+        ".omc/state.json",
+        "HANDOFF.md",
+    ):
+        ignored = subprocess.run(
+            ["git", "check-ignore", "-q", "--", relative],
+            cwd=ROOT,
+            check=False,
+        )
+        assert ignored.returncode == 0, relative
