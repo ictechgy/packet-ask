@@ -63,7 +63,7 @@ How personal Kimi Code or GLM Coding Plan subscriptions handle data is defined b
 | `PACKET_ASK_CLAUDE_KEY` | Anthropic Claude SUB key. Do not use a global Anthropic key |
 | `PACKET_ASK_KIMI_KEY` | Kimi key. Not written to disk |
 | `PACKET_ASK_CACHE_DIR` | Packet cache parent. Absolute only. Creates a dedicated `packet-ask` child |
-| `PACKET_ASK_CLAUDE_BIN` / `PACKET_ASK_KIMI_BIN` | Absolute executable override |
+| `PACKET_ASK_CLAUDE_BIN` / `PACKET_ASK_KIMI_BIN` / `PACKET_ASK_GIT_BIN` / `PACKET_ASK_GROK_BIN` / `PACKET_ASK_AGY_BIN` | Absolute executable override. All five go through the same canonical path, owner, and mode checks. `PACKET_ASK_GIT_BIN` selects the `git` used for worktree discovery and diffs. `grok` and `agy` are paste-only, so their overrides change the `doctor` installed line and never a launch |
 | `PACKET_ASK_BIN_DIRS` | Extra allowlist directories (`os.pathsep`, absolute only) |
 | `PACKET_ASK_LEDGER` | Absolute path to an opt-in append-only egress ledger. Never holds the question or file bodies |
 | `PACKET_ASK_EFFORT` | Default reasoning effort for `glm` and `claude`. `--effort` wins; an invalid value is rejected, not ignored |

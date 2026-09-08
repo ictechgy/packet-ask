@@ -63,7 +63,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 | `PACKET_ASK_CLAUDE_KEY` | Anthropic Claude 서브 키. 전역 Anthropic 키 금지 |
 | `PACKET_ASK_KIMI_KEY` | Kimi 키. 디스크에 쓰지 않음 |
 | `PACKET_ASK_CACHE_DIR` | 패킷 캐시 부모. 절대경로만. 전용 `packet-ask` 자식을 만듭니다 |
-| `PACKET_ASK_CLAUDE_BIN` / `PACKET_ASK_KIMI_BIN` | 절대경로 실행 파일 재지정 |
+| `PACKET_ASK_CLAUDE_BIN` / `PACKET_ASK_KIMI_BIN` / `PACKET_ASK_GIT_BIN` / `PACKET_ASK_GROK_BIN` / `PACKET_ASK_AGY_BIN` | 절대경로 실행 파일 재지정. 다섯 모두 같은 canonical 경로·소유자·mode 검사를 거칩니다. `PACKET_ASK_GIT_BIN` 은 워크트리 탐색과 diff 에 쓰는 `git` 을 고릅니다. `grok`·`agy` 는 paste 전용이라 override 가 `doctor` 의 installed 줄만 바꾸고 런치에는 영향이 없습니다 |
 | `PACKET_ASK_BIN_DIRS` | allowlist 디렉터리 추가 (`os.pathsep` 구분, 절대경로만) |
 | `PACKET_ASK_EFFORT` | `glm`·`claude` 의 기본 추론 effort. `--effort` 가 이기며, 잘못된 값은 무시하지 않고 거절합니다 |
 | `PACKET_ASK_LEDGER` | opt-in append-only 발송 대장의 절대경로. 질문과 파일 본문은 담지 않습니다 |
