@@ -7,6 +7,7 @@ import pytest
 
 from packet_ask import codes
 from packet_ask.cli import main
+from packet_ask.receipt import GUARANTEES
 from packet_ask.text import message
 
 from test_cli import _init_repo
@@ -122,7 +123,7 @@ def test_preview_reports_the_launch_plan_without_secrets(
     assert preview["budget_remaining_bytes"] >= 0
     assert preview["budget_remaining_bytes"] == preview["max_bytes"] - preview["bytes"]
     assert len(preview["sha256_packet_md"]) == 64
-    assert preview["guarantees"]["leakage"] == "not-guaranteed"
+    assert preview["guarantees"] == dict(GUARANTEES)
     # 키 값도 패킷 본문도 실리지 않는다.
     assert "x" * 40 not in json.dumps(data)
     assert "print(1)" not in json.dumps(data)
