@@ -1411,3 +1411,41 @@ def test_user_alias_cannot_reach_builtin_launcher(
         assert "# Task" in cli._execute_provider("gemini", packet, 1, "auto")
     finally:
         packet.destroy()
+
+
+def test_redaction_failure_localizes_on_stderr_but_not_in_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """위치는 stderr 로 말하고 JSON 실패 봉투는 고정 세 키로 남는다.
+
+    27 번 설계가 실패 봉투를 code/kind/message 로 얼렸으므로 새 키를 더할 수
+    없다. 그래서 위치는 예외 문장에 싣고, JSON 쪽은 기존처럼 코드별 고정
+    문장을 쓴다. exit 12 는 egress 차단 상태라 stderr 의 상대경로는 로컬에만
+    남고 SUB 채널에 가지 않는다. 그 경로는 사용자가 `--files` 로 직접 고른
+    값이라 영수증에 이미 실리는 것과 같은 부류다.
+    """
+    import json as _json
+
+    repo = _init_repo(tmp_path)
+    # 조각을 이어 붙인다. 통째로 적으면 이 파일 자체가 패킷으로 못 나간다.
+    residue = "call 010-1234" + "." + "5678 now"
+    (repo / "src" / "bad.py").write_text(f"log('{residue}')\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+    argv = ["review", "--provider", "paste", "--files", "src/bad.py", "--question", "review"]
+
+    assert main(list(argv)) == codes.REDACTION
+    human = capsys.readouterr()
+    assert "src/bad.py" in human.err
+    assert "phone" in human.err
+    assert human.out == ""
+
+    assert main(list(argv) + ["--json"]) == codes.REDACTION
+    captured = capsys.readouterr()
+    data = _json.loads(captured.out)
+    assert set(data) == {"schema", "ok", "error"}
+    assert data["error"]["code"] == codes.REDACTION
+    # 봉투에는 위치가 없다. 키 집합도 message 도 고정이다.
+    assert "src/bad.py" not in captured.out
+    assert captured.err == ""

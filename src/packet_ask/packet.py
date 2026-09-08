@@ -130,13 +130,37 @@ class PacketItem:
     report: RedactionReport = field(repr=False)
 
 
-def _scrub_or_raise(text: str) -> tuple[str, RedactionReport]:
-    """스크럽 후 재검증한다. 실패하면 패킷을 만들지 않는다."""
+def _scrub_or_raise(text: str, location: str) -> tuple[str, RedactionReport]:
+    """스크럽 후 재검증한다. 실패하면 패킷을 만들지 않는다.
+
+    `location` 은 이 텍스트가 패킷 안에서 어디인지를 가리키는 고정 라벨이다
+    (질문, 항목의 패킷 상대경로, `changes.patch`). verify 가 실패했다는 것은
+    잔여 매치를 이미 찾았다는 뜻이므로, 이 보고는 새 탐지가 아니라 이미
+    계산한 것의 공개다. exit 12 는 egress 가 차단된 상태라 이 라벨은 로컬
+    터미널로만 나간다. JSON 실패 봉투는 27 번 설계대로 코드별 고정 문장을
+    쓰므로 라벨이 실리지 않는다.
+
+    줄 번호는 붙이지 않는다. verify 는 공백·하이픈·괄호를 텍스트 전체에서
+    지운 뒤 훑으므로 잔여가 여러 줄에 걸쳐 만들어질 수 있고, 그때 줄 단위로
+    재검증하면 아무 줄도 걸리지 않는다. 없는 위치를 가리키는 것보다 항목
+    단위로 말하는 것이 정직하다.
+
+    라벨은 이스케이프해서 싣는다. 파일명에는 bidi·개행·ANSI 가 들어갈 수 있고
+    그대로 보간하면 실패 문장이 사용자 터미널 상태를 바꾼다. 헤더 경로를
+    같은 이유로 이스케이프하는 기존 관례를 따른다. `question` 과
+    `changes.patch` 는 고정 문자열이라 이스케이프가 항등이다.
+    """
     try:
         scrubbed, report = scrub_text(text)
         verify_scrubbed(scrubbed)
     except RedactionError as exc:
-        raise RedactionFailed(str(exc)) from exc
+        raise RedactionFailed(
+            message(
+                "redaction_leftovers_at",
+                kinds=", ".join(exc.kinds),
+                name=_escape_file_header_path(location),
+            )
+        ) from exc
     return scrubbed, report
 
 
@@ -286,7 +310,7 @@ def build_packet(
         root = Path(tempfile.mkdtemp(prefix="packet-ask-", dir=str(parent)))
         root.chmod(stat.S_IRWXU)
         lease_fd = create_packet_lease(root)
-        question_text, report = _scrub_or_raise(question)
+        question_text, report = _scrub_or_raise(question, "question")
         reports.append(report)
         question_bytes = len(question_text.encode("utf-8"))
         task = f"# Task\n\nmode: {mode}\n\n{question_text}\n\n{_task_contract()}\n"
@@ -304,7 +328,7 @@ def build_packet(
                 f"## {_selected_tree_title()}\n\n```text\n{tree}\n```\n"
             )
         for item, relative_text in zip(files, relative_paths, strict=True):
-            body, report = _scrub_or_raise(item.content)
+            body, report = _scrub_or_raise(item.content, relative_text)
             reports.append(report)
             relative = Path(relative_text)
             _write_private(root / "files" / relative, body)
@@ -323,7 +347,7 @@ def build_packet(
                 f"## File: {header_path}\n\n{note}```\n{rendered_body}\n```\n"
             )
         if diff_text:
-            diff_body, report = _scrub_or_raise(diff_text)
+            diff_body, report = _scrub_or_raise(diff_text, "changes.patch")
             reports.append(report)
             _write_private(root / "files" / "changes.patch", diff_body)
             items.append(
@@ -345,7 +369,15 @@ def build_packet(
         try:
             verify_scrubbed((root / "packet.md").read_text(encoding="utf-8"))
         except RedactionError as exc:
-            raise RedactionFailed(str(exc)) from exc
+            # 여기까지 왔으면 질문·각 항목·diff 는 단독 검증을 통과했다.
+            # 그러므로 원인은 항목 본문 밖에 있다 — 헤더에 실리는 파일명 같은
+            # 프레이밍이거나 항목이 이어지면서 생긴 결합이다. 같은 문장으로
+            # 보고하면 사용자는 본문을 뒤지고 아무것도 못 찾는다. 실측 사례:
+            # 본문이 `print(1)` 인 파일이 파일명 `010.1234.5678.py` 때문에
+            # exit 12 로 막힌다.
+            raise RedactionFailed(
+                message("redaction_leftovers_assembled", kinds=", ".join(exc.kinds))
+            ) from exc
         manifest = {
             "mode": mode,
             "file_count": len(files) + (1 if diff_text else 0),

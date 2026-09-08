@@ -200,6 +200,16 @@ together with that surface's own launch state.
 misread, not every risk. The failure envelope is unchanged and still carries
 only a fixed code, kind, and message.
 
+The human stderr message is not that envelope. When re-verification fails, it
+names which selected item kept the residue — `question`, a packet-relative path,
+or `changes.patch` — so a packet that can never be sent tells you what to fix.
+If every item passed on its own and only the assembled packet failed, it says so
+and points at the framing instead: a file **name** such as `010.1234.5678.py`
+reaches `packet.md` through a header that item-level verification never sees, so
+grepping the file body finds nothing. No line number is reported. Verification
+strips whitespace across the whole text, so a residue can span lines and a line
+number could point at an innocent one.
+
 `doctor` states its own verification level the same way. After the provider
 rows it prints a supervision state line and then one fixed line:
 

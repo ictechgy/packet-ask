@@ -533,3 +533,94 @@ def test_readme_documents_every_guarantee_pair() -> None:
         ]
         assert not missing, f"{name} 에 없는 guarantee: {missing}"
         assert _RECEIPT_LINE_GUARANTEES in text, f"{name} 에 낡은 한 줄 토큰"
+
+
+def test_every_tracked_text_file_can_be_sent_in_a_packet() -> None:
+    """저장소 파일 전체가 자기 도구로 보낼 수 있어야 한다.
+
+    이 저장소의 관례는 packet-ask 로 자기 diff 를 리뷰시키는 것이다. 그런데
+    소스·테스트·문서에 scrub 이 못 지우는 형태(혼합 구분자 국내 mobile 같은
+    비정형)를 리터럴로 적어 두면, 그 파일을 고른 패킷은 exit 12 로 **영구
+    실패**한다. 실제로 이번 변경의 리뷰 요청이 그래서 막혔다 — 테스트
+    픽스처에 적어 둔 리터럴 때문에 자기 diff 를 자기로 리뷰하지 못했다.
+
+    기존 `test_redaction_module_can_scrub_its_own_detector_source` 는 redact.py
+    하나만 봤다. 같은 결함을 추적 파일 전체에 대해 본다. 고치는 방법은 둘
+    뿐이다: 픽스처는 조각을 이어 붙여 만들고(이 저장소의 기존 관례 —
+    `test_redact.py` 가 그렇게 한다), 문서 예시는 scrub 이 지울 수 있는
+    정형만 쓴다. 정책을 완화하는 쪽은 답이 아니다.
+    """
+    from packet_ask.redact import RedactionError, scrub_text, verify_scrubbed
+
+    if not (ROOT / ".git").exists():
+        pytest.skip("git 저장소가 아니면 추적 파일 목록을 잴 수 없다")
+    listing = subprocess.run(
+        ["git", "ls-files"], cwd=ROOT, check=True, capture_output=True, text=True
+    )
+    tracked = [line for line in listing.stdout.splitlines() if line]
+    assert tracked, "추적 파일을 못 읽었다. 빈 목록이면 이 검사는 공짜로 통과한다."
+
+    blocked: list[str] = []
+    checked = 0
+    for relative in tracked:
+        path = ROOT / relative
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        checked += 1
+        scrubbed, _report = scrub_text(text)
+        try:
+            verify_scrubbed(scrubbed)
+        except RedactionError as exc:
+            blocked.append(f"{relative}: {exc}")
+    assert checked > 50, checked
+    assert not blocked, "\n".join(blocked)
+
+
+def test_tracked_paths_are_also_sendable() -> None:
+    """파일 **이름**도 패킷에 실리므로 본문과 같은 기준으로 본다.
+
+    본문만 검사하면 `010-…` 모양으로 이름 지은 추적 파일은 이 검사를 통과한
+    채 패킷을 영구 실패로 막는다. 이름은 헤더로 `packet.md` 에 들어가고, 항목
+    본문 검증은 헤더를 보지 않는다 — 조립 단계에서만 걸린다. 이번 변경의
+    기폭 사례가 바로 그 파일명 케이스였다.
+    """
+    from packet_ask.redact import RedactionError, scrub_text, verify_scrubbed
+
+    if not (ROOT / ".git").exists():
+        pytest.skip("git 저장소가 아니면 추적 파일 목록을 잴 수 없다")
+    listing = subprocess.run(
+        ["git", "ls-files"], cwd=ROOT, check=True, capture_output=True, text=True
+    )
+    tracked = [line for line in listing.stdout.splitlines() if line]
+    assert tracked, "추적 파일을 못 읽었다."
+    blocked = []
+    for relative in tracked:
+        scrubbed, _report = scrub_text(relative)
+        try:
+            verify_scrubbed(scrubbed)
+        except RedactionError as exc:
+            blocked.append(f"{relative}: {exc}")
+    assert not blocked, "\n".join(blocked)
+
+
+def test_sendability_check_can_actually_fail() -> None:
+    """양성 대조: scrub→verify 파이프라인이 이 테스트 안에서 실제로 raise 한다.
+
+    verify 가 no-op 으로 망가지면 "모든 파일이 보낼 수 있다" 는 검사는 공짜로
+    통과한다. 같은 파이프라인으로 알려진 잔여를 올려 그것이 막히는 것을 본다.
+    조각을 이어 붙여 이 파일 자체는 보낼 수 있게 만든다.
+    """
+    from packet_ask.redact import RedactionError, scrub_text, verify_scrubbed
+
+    residue = "call 010-1234" + "." + "5678 now"
+    scrubbed, report = scrub_text(residue)
+    assert report.phones == 0
+    with pytest.raises(RedactionError):
+        verify_scrubbed(scrubbed)
+    # 그리고 정형은 scrub 이 지우므로 보내는 쪽이 통과한다.
+    canonical = "call " + "010" + "-" + "1234" + "-" + "5678"
+    scrubbed_canonical, canonical_report = scrub_text(canonical)
+    assert canonical_report.phones == 1
+    verify_scrubbed(scrubbed_canonical)

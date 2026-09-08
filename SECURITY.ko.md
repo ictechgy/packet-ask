@@ -41,7 +41,7 @@ packet-ask는 보내는 범위를 줄이기 위한 도구입니다. **유출 없
 - 임시 packet을 제거한 뒤에만 성공 출력을 내보냅니다. cleanup 실패는 기존 provider 실패 코드를 바꾸지 않습니다.
 - 선택 `--progress`는 고정 launch phase와 음이 아닌 경과 ms만 출력합니다. 기본은 off이며 실제 stderr fd에서는 작은 write 전 0초 writable check를 하고 최종 timing/output 전에 멈춥니다.
 - receipt와 manifest의 redaction metadata는 음이 아닌 정수 count allowlist만 직렬화하며 내부 report 필드는 포함하지 않습니다.
-- JSON 실패는 고정 code/kind/message mapping만 사용하며 raw argv·예외 원문·경로·credential·provider stderr·traceback을 직렬화하지 않습니다.
+- JSON 실패는 고정 code/kind/message mapping만 사용하며 raw argv·예외 원문·경로·credential·provider stderr·traceback을 직렬화하지 않습니다. 사람이 보는 stderr 메시지는 JSON 봉투가 아닙니다. 한 항목이 재검증에서 실패하면 그 항목을 말합니다(`question`, 패킷 상대경로, `changes.patch`) — 직접 고른 경로이고 줄·제어·bidi 문자는 이스케이프되며 아무것도 나가지 않은 상태입니다. 모든 항목이 통과하고 조립된 패킷만 실패하면 그 사실을 말하고 항목은 지목하지 않습니다. 그때 원인은 프레이밍이나 항목이 이어지는 지점에 있기 때문입니다. 줄은 말하지 않습니다 — 검증은 공백을 텍스트 전체에서 지우고 훑으므로 잔여가 여러 줄에 걸칠 수 있고, 줄 번호는 아무것도 없는 위치를 가리킬 수 있습니다.
 
 ## 이 도구가 하지 않는 일
 
