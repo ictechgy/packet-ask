@@ -359,6 +359,65 @@ def test_dotted_korean_phone_redacts_but_version_like_number_passes() -> None:
 
 
 @pytest.mark.parametrize(
+    "prefix",
+    ["v1.", "a.", "ver.", "docs/v2.", "1.", "1.2.", "+82."],
+)
+def test_dot_prefixed_dotted_phone_is_scrubbed(prefix: str) -> None:
+    """점 앞에 무엇이 오든 canonical dotted 국내 mobile은 scrub된다.
+
+    접두를 점에서 자르면 `v1.010.1234.5678` 이 두 단계를 모두 통과했다.
+    scrub 이 못 지우면 verify 만 잡아도 그 패킷은 영영 못 나가므로 양쪽을
+    같이 넓힌다. 숫자에 바로 붙은 경우(`99901012345678`)는 계속 허용한다.
+    """
+    phone = ".".join(("010", "1234", "5678"))
+    source = prefix + phone
+    scrubbed, report = scrub_text(source)
+    assert phone not in scrubbed
+    assert report.phones == 1
+    verify_scrubbed(scrubbed)
+
+
+@pytest.mark.parametrize("prefix", ["v1.", "a.", "1.", "1.2."])
+def test_dot_prefixed_dotted_phone_fails_closed_in_verify(prefix: str) -> None:
+    """scrub 을 건너뛴 원문도 verifier 가 잡는다. scrub 경유 측정이 아니다."""
+    source = prefix + ".".join(("010", "1234", "5678"))
+    with pytest.raises(RedactionError, match="phone"):
+        verify_scrubbed(source)
+
+
+def test_widened_dot_prefix_keeps_longer_dotted_run() -> None:
+    """양성 대조: 접두를 넓혀도 뒷쪽 점이 남은 긴 dotted run 은 보존한다.
+
+    번호 뒤에 점+숫자가 더 있으면 전화번호가 아니라 더 긴 식별자(OID·버전열)의
+    일부로 본다. 이 경계를 같이 넓히면 OID·버전열을 조각내므로 여기서 멈춘다.
+    """
+    trailing_run = ".".join(("v1", "010", "1234", "5678", "9012"))
+    unchanged, report = scrub_text(trailing_run)
+    assert unchanged == trailing_run
+    assert report.phones == 0
+    verify_scrubbed(unchanged)
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["1.010.1234.567", "v1.010.1234.567", "x.0101.234.567", "1.011.2345.678"],
+)
+def test_dot_prefixed_noncanonical_dotted_run_fails_closed(source: str) -> None:
+    """점 접두를 연 대가로 생기는 수용 절충을 고정한다.
+
+    점 접두를 허용하면 verify 후보는 점 위치를 묻지 않으므로 canonical
+    `01X.XXXX.XXXX` 가 아닌 dot-prefixed run 도 잡힌다. scrub 은 정형만
+    지우므로 그 패킷은 못 나간다. mixed separator fail-close 와 같은 계열이고
+    방향이 fail-closed 라 채택했다. 저장소 74개 파일에서 신규 차단은 0건이었다.
+    """
+    scrubbed, report = scrub_text(source)
+    assert scrubbed == source
+    assert report.phones == 0
+    with pytest.raises(RedactionError, match="phone"):
+        verify_scrubbed(scrubbed)
+
+
+@pytest.mark.parametrize(
     "parts",
     [
         ("010-1234", ".", "5678"),
