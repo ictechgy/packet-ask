@@ -66,7 +66,7 @@ How personal Kimi Code or GLM Coding Plan subscriptions handle data is defined b
 | `PACKET_ASK_CACHE_DIR` | Packet cache parent. Absolute only. Creates a dedicated `packet-ask` child |
 | `PACKET_ASK_CLAUDE_BIN` / `PACKET_ASK_KIMI_BIN` / `PACKET_ASK_GIT_BIN` / `PACKET_ASK_GROK_BIN` / `PACKET_ASK_AGY_BIN` | Absolute executable override. `PACKET_ASK_GIT_BIN` selects the `git` used for worktree discovery and diffs. `grok` and `agy` are paste-only, so their overrides change the `doctor` installed line and never a launch |
 | `PACKET_ASK_BIN_DIRS` | Extra allowlist directories (`os.pathsep`, absolute only) |
-| `PACKET_ASK_LEDGER` | Absolute path to an opt-in append-only ledger. Each run appends an `egress` line before the vendor starts and a `result` line after the response settles. Never holds the question, file bodies, the vendor's answer, or vendor stderr |
+| `PACKET_ASK_LEDGER` | Absolute path to an opt-in append-only ledger. A run appends an `egress` line before the vendor starts and a `result` line after the response settles; a killed run leaves only the first. Never holds the question, file bodies, the vendor's answer, or vendor stderr |
 | `PACKET_ASK_EFFORT` | Default reasoning effort for `glm` and `claude`. `--effort` wins; an invalid value is rejected, not ignored |
 | `PACKET_ASK_PROVIDERS_FILE` | Overrides the user provider overlay path. Still paste aliases only |
 | `PACKET_ASK_ALLOWLIST_FILE` | Overrides the secret-name exemption allowlist path. Exempts the name guess only, never a credential-file definition |

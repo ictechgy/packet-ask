@@ -274,7 +274,7 @@ The receipt goes to stderr once and is gone with the scrollback. When a skill
 drives this CLI, the agent picks `--files`, so there is no surface left for a
 human to ask what actually went out.
 
-Set `PACKET_ASK_LEDGER` to an absolute path and every task run appends two JSON
+Set `PACKET_ASK_LEDGER` to an absolute path and a task run appends two JSON
 lines: an `egress` line before the vendor starts and a `result` line once the
 response has settled. The egress line records a run that reached the point of
 egress, not a confirmed delivery — a vendor that fails afterwards still leaves
@@ -287,10 +287,20 @@ mode, provider, digest, `outcome`, `output_bytes`, `output_hint`, and
 `failure_code` when the run failed. `answered` means the vendor returned output
 that passed the output guard — not that the process exits 0, since a cleanup
 warning can still follow. `failed` carries the exit code and nothing from vendor
-stderr. `not-observable` is `paste`: the answer never passes through this tool,
-so the packet it echoes back is not recorded as output. `output_hint` says the
-instruction-like tripwire fired; the phrase itself is never written. Lines
-written by 0.11.0 and earlier have no `phase` and are egress lines.
+stderr. `not-observable` is a provider mode that does not launch — today `paste`,
+which `--dry-run` also forces: the answer never passes through this tool, so the
+packet it echoes back is not recorded as output. `output_bytes` is the sanitized
+response body in bytes, excluding the envelope framing. `output_hint` says the
+instruction-like tripwire fired; the phrase itself is never written.
+
+Read a line without `phase` as an egress line (0.11.0 and earlier wrote none) and
+skip a phase you do not know: a result line carries no `selector` and no `paths`.
+Pair by digest and timestamp order. Two concurrent runs of the same packet can
+interleave, and then the file alone does not say which result belongs to which
+egress. An egress line with no result line means the run never reached a settled
+response — it was killed, it died outside the handled error paths, or the result
+append failed. The last case also prints a fixed warning on stderr, which is the
+only thing that distinguishes it from the first two.
 
 The question, the file bodies, the vendor's answer, and vendor stderr are never
 written to either line.
