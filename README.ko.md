@@ -51,7 +51,7 @@ uv run packet-ask doctor
 
 ## 범위
 
-task 명령은 `review` 와 `research` 둘뿐입니다. `review` 는 아래 중 **하나를 명시**해야 합니다. 플래그 없이 워킹 트리 전체를 보내지 않습니다.
+task 명령은 `review` 와 `research` 둘뿐입니다. `review` 는 스코프가 필요합니다: `--files`, 또는 diff 스코프 하나(`--diff`, `--staged`, `--unstaged`), 또는 `--files` 와 diff 스코프 하나를 함께. diff 스코프끼리는 함께 쓸 수 없습니다. 플래그 없이 워킹 트리 전체를 보내지 않으며, 명시하지 않은 것은 실리지 않습니다.
 
 | 플래그 | 보내는 것 |
 | --- | --- |
@@ -59,6 +59,12 @@ task 명령은 `review` 와 `research` 둘뿐입니다. `review` 는 아래 중 
 | `--diff` | 지정한 git 범위 |
 | `--staged` | 스테이징된 diff |
 | `--unstaged` | 워킹 트리 미커밋 diff |
+| `--files` + diff 스코프 하나 | 둘 다, 각각 별도 항목으로. 영수증과 대장에 `selector=files+diff`(또는 `files+staged`, `files+unstaged`)로 남습니다 |
+
+결합은 변경을 프로젝트 규약과 대조해 리뷰할 때 쓰입니다. 예: `--diff
+origin/main...HEAD --files AGENTS.md`. 수집 단계의 `--max-bytes`·`--max-files`
+예산은 항목군마다 따로 돌므로, 실제 상한은 최종 렌더링된 `packet.md` 입니다.
+그것이 `--max-bytes` 를 넘으면 실행이 거절됩니다.
 
 `research` 는 로컬 파일·diff를 기본으로 넣지 않습니다. 예외는 `--include-files` 뿐입니다. `--diff` / `--staged` 는 거절합니다.
 

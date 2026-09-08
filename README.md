@@ -51,7 +51,7 @@ uv run packet-ask doctor
 
 ## Scope
 
-`review` and `research` are the only task commands. `review` requires **one** of the flags below. It does not send the whole working tree by default.
+`review` and `research` are the only task commands. `review` requires a scope: `--files`, or one diff scope (`--diff`, `--staged`, `--unstaged`), or `--files` together with one diff scope. The two diff scopes are mutually exclusive. It does not send the whole working tree by default, and nothing is attached unless you name it.
 
 | Flag | What is sent |
 | --- | --- |
@@ -59,6 +59,12 @@ uv run packet-ask doctor
 | `--diff` | the given git range |
 | `--staged` | staged diff |
 | `--unstaged` | uncommitted working-tree diff |
+| `--files` + one diff scope | both, as separate packet items. The receipt and ledger report `selector=files+diff` (or `files+staged`, `files+unstaged`) |
+
+Combining is useful for reviewing a change against project conventions, for
+example `--diff origin/main...HEAD --files AGENTS.md`. Each collector still has
+its own `--max-bytes` and `--max-files` budget, so the real bound is the final
+rendered `packet.md`: if it exceeds `--max-bytes`, the run is rejected.
 
 `research` does not attach local files or diffs by default. The only exception is `--include-files`. `--diff` and `--staged` are rejected.
 
