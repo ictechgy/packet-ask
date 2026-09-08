@@ -503,7 +503,8 @@ def test_built_packet_reuses_cached_payload(
 
 # scrub 이 못 지우고 verify 만 잡는 혼합 구분자 형태. 이 패킷은 영구 실패라서
 # 어디를 고쳐야 하는지가 유일한 탈출구다. 아래 테스트들의 공통 재료다.
-_RESIDUE = "call 010-1234.5678 now"
+# 조각을 이어 붙인다. 통째로 적으면 이 파일 자체가 패킷으로 못 나간다.
+_RESIDUE = "call 010-1234" + "." + "5678 now"
 
 
 def test_redaction_failure_names_the_offending_file(tmp_path: Path) -> None:
@@ -566,7 +567,7 @@ def test_assembly_failure_points_away_from_item_contents(tmp_path: Path) -> None
     못 찾는다. 항목별 검증은 이미 끝났으므로 조립 실패의 원인은 항목 본문
     밖에 있다는 것이 구조적으로 참이고, 그것을 말한다.
     """
-    files = [ScopedFile(relative="010-1234.5678.py", content="print(1)\n")]
+    files = [ScopedFile(relative="010.1234.5678.py", content="print(1)\n")]
     with pytest.raises(RedactionFailed) as excinfo:
         build_packet(
             mode="review", question="review", files=files, diff_text=None, parent=tmp_path

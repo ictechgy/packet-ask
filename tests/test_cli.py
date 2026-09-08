@@ -1429,7 +1429,9 @@ def test_redaction_failure_localizes_on_stderr_but_not_in_json(
     import json as _json
 
     repo = _init_repo(tmp_path)
-    (repo / "src" / "bad.py").write_text("log('call 010-1234.5678 now')\n", encoding="utf-8")
+    # 조각을 이어 붙인다. 통째로 적으면 이 파일 자체가 패킷으로 못 나간다.
+    residue = "call 010-1234" + "." + "5678 now"
+    (repo / "src" / "bad.py").write_text(f"log('{residue}')\n", encoding="utf-8")
     monkeypatch.chdir(repo)
     argv = ["review", "--provider", "paste", "--files", "src/bad.py", "--question", "review"]
 

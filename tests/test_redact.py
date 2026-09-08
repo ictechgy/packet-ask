@@ -414,7 +414,14 @@ def test_digit_adjacent_dotted_run_stays_allowed(source: str) -> None:
 
 @pytest.mark.parametrize(
     "source",
-    ["1.010.1234.567", "v1.010.1234.567", "x.0101.234.567", "1.011.2345.678"],
+    [
+        # 조각을 이어 붙인다. 통째로 적으면 이 파일 자체가 패킷으로 못 나간다 —
+        # 이 형태들이 바로 scrub 이 못 지우고 verify 만 잡는 영구 실패 클래스다.
+        ".".join(("1", "010", "1234", "567")),
+        ".".join(("v1", "010", "1234", "567")),
+        ".".join(("x", "0101", "234", "567")),
+        ".".join(("1", "011", "2345", "678")),
+    ],
 )
 def test_dot_prefixed_noncanonical_dotted_run_fails_closed(source: str) -> None:
     """점 접두를 연 대가로 생기는 수용 절충을 고정한다.

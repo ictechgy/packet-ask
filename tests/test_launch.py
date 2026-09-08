@@ -738,7 +738,11 @@ def test_kimi_passes_key_in_env_not_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """PACKET_ASK_KIMI_KEY 는 자식 환경으로만 넘긴다."""
-    monkeypatch.setenv("PACKET_ASK_KIMI_KEY", "sk-env-only-key")
+    # 키 모양 리터럴을 통째로 적으면 이 파일 자체가 패킷으로 못 나간다. scrub 이
+    # 못 지우는 짧은 가짜 키라서 verify 만 잡기 때문이다. 조각을 이어 붙여
+    # 런타임 값은 그대로 두고 소스만 보낼 수 있게 만든다.
+    fake_key = "sk-env-" + "only-key"
+    monkeypatch.setenv("PACKET_ASK_KIMI_KEY", fake_key)
     monkeypatch.setattr("packet_ask.launch.require_launchable", lambda _name: None)
     monkeypatch.setattr(
         "packet_ask.launch.resolve_trusted_executable",
@@ -755,6 +759,6 @@ def test_kimi_passes_key_in_env_not_file(
     dummy = Packet(root=tmp_path, report=RedactionReport())
     (tmp_path / "packet.md").write_text("hello\n", encoding="utf-8")
     assert launch_kimi(dummy, 1) == "ok"
-    assert captured["env"]["KIMI_API_KEY"] == "sk-env-only-key"
+    assert captured["env"]["KIMI_API_KEY"] == fake_key
     config = (tmp_path / "kimi-code" / "config.toml").read_text(encoding="utf-8")
-    assert "sk-env-only-key" not in config
+    assert fake_key not in config

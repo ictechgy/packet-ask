@@ -368,7 +368,7 @@ def build_packet(
             # 그러므로 원인은 항목 본문 밖에 있다 — 헤더에 실리는 파일명 같은
             # 프레이밍이거나 항목이 이어지면서 생긴 결합이다. 같은 문장으로
             # 보고하면 사용자는 본문을 뒤지고 아무것도 못 찾는다. 실측 사례:
-            # 본문이 `print(1)` 인 파일이 파일명 `010-1234.5678.py` 때문에
+            # 본문이 `print(1)` 인 파일이 파일명 `010.1234.5678.py` 때문에
             # exit 12 로 막힌다.
             raise RedactionFailed(
                 message("redaction_leftovers_assembled", kinds=", ".join(exc.kinds))
