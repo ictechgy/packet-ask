@@ -36,8 +36,26 @@ GUARANTEES: Mapping[str, str] = MappingProxyType(
 )
 # "leak:no" 는 "유출 없음"으로 정반대로 읽힌다. 오독 방지가 유일한 목적인 줄이므로
 # JSON 과 같은 어휘를 그대로 써서 반전 해석이 불가능하게 한다.
-_RECEIPT_LINE_GUARANTEES = (
-    "leakage:not-guaranteed,cwd_sandbox:none,redaction:denylist"
+#
+# 줄에 싣는 키는 이 튜플이 선언한다. 기준은 **보장으로 오독되기 쉬운 한계**다.
+# SECURITY 의 "does not do" 가 길게 설명하는 것일수록 여기서 빠져 있으면 성공
+# 신호가 더 크게 읽힌다. `vendor_local_copy` 가 실제로 빠져 있었다 — 그 절이
+# 259자로 한계 키 중 가장 긴데도 줄에는 없었다.
+# 기전 서술 키(doctor/policy_gate/output_screen)는 싣지 않는다. 그 키들은
+# "무엇을 안 했는가"가 아니라 "무슨 기전이 있는가"를 말하고, 각각 동작
+# 테스트에 묶여 있다. 테스트가 이 구분을 이름으로 고정하므로 키를 추가하는
+# 사람은 둘 중 어디에 넣을지 고르지 않으면 깨진다.
+_RECEIPT_LINE_KEYS = (
+    "leakage",
+    "vendor_training",
+    "vendor_local_copy",
+    "cwd_sandbox",
+    "redaction",
+)
+# 값을 여기에 다시 적지 않는다. 상수를 조립하므로 GUARANTEES 값이 바뀌면
+# 줄도 같이 바뀐다. 직접 적은 문자열은 옛 값을 말한 채 남는다.
+_RECEIPT_LINE_GUARANTEES = ",".join(
+    f"{key}:{GUARANTEES[key]}" for key in _RECEIPT_LINE_KEYS
 )
 
 _ERRORS = {
