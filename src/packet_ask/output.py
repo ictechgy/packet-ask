@@ -123,7 +123,14 @@ def wrap_untrusted_with_state(text: str) -> tuple[str, int, bool]:
     nonce = secrets.token_hex(8)
     begin = f"-----BEGIN UNTRUSTED PROVIDER OUTPUT {nonce}-----"
     end = f"-----END UNTRUSTED PROVIDER OUTPUT {nonce}-----"
-    return f"{header}\n{begin}\n{body.rstrip()}\n{end}\n", len(body.encode("utf-8")), hint_hit
+    # 크기는 실제로 봉투에 들어가는 본문을 잰다. rstrip 전을 재면 대장의
+    # output_bytes 가 사용자가 보는 본문보다 커져서 정의가 갈라진다.
+    payload = body.rstrip()
+    return (
+        f"{header}\n{begin}\n{payload}\n{end}\n",
+        len(payload.encode("utf-8")),
+        hint_hit,
+    )
 
 
 def _untrusted_body(text: str) -> tuple[str, bool]:

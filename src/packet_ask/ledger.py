@@ -30,6 +30,9 @@ _MAX_ANCESTOR_WALK = 64
 # 대장에는 두 종류의 줄이 있다. `egress` 는 "무엇이 나갔나", `result` 는
 # "무엇이 돌아왔나" 다. 섞이면 두 질문 다 흐려지므로 줄마다 밝힌다. 0.11.0
 # 이전 줄에는 `phase` 가 없고 전부 egress 다 — 읽는 쪽은 그것을 유지한다.
+# 읽는 쪽 규칙은 둘이다: `phase` 가 없으면 egress 로 읽고, **모르는 phase 는
+# 건너뛴다.** result 줄에는 `selector`·`paths` 가 없으므로 모든 줄을 egress 로
+# 해석하면 KeyError 가 난다.
 PHASE_EGRESS = "egress"
 PHASE_RESULT = "result"
 

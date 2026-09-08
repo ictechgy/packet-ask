@@ -1012,6 +1012,11 @@ def _record_ledger_result(
     역할을 한다.
 
     대장이 꺼져 있으면 아무것도 하지 않는다. 경고도 내지 않는다.
+
+    `build_ledger_result` 는 일부러 try 밖에 있다. 그것이 던지는 ValueError 는
+    I/O 실패가 아니라 호출자가 어긋난 조합을 만든 프로그래밍 오류다. 경고로
+    삼키면 I/O 실패와 구별되지 않아 버그가 조용해진다. 답을 잃는 대가가 크지만
+    그 조합은 유닛 테스트와 흐름 테스트가 둘 다 잡고 있어서 도달할 수 없다.
     """
     if ledger_path() is None:
         return
