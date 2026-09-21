@@ -19,10 +19,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --frozen --group dev
+      - name: 테스트 무결성 비교 기준 고정
+        env:
+          EXITZERO_CI_PR_BASE: ${{ github.event.pull_request.base.sha }}
+          EXITZERO_CI_PUSH_BEFORE: ${{ github.event.before }}
+        run: uv run --offline --frozen python .github/scripts/integrity_base.py
       - name: ExitZero로 기존 pytest 실행
         run: uvx --from exitzero==0.6.1 exitzero check --format json
       - run: uv build
@@ -44,4 +50,13 @@ jobs:
           path: .exitzero/pytest.xml
           include-hidden-files: true
           if-no-files-found: warn
+          retention-days: 14
+      - name: 테스트 무결성 기준 증거 보존
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-integrity-base-${{ matrix.python-version }}
+          path: .exitzero/test-integrity-base.json
+          include-hidden-files: true
+          if-no-files-found: error
           retention-days: 14
