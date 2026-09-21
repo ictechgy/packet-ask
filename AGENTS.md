@@ -124,8 +124,13 @@ uv run --isolated --no-project --with "dist/packet_ask-${release_version}.tar.gz
   로컬 `.exitzero/`는 커밋하거나 SUB 패킷에 넣지 않는다.
 - 아래 생성 구역은 직접 고치지 않는다. `exitzero.toml`을 바꾼 뒤 같은 버전의
   `exitzero init --sync`로 갱신하고 `exitzero lint-config --format json`을 확인한다.
-- 현재 범위는 테스트 실행과 영수증 보존이다. 테스트 무결성·권한 구역·클라이언트
-  훅과 GitHub 필수 상태 검사 설정은 별도 단계이며 이 게이트가 강제한다고 보지 않는다.
+- GitHub `main`은 PR로 반영하며 `test (3.11)`·`test (3.13)`을 필수 검사로 둔다.
+  검사 제공자는 GitHub Actions이고 최신 `main` 기준 검사가 필요하다. 관리자도
+  같은 규칙을 적용받으며 force push·브랜치 삭제는 허용하지 않는다.
+- GitHub 승인 인원은 0명으로 두지만 위 독립 리뷰 규약은 그대로 따른다.
+  검사 이름이나 워크플로를 바꿀 때는 GitHub 보호 설정과의 일치도 확인한다.
+- 필수 검사 설정은 GitHub 서버에 있으며 이 파일만으로 적용되지 않는다.
+  테스트 무결성·권한 구역·클라이언트 훅은 별도 단계다.
 
 ## 범위 규율
 
