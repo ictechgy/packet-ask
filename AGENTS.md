@@ -113,8 +113,10 @@ uv run --isolated --no-project --with "dist/packet_ask-${release_version}.tar.gz
 ## ExitZero CI 게이트
 
 - CI의 Python 3.11·3.13 테스트 단계는 ExitZero 0.6.1로 기존 pytest를 실행한다.
-  로컬에서도 `uv sync --frozen --group dev` 후
+  로컬에서는 `uv sync --frozen --group dev` 후
+  `uv run --offline --frozen python .github/scripts/integrity_base.py`로 기준을 준비하고
   `uvx --from exitzero==0.6.1 exitzero check --format json`을 쓸 수 있다.
+  기준 준비가 실패하면 게이트를 실행하지 않는다.
 - 정책 명령은 `uv run --offline --frozen pytest`에 JUnit 보고서 저장만 추가한다.
   테스트를 생략하거나 종료 코드를 무시하지 않는다. 기존 build·smoke는 별도 단계다.
 - `.exitzero/runs/*.json`과 pytest가 생성한 `.exitzero/pytest.xml`을 각각
@@ -130,7 +132,23 @@ uv run --isolated --no-project --with "dist/packet_ask-${release_version}.tar.gz
 - GitHub 승인 인원은 0명으로 두지만 위 독립 리뷰 규약은 그대로 따른다.
   검사 이름이나 워크플로를 바꿀 때는 GitHub 보호 설정과의 일치도 확인한다.
 - 필수 검사 설정은 GitHub 서버에 있으며 이 파일만으로 적용되지 않는다.
-  테스트 무결성·권한 구역·클라이언트 훅은 별도 단계다.
+  권한 구역·클라이언트 훅은 별도 단계다.
+
+## 테스트 무결성
+
+- `tests/**/*.py`를 Git 기준과 비교해 기존 파일/테스트 함수 삭제, 파일별 단언 수
+  감소, 기존 파일에 추가된 skip/xfail을 차단한다. 결과를 재사용하지 않는다.
+- CI는 전체 Git 이력을 받고 PR의 base SHA, main push의 before SHA, 작업 브랜치
+  push의 `origin/main` 공통 조상을 전용 `refs/exitzero/test-integrity-base`에 고정한다.
+  이미 커밋된 삭제도 비교하도록 현재 HEAD를 자동 기준으로 삼지 않는다.
+- 로컬 기본 기준도 `origin/main`과의 공통 조상이다. 의도적으로 다른 기준을
+  확인할 때는 준비 스크립트의 `--base REF`를 쓴다. 누락되거나 해석할 수 없는
+  CI 기준은 기존 pin과 증거를 무효화하고 exit 2로 종료한다.
+- `.exitzero/test-integrity-base.json`의 기준/후보 SHA와 선택 방식을 CI에서
+  14일 보존한다. 이 파일은 서명된 권한 증명이 아니며 Git ref 자체는 수정 가능하다.
+- 정당한 테스트 삭제·이름 변경·skip 추가도 차단될 수 있으므로 별도 리뷰로 판단한다.
+  정적 개수·이름·일부 표기 비교이며, 새 파일의 skip이나 같은 개수의 약한 단언,
+  동적 별칭과 의미적 검증 품질을 증명하지 않는다. 정책/워크플로 자체 보호는 후속이다.
 
 ## 범위 규율
 
@@ -163,8 +181,9 @@ Run `exitzero check` before merge; keep the JSON receipt as evidence.
 Run `exitzero lint-config` after changing agent configuration.
 
 Required checks:
-- `regression-suite`: `command` (src/**/*.py, src/packet_ask/data/**, tests/**/*.py, pyproject.toml, uv.lock, .python-version, .gitignore, .packet-ask-surface, .github/**/*.yml, AGENTS.md, CLAUDE.md, CONTRIBUTING.md, README.md, README.ko.md, SECURITY.md, SECURITY.ko.md, docs/**/*.md, skills/**, src/**/AGENTS.md, tests/AGENTS.md, .github/AGENTS.md, LICENSE, env.example)
+- `test-integrity`: `python.test-integrity` (tests/**/*.py)
+- `regression-suite`: `command` (src/**/*.py, src/packet_ask/data/**, tests/**/*.py, pyproject.toml, uv.lock, .python-version, .gitignore, .packet-ask-surface, .github/**/*.yml, .github/scripts/*.py, AGENTS.md, CLAUDE.md, CONTRIBUTING.md, README.md, README.ko.md, SECURITY.md, SECURITY.ko.md, docs/**/*.md, skills/**, src/**/AGENTS.md, tests/AGENTS.md, .github/AGENTS.md, LICENSE, env.example)
 - Rule `ci-receipts`: CI 게이트의 종료 코드와 저장된 영수증을 확인한다. pytest가 생성한 JUnit 보고서로 테스트 실패를 확인한다.
 
-Policy SHA-256: `113a616fd82b352418ad6a690570d2c95c517e00153b1c33e1b1be3594022626`
+Policy SHA-256: `44aaf765a9da4f3e51ae73b5959490fd09e3fe1ca4db152ad082088c88c0e124`
 <!-- exitzero:end -->
