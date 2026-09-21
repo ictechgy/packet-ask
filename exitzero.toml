@@ -1,0 +1,42 @@
+version = 1
+plugins = ["exitzero_verify", "exitzero_harness"]
+
+[[checks]]
+id = "regression-suite"
+kind = "command"
+reuse = false
+paths = [
+    "src/**/*.py",
+    "src/packet_ask/data/**",
+    "tests/**/*.py",
+    "pyproject.toml",
+    "uv.lock",
+    ".python-version",
+    ".gitignore",
+    ".packet-ask-surface",
+    ".github/**/*.yml",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "CONTRIBUTING.md",
+    "README.md",
+    "README.ko.md",
+    "SECURITY.md",
+    "SECURITY.ko.md",
+    "docs/**/*.md",
+    "skills/**",
+    "src/**/AGENTS.md",
+    "tests/AGENTS.md",
+    ".github/AGENTS.md",
+    "LICENSE",
+    "env.example",
+]
+
+[checks.options]
+argv = ["uv", "run", "--offline", "--frozen", "pytest", "--junitxml=.exitzero/pytest.xml"]
+timeout = 300
+
+[harness]
+config_files = []
+rules = [
+    {id = "ci-receipts", value = "CI 게이트의 종료 코드와 저장된 영수증을 확인한다. pytest가 생성한 JUnit 보고서로 테스트 실패를 확인한다."},
+]
