@@ -2,6 +2,17 @@ version = 1
 plugins = ["exitzero_verify", "exitzero_harness"]
 
 [[checks]]
+id = "test-integrity"
+kind = "python.test-integrity"
+reuse = false
+paths = ["tests/**/*.py"]
+[checks.options]
+base = "refs/exitzero/test-integrity-base"
+allow_deletions = false
+allow_skip_markers = false
+max_removed_assertions = 0
+
+[[checks]]
 id = "regression-suite"
 kind = "command"
 reuse = false
@@ -15,6 +26,7 @@ paths = [
     ".gitignore",
     ".packet-ask-surface",
     ".github/**/*.yml",
+    ".github/scripts/*.py",
     "AGENTS.md",
     "CLAUDE.md",
     "CONTRIBUTING.md",
