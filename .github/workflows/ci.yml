@@ -23,6 +23,25 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --frozen --group dev
-      - run: uv run pytest
+      - name: ExitZero로 기존 pytest 실행
+        run: uvx --from exitzero==0.6.1 exitzero check --format json
       - run: uv build
       - run: uv run --isolated --no-project --with dist/*.whl tests/smoke.py
+      - name: 성공·실패 게이트 영수증 보존
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: exitzero-receipts-${{ matrix.python-version }}
+          path: .exitzero/runs/*.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+      - name: pytest가 생성한 보고서 보존
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pytest-report-${{ matrix.python-version }}
+          path: .exitzero/pytest.xml
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14

@@ -110,6 +110,23 @@ uv run --isolated --no-project --with "dist/packet_ask-${release_version}.tar.gz
 "통과할 것이다"가 아니라 **실행한 출력**으로 완료를 보고한다. 실패했으면
 실패했다고 말한다.
 
+## ExitZero CI 게이트
+
+- CI의 Python 3.11·3.13 테스트 단계는 ExitZero 0.6.1로 기존 pytest를 실행한다.
+  로컬에서도 `uv sync --frozen --group dev` 후
+  `uvx --from exitzero==0.6.1 exitzero check --format json`을 쓸 수 있다.
+- 정책 명령은 `uv run --offline --frozen pytest`에 JUnit 보고서 저장만 추가한다.
+  테스트를 생략하거나 종료 코드를 무시하지 않는다. 기존 build·smoke는 별도 단계다.
+- `.exitzero/runs/*.json`과 pytest가 생성한 `.exitzero/pytest.xml`을 각각
+  `if: always()`로 업로드해 14일 보존한다. 영수증이 없으면 업로드도 실패한다.
+  정책 로딩·명령 시작 실패나 시간초과에는 JUnit이 없을 수 있으며 그 경우 CI에
+  경고를 남긴다. 실패 판정은 게이트 종료 코드와 영수증을 기준으로 한다.
+  로컬 `.exitzero/`는 커밋하거나 SUB 패킷에 넣지 않는다.
+- 아래 생성 구역은 직접 고치지 않는다. `exitzero.toml`을 바꾼 뒤 같은 버전의
+  `exitzero init --sync`로 갱신하고 `exitzero lint-config --format json`을 확인한다.
+- 현재 범위는 테스트 실행과 영수증 보존이다. 테스트 무결성·권한 구역·클라이언트
+  훅과 GitHub 필수 상태 검사 설정은 별도 단계이며 이 게이트가 강제한다고 보지 않는다.
+
 ## 범위 규율
 
 - 한 배치를 합의 없이 넓히지 않는다. 요청받지 않은 리팩터링을 끼워 넣지 않는다.
@@ -132,3 +149,17 @@ uv run --isolated --no-project --with "dist/packet_ask-${release_version}.tar.gz
   근거를 쓰기 전에 측정하기, 영/한 parity 와 그 한계.
 - [.github/AGENTS.md](.github/AGENTS.md) — CI 핀, 릴리스,
   Trusted Publishing, 배포 뒤 실측.
+
+<!-- exitzero:begin -->
+## exitzero policy
+
+Generated from policy. Edit the TOML, then run `exitzero init --sync`.
+Run `exitzero check` before merge; keep the JSON receipt as evidence.
+Run `exitzero lint-config` after changing agent configuration.
+
+Required checks:
+- `regression-suite`: `command` (src/**/*.py, src/packet_ask/data/**, tests/**/*.py, pyproject.toml, uv.lock, .python-version, .gitignore, .packet-ask-surface, .github/**/*.yml, AGENTS.md, CLAUDE.md, CONTRIBUTING.md, README.md, README.ko.md, SECURITY.md, SECURITY.ko.md, docs/**/*.md, skills/**, src/**/AGENTS.md, tests/AGENTS.md, .github/AGENTS.md, LICENSE, env.example)
+- Rule `ci-receipts`: CI 게이트의 종료 코드와 저장된 영수증을 확인한다. pytest가 생성한 JUnit 보고서로 테스트 실패를 확인한다.
+
+Policy SHA-256: `113a616fd82b352418ad6a690570d2c95c517e00153b1c33e1b1be3594022626`
+<!-- exitzero:end -->

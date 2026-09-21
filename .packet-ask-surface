@@ -26,6 +26,7 @@ SECURITY.md
 SECURITY.ko.md
 env.example
 pyproject.toml
+exitzero.toml
 uv.lock
 .github
 docs
