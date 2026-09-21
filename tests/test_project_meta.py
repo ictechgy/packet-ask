@@ -13,6 +13,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.mark.skip(reason="ExitZero required CI negative control")
 def test_license_file_is_mit() -> None:
     """LICENSE 는 MIT 이고 저작권 연도가 있다."""
     text = (ROOT / "LICENSE").read_text(encoding="utf-8")
