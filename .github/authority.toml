@@ -33,3 +33,5 @@ immutable = [
 ]
 
 # 권한 검사 대조: immutable-spoof
+
+# 권한 검사 대조: immutable-new-policy
