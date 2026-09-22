@@ -10,6 +10,7 @@ def test_authority_workflow_uses_only_main_code_and_readonly_actions_token():
     triggers = workflow.split("on:\n", 1)[1].split("\npermissions:", 1)[0]
     assert set(re.findall(r"^  (\w+):$", triggers, re.MULTILINE)) == {"workflow_run", "workflow_dispatch"}
     assert "workflows: [CI]" in triggers and "types: [completed]" in triggers
+    assert "      merge_tree:" in triggers and "      merge:" not in triggers
     assert "github.ref == 'refs/heads/main'" in workflow
     steps = re.split(r"^      - ", workflow, flags=re.MULTILINE)[1:]
     checkouts = [step for step in steps if "uses: actions/checkout@" in step]
@@ -30,7 +31,7 @@ def test_authority_workflow_opens_scoped_app_only_after_analysis():
     authority = workflow.split("\n  authority:\n", 1)[1]
     assert "needs: context" in authority and "if: needs.context.outputs.eligible == 'true'" in authority
     assert "environment: exitzero-authority" in authority
-    assert "group: permission-authority-${{ needs.context.outputs.pr }}" in authority
+    assert "group: permission-authority-${{ needs.context.outputs.head }}" in authority
     assert "cancel-in-progress: false" in authority
     assert authority.index("authority_app.py analyze") < authority.index("uses: actions/create-github-app-token@")
     assert authority.index("uses: actions/create-github-app-token@") < authority.index("authority_app.py publish")
