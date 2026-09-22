@@ -1,0 +1,33 @@
+version = 1
+plugins = ["exitzero_verify"]
+
+# 이 정책은 권한 비교와 정적 구문 검사만 한다. 후보 코드·테스트를 실행하지 않는다.
+[[checks]]
+id = "authority-syntax"
+kind = "python.syntax"
+paths = ["src/**/*.py"]
+
+[permissions]
+editable = ["src/**/*.py", "docs/**/*.md", "README.md", "README.ko.md"]
+protected = [
+    "tests/**",
+    "pyproject.toml",
+    "uv.lock",
+    ".python-version",
+    "env.example",
+    "SECURITY.md",
+    "SECURITY.ko.md",
+    "LICENSE",
+    "CONTRIBUTING.md",
+]
+immutable = [
+    ".github/**",
+    "exitzero.toml",
+    "AGENTS.md",
+    "**/AGENTS.md",
+    "CLAUDE.md",
+    ".gitignore",
+    ".packet-ask-surface",
+    "src/packet_ask/data/SKILL.md",
+    "skills/**",
+]

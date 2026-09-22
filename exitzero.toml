@@ -26,6 +26,7 @@ paths = [
     ".gitignore",
     ".packet-ask-surface",
     ".github/**/*.yml",
+    ".github/**/*.toml",
     ".github/scripts/*.py",
     "AGENTS.md",
     "CLAUDE.md",
