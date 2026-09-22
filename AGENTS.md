@@ -169,6 +169,9 @@ uv run --isolated --no-project --with "dist/packet_ask-${release_version}.tar.gz
   tree·변경 경로와 독립 리뷰를 별도 기록한 뒤 운영자가 신뢰 기준을 명시적으로 갱신한다.
 - 이 로컬 기능을 CI 자체의 변경 우회를 막는 서버 장벽으로 표현하지 않는다.
   기존 GitHub Actions와 구분되는 검사 발급 주체가 준비되기 전에는 필수 검사로 추가하지 않는다.
+- 전용 App 워크플로의 설치·정확한 커밋 승인·검증 순서는
+  [저장소 권한 검사 운영](docs/permission-authority.md)을 따른다. 설치 여부는
+  HANDOFF와 실제 GitHub 설정/검사 발급 주체로 확인하며 코드 존재로 추정하지 않는다.
 
 ## 범위 규율
 
