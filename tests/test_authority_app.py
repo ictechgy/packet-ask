@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import json
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -203,3 +205,22 @@ def test_editable_change_passes_without_approval(app):
     result["inspection"]["normal"] = {"exit_code": 0, "permissions": {"status": "passed"}}
     assert app.publish(result, api, api, 123) == "success"
     assert len(api.checks) == 1 and api.checks[0]["name"] == app.guard.CHECK_NAME
+
+
+def test_cli_transport_preserves_the_required_pr_merge_sha_contract(app, monkeypatch):
+    api = Api()
+
+    def transport(command, **kwargs):
+        method = command[command.index("--method") + 1]
+        path = command[command.index("--method") + 2]
+        result = api(method, path)
+        # 실제 2026-03-10 응답은 이 필드를 제거한다. 현재 지원 버전의 응답 계약을 사용한다.
+        if path.endswith("/pulls/1") and "X-GitHub-Api-Version: 2022-11-28" not in command:
+            result.pop("merge_commit_sha")
+        assert "synthetic-token" not in command
+        assert kwargs["env"]["GH_TOKEN"] == "synthetic-token"
+        return subprocess.CompletedProcess(command, 0, json.dumps(result), "")
+
+    monkeypatch.setattr(app.subprocess, "run", transport)
+    ctx = context(app, app.github_api("synthetic-token"))
+    assert ctx["base"] == BASE and ctx["head"] == HEAD and ctx["merge"] == MERGE
