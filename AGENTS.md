@@ -126,14 +126,15 @@ uv run --isolated --no-project --with "dist/packet_ask-${release_version}.tar.gz
   로컬 `.exitzero/`는 커밋하거나 SUB 패킷에 넣지 않는다.
 - 아래 생성 구역은 직접 고치지 않는다. `exitzero.toml`을 바꾼 뒤 같은 버전의
   `exitzero init --sync`로 갱신하고 `exitzero lint-config --format json`을 확인한다.
-- GitHub `main`은 PR로 반영하며 `test (3.11)`·`test (3.13)`을 필수 검사로 둔다.
-  검사 제공자는 GitHub Actions이고 최신 `main` 기준 검사가 필요하다. 관리자도
+- GitHub `main`은 PR로 반영하며 GitHub Actions의 `test (3.11)`·`test (3.13)`과
+  전용 App5032689의 `permission-authority`를 필수 검사로 둔다.
+  최신 `main` 기준 검사가 필요하다. 관리자도
   같은 규칙을 적용받으며 force push·브랜치 삭제는 허용하지 않는다.
 - GitHub 승인 인원은 0명으로 두지만 위 독립 리뷰 규약은 그대로 따른다.
   검사 이름이나 워크플로를 바꿀 때는 GitHub 보호 설정과의 일치도 확인한다.
 - 필수 검사 설정은 GitHub 서버에 있으며 이 파일만으로 적용되지 않는다.
-  아래 로컬 권한 검사는 아직 GitHub 필수 검사로 연결되지 않았다.
-  별도 발급 주체의 서버 권한 검사와 클라이언트 훅은 별도 단계다.
+  `permission-authority`의 발급 주체는 ExitZero Packet Ask ictechgy App이다.
+  같은 이름의 GitHub Actions 검사는 이를 대신할 수 없다. 클라이언트 훅은 별도 단계다.
 
 ## 테스트 무결성
 
@@ -149,7 +150,7 @@ uv run --isolated --no-project --with "dist/packet_ask-${release_version}.tar.gz
   14일 보존한다. 이 파일은 서명된 권한 증명이 아니며 Git ref 자체는 수정 가능하다.
 - 정당한 테스트 삭제·이름 변경·skip 추가도 차단될 수 있으므로 별도 리뷰로 판단한다.
   정적 개수·이름·일부 표기 비교이며, 새 파일의 skip이나 같은 개수의 약한 단언,
-  동적 별칭과 의미적 검증 품질을 증명하지 않는다. 정책/워크플로 자체 보호는 후속이다.
+  동적 별칭과 의미적 검증 품질을 증명하지 않는다. 정책/워크플로 변경은 별도 App 권한 검사에서 다룬다.
 
 ## 로컬 권한 구역
 
@@ -167,8 +168,10 @@ uv run --isolated --no-project --with "dist/packet_ask-${release_version}.tar.gz
 - protected 변경은 review_required, immutable 변경은 denied로 실패한다.
   로컬 승인 파일이나 모델 설명으로 해제하지 않는다. 정당한 변경은 정확한 커밋·
   tree·변경 경로와 독립 리뷰를 별도 기록한 뒤 운영자가 신뢰 기준을 명시적으로 갱신한다.
-- 이 로컬 기능을 CI 자체의 변경 우회를 막는 서버 장벽으로 표현하지 않는다.
-  기존 GitHub Actions와 구분되는 검사 발급 주체가 준비되기 전에는 필수 검사로 추가하지 않는다.
+- 로컬 검사와 서버 강제를 구분한다. 서버의 main 검사기는 후보를 데이터로만 읽고
+  전용 App으로 검사 결과를 발급한다. protected 변경은 소유자의 새 protected 승인,
+  immutable·미분류 변경은 governance 승인을 정확한 커밋·정책에 결속한다.
+  새 커밋에는 재승인이 필요하며 기존 실행의 Re-run은 승인으로 허용하지 않는다.
 - 전용 App 워크플로의 설치·정확한 커밋 승인·검증 순서는
   [저장소 권한 검사 운영](docs/permission-authority.md)을 따른다. 설치 여부는
   HANDOFF와 실제 GitHub 설정/검사 발급 주체로 확인하며 코드 존재로 추정하지 않는다.

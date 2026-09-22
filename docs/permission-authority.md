@@ -5,6 +5,17 @@
 런타임 기능은 아니다. 서버 강제는 아래 설치·검증·보호 설정까지 완료해야 성립한다.
 설치 현황과 실제 실행 증거는 로컬 HANDOFF에 남긴다.
 
+## packet-ask 운영 설정
+
+전용 private App은 `ExitZero Packet Ask ictechgy`(App ID `5032689`)이며
+packet-ask 한 저장소만 선택해 설치한다. main 필수 검사는 GitHub Actions의
+`test (3.11)`·`test (3.13)`과 이 App의 `permission-authority`다. 최신 main과
+관리자 적용을 요구하고 force push·브랜치 삭제를 허용하지 않는다.
+
+App ID까지 확인한다. 다른 App이 동일한 이름·커밋·정책 해시로 성공이나 승인을
+발급해도 권한 승인을 대신하지 못한다. GitHub 환경이나 보호 설정을 바꾼 뒤에는
+이 문서만 신뢰하지 말고 서버 설정과 실제 App 검사 결과를 다시 확인한다.
+
 ## 신뢰 경계
 
 - `workflow_run`은 실제 CI workflow ID와 PR head를 GitHub API로 확인한다.
