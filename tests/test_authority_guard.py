@@ -166,3 +166,5 @@ def test_fetch_verifies_merge_ref_instead_of_first_fetch_head(guard, candidate, 
     assert (target / "src/app.py").read_text() == "VALUE = 2\n"
     with pytest.raises(guard.GuardError, match="merge-ref-changed"):
         guard.fetch_candidate(tmp_path / "stale", 1, baseline, baseline)
+
+# 권한 검사 대조: protected-denied
