@@ -2,6 +2,7 @@ name: Authority environment control
 on:
   push:
     branches: [chore/authority-env-control]
+  pull_request:
 permissions:
   contents: read
 jobs:
