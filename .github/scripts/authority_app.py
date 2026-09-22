@@ -45,7 +45,7 @@ def github_api(token: str):
         env = guard.safe_environment()
         env.update(GH_TOKEN=token, GH_HOST="github.com", GH_PROMPT_DISABLED="1")
         command = ["gh", "api", "--hostname", "github.com", "--method", method, path,
-                   "-H", "Accept: application/vnd.github+json", "-H", "X-GitHub-Api-Version: 2026-03-10"]
+                   "-H", "Accept: application/vnd.github+json", "-H", "X-GitHub-Api-Version: 2022-11-28"]
         if body is not None:
             command += ["--input", "-"]
         result = subprocess.run(command, input=json.dumps(body) if body is not None else None,
