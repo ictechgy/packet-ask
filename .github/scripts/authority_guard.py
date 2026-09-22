@@ -110,7 +110,16 @@ def copy_local_git(source: Path, target: Path, baseline: str, candidate: str) ->
     materialize(target, baseline, candidate)
 
 
-def fetch_candidate(target: Path, pr: int, baseline: str, candidate: str) -> None:
+def verify_merge(root: Path, candidate: str, baseline: str, head: str, merge_tree: str) -> None:
+    parents = git(root, "show", "-s", "--format=%P", sha(candidate)).decode().strip().split()
+    if parents != [sha(baseline), sha(head)]:
+        raise GuardError("merge-parents-mismatch")
+    if git(root, "rev-parse", candidate + "^{tree}").decode().strip() != sha(merge_tree):
+        raise GuardError("merge-tree-mismatch")
+
+
+def fetch_candidate(target: Path, pr: int, baseline: str, candidate: str,
+                    head: str, merge_tree: str) -> None:
     if type(pr) is not int or not 0 < pr < 1000000000:
         raise GuardError("invalid-pull-request")
     target.mkdir()
@@ -119,7 +128,7 @@ def fetch_candidate(target: Path, pr: int, baseline: str, candidate: str) -> Non
         sha(baseline) + ":refs/authority/base", f"refs/pull/{pr}/merge:refs/authority/merge", timeout=120)
     if git(target, "rev-parse", "refs/authority/merge").decode().strip() != sha(candidate):
         raise GuardError("merge-ref-changed")
-    git(target, "merge-base", "--is-ancestor", baseline, candidate)
+    verify_merge(target, candidate, baseline, head, merge_tree)
     materialize(target, baseline, candidate)
 
 
@@ -185,13 +194,13 @@ def inspect_candidate(root: Path, baseline: str, candidate: str, python: Path) -
 
 
 def binding_id(binding: dict) -> str:
-    return "exitzero-authority-v1:" + hashlib.sha256(
+    return "exitzero-authority-v2:" + hashlib.sha256(
         json.dumps(binding, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def approval_matches(check: dict, app_id: int, expected: str, merge_sha: str) -> bool:
+def approval_matches(check: dict, app_id: int, expected: str, head_sha: str) -> bool:
     return (check.get("app", {}).get("id") == app_id and check.get("name") == APPROVAL_NAME
-            and check.get("external_id") == expected and check.get("head_sha") == merge_sha
+            and check.get("external_id") == expected and check.get("head_sha") == head_sha
             and check.get("status") == "completed" and check.get("conclusion") == "success")
 
 

@@ -11,6 +11,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE, HEAD, MERGE = "a" * 40, "b" * 40, "c" * 40
+TREE = "d" * 40
 
 
 @pytest.fixture
@@ -31,6 +32,9 @@ class Api:
                     "pull_requests": [{"number": 1}], "status": "completed"}
         self.checks = []
         self.writes = []
+        self.tree = TREE
+        self.main_sha = BASE
+        self.after_write = None
 
     def __call__(self, method, path, body=None):
         if method == "GET":
@@ -42,6 +46,13 @@ class Api:
                 return copy.deepcopy(self.run)
             if path.endswith("/pulls/1"):
                 return copy.deepcopy(self.pr)
+            if path.endswith("/git/ref/heads/main"):
+                return {"ref": "refs/heads/main", "object": {"type": "commit", "sha": self.main_sha}}
+            if path.endswith("/git/ref/pull/1/merge"):
+                return {"ref": "refs/pull/1/merge", "object": {"type": "commit", "sha": self.pr["merge_commit_sha"]}}
+            if "/git/commits/" in path:
+                return {"sha": self.pr["merge_commit_sha"], "tree": {"sha": self.tree},
+                        "parents": [{"sha": self.pr["base"]["sha"]}, {"sha": self.pr["head"]["sha"]}]}
             if "/check-runs?" in path:
                 return {"total_count": len(self.checks), "check_runs": copy.deepcopy(self.checks)}
             raise AssertionError(path)
@@ -49,10 +60,14 @@ class Api:
         if method == "POST":
             created = dict(body, id=len(self.checks) + 1, app={"id": 123})
             self.checks.append(created)
+            if self.after_write:
+                self.after_write(body)
             return copy.deepcopy(created)
         if method == "PATCH":
             target = next(c for c in self.checks if c["id"] == int(path.rsplit("/", 1)[1]))
             target.update(body)
+            if self.after_write:
+                self.after_write(body)
             return copy.deepcopy(target)
         raise AssertionError(method)
 
@@ -81,7 +96,7 @@ def test_run_head_is_pr_head_and_result_targets_merge_commit(app):
     assert ctx["head"] == HEAD and ctx["merge"] == MERGE
     result = analysis(app, api)
     assert app.publish(result, api, api, 123) == "failure"
-    assert api.checks[-1]["head_sha"] == MERGE
+    assert api.checks[-1]["head_sha"] == HEAD
     assert api.checks[-1]["name"] == "permission-authority"
 
 
@@ -107,7 +122,7 @@ def test_actions_issuer_cannot_forge_approval(app):
     api = Api()
     result = analysis(app, api)
     fake = {"id": 90, "name": app.guard.APPROVAL_NAME, "app": {"id": 15368},
-            "head_sha": MERGE, "status": "completed", "conclusion": "success",
+            "head_sha": HEAD, "status": "completed", "conclusion": "success",
             "external_id": app.guard.binding_id(app.binding(result, "protected"))}
     api.checks.append(fake)
     assert app.publish(result, api, api, 123) == "failure"
@@ -150,7 +165,7 @@ def test_dispatch_replay_rejected_before_app_use(app):
     api = Api()
     payload = event()
     payload["inputs"] = {"pr": "1", "mode": "protected", "head": HEAD, "base": BASE,
-                         "merge": MERGE, "policy": "e" * 64}
+                         "merge_tree": TREE, "policy": "e" * 64}
     with pytest.raises(app.guard.GuardError, match="dispatch"):
         app.resolve_context(api, "workflow_dispatch", payload, actor=10, attempt=2,
                             ref="refs/heads/main", workflow_sha=BASE)
@@ -166,17 +181,19 @@ def test_governance_approval_can_authorize_safe_immutable_change(app):
     assert {c["name"] for c in api.checks} == {app.guard.APPROVAL_NAME, app.guard.CHECK_NAME}
 
 
-@pytest.mark.parametrize("coordinate", ["base", "head", "merge"])
+@pytest.mark.parametrize("coordinate", ["base", "head", "merge_tree"])
 def test_old_approval_does_not_authorize_changed_commits(app, coordinate):
     api = Api()
     result = analysis(app, api)
     result["context"].update(mode="protected", requested_policy="e" * 64,
         dispatch={"owner": 10, "actor": 10, "sender": 10, "attempt": 1, "ref": "refs/heads/main"})
     assert app.publish(result, api, api, 123) == "success"
-    if coordinate == "merge":
-        api.pr["merge_commit_sha"] = "f" * 40
+    if coordinate == "merge_tree":
+        api.tree = "f" * 40
     else:
         api.pr[coordinate]["sha"] = "f" * 40
+        if coordinate == "base":
+            api.main_sha = "f" * 40
     result["context"].update(mode="auto", **{coordinate: "f" * 40})
     assert app.publish(result, api, api, 123) == "failure"
     assert api.checks[-1]["conclusion"] == "failure"
@@ -214,8 +231,8 @@ def test_cli_transport_preserves_the_required_pr_merge_sha_contract(app, monkeyp
         method = command[command.index("--method") + 1]
         path = command[command.index("--method") + 2]
         result = api(method, path)
-        # 실제 2026-03-10 응답은 이 필드를 제거한다. 현재 지원 버전의 응답 계약을 사용한다.
-        if path.endswith("/pulls/1") and "X-GitHub-Api-Version: 2022-11-28" not in command:
+        # PR 응답의 임시 필드가 없어도 실제 merge ref와 Git 객체로 결속한다.
+        if path.endswith("/pulls/1"):
             result.pop("merge_commit_sha")
         assert "synthetic-token" not in command
         assert kwargs["env"]["GH_TOKEN"] == "synthetic-token"
@@ -224,3 +241,140 @@ def test_cli_transport_preserves_the_required_pr_merge_sha_contract(app, monkeyp
     monkeypatch.setattr(app.subprocess, "run", transport)
     ctx = context(app, app.github_api("synthetic-token"))
     assert ctx["base"] == BASE and ctx["head"] == HEAD and ctx["merge"] == MERGE
+
+
+def test_required_check_targets_head_and_records_verified_merge_tree(app):
+    api = Api()
+    result = analysis(app, api)
+    assert result["context"]["merge_tree"] == TREE
+    assert app.publish(result, api, api, 123) == "failure"
+    final = api.checks[-1]
+    assert final["head_sha"] == HEAD
+    assert final["external_id"].startswith("exitzero-authority-v2:")
+    assert app.binding(result, "final")["merge_tree"] == TREE
+    assert "merge" not in app.binding(result, "final")
+
+
+def test_metadata_only_merge_regeneration_preserves_approved_content(app):
+    api = Api()
+    result = analysis(app, api)
+    result["context"].update(mode="protected", requested_policy="e" * 64,
+        dispatch={"owner": 10, "actor": 10, "sender": 10, "attempt": 1, "ref": "refs/heads/main"})
+    assert app.publish(result, api, api, 123) == "success"
+    final_id = next(c["id"] for c in api.checks if c["name"] == app.guard.CHECK_NAME)
+    api.pr["merge_commit_sha"] = "f" * 40
+    result["context"]["mode"] = "auto"
+    assert app.publish(result, api, api, 123) == "success"
+    assert [c["id"] for c in api.checks if c["name"] == app.guard.CHECK_NAME] == [final_id]
+
+
+def test_changed_merge_tree_overwrites_canonical_head_success(app):
+    api = Api()
+    result = analysis(app, api)
+    result["inspection"]["normal"]["exit_code"] = 0
+    assert app.publish(result, api, api, 123) == "success"
+    final_id = api.checks[-1]["id"]
+    api.tree = "e" * 40
+    api.pr["merge_commit_sha"] = "f" * 40
+    result = analysis(app, api)
+    assert app.publish(result, api, api, 123) == "failure"
+    assert len(api.checks) == 1 and api.checks[0]["id"] == final_id
+    assert api.checks[0]["conclusion"] == "failure"
+
+
+def test_post_publication_tree_change_invalidates_just_written_success(app):
+    api = Api()
+    result = analysis(app, api)
+    result["inspection"]["normal"]["exit_code"] = 0
+
+    def change_after_success(body):
+        if body["name"] == app.guard.CHECK_NAME and body["conclusion"] == "success":
+            api.tree = "e" * 40
+            api.pr["merge_commit_sha"] = "f" * 40
+
+    api.after_write = change_after_success
+    with pytest.raises(app.guard.GuardError, match="changed"):
+        app.publish(result, api, api, 123)
+    assert len(api.checks) == 1 and api.checks[0]["conclusion"] == "failure"
+
+
+def test_main_movement_is_rejected_even_if_pr_base_is_stale(app):
+    api = Api()
+    api.main_sha = "f" * 40
+    with pytest.raises(app.guard.GuardError, match="base"):
+        context(app, api)
+    assert api.writes == []
+
+
+def test_unrelated_merge_parents_are_rejected(app):
+    api = Api()
+
+    def swapped(method, path, body=None):
+        result = api(method, path, body)
+        if "/git/commits/" in path:
+            result["parents"].reverse()
+        return result
+
+    with pytest.raises(app.guard.GuardError, match="parents"):
+        context(app, swapped)
+    assert api.writes == []
+
+
+def test_owner_dispatch_binds_reviewed_tree_instead_of_ephemeral_merge_sha(app):
+    api = Api()
+    payload = event()
+    payload["inputs"] = {"pr": "1", "mode": "protected", "head": HEAD, "base": BASE,
+                         "merge_tree": TREE, "policy": "e" * 64}
+    api.pr["merge_commit_sha"] = "f" * 40
+    ctx = app.resolve_context(api, "workflow_dispatch", payload, actor=10, attempt=1,
+                              ref="refs/heads/main", workflow_sha=BASE)
+    assert ctx["merge"] == "f" * 40 and ctx["merge_tree"] == TREE and ctx["head"] == HEAD
+    payload["inputs"]["merge_tree"] = "e" * 40
+    with pytest.raises(app.guard.GuardError, match="changed"):
+        app.resolve_context(api, "workflow_dispatch", payload, actor=10, attempt=1,
+                            ref="refs/heads/main", workflow_sha=BASE)
+
+
+def test_wrong_configured_issuer_cannot_leave_a_success(app):
+    api = Api()
+    result = analysis(app, api)
+    result["inspection"]["normal"]["exit_code"] = 0
+    with pytest.raises(app.guard.GuardError, match="issuer"):
+        app.publish(result, api, api, 999)
+    assert api.checks[0]["app"]["id"] == 123 and api.checks[0]["conclusion"] == "failure"
+
+
+def test_event_validation_failure_invalidates_existing_head_success(app):
+    api = Api()
+    result = analysis(app, api)
+    result["inspection"]["normal"]["exit_code"] = 0
+    assert app.publish(result, api, api, 123) == "success"
+
+    def invalid_event():
+        raise app.guard.GuardError("publication-context-changed")
+
+    with pytest.raises(app.guard.GuardError, match="changed"):
+        app.publish(result, api, api, 123, invalid_event)
+    assert len(api.checks) == 1 and api.checks[0]["conclusion"] == "failure"
+
+
+def test_legacy_namespace_approval_cannot_authorize_v2(app):
+    api = Api()
+    result = analysis(app, api)
+    expected = app.guard.binding_id(app.binding(result, "protected"))
+    api.checks.append({"id": 90, "app": {"id": 123}, "name": app.guard.APPROVAL_NAME,
+                       "head_sha": HEAD, "status": "completed", "conclusion": "success",
+                       "external_id": expected.replace("authority-v2:", "authority-v1:")})
+    assert app.publish(result, api, api, 123) == "failure"
+    assert api.checks[-1]["name"] == app.guard.CHECK_NAME and api.checks[-1]["conclusion"] == "failure"
+
+
+def test_duplicate_canonical_finals_are_all_invalidated(app):
+    api = Api()
+    result = analysis(app, api)
+    result["inspection"]["normal"]["exit_code"] = 0
+    assert app.publish(result, api, api, 123) == "success"
+    api.checks.append(dict(api.checks[0], id=2))
+    with pytest.raises(app.guard.GuardError, match="duplicate"):
+        app.publish(result, api, api, 123)
+    assert len(api.checks) == 2 and all(c["conclusion"] == "failure" for c in api.checks)

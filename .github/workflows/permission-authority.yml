@@ -23,8 +23,8 @@ on:
         description: Reviewed main SHA
         required: true
         type: string
-      merge:
-        description: Reviewed synthetic merge SHA
+      merge_tree:
+        description: Reviewed merged Git tree SHA
         required: true
         type: string
       policy:
@@ -49,6 +49,7 @@ jobs:
     outputs:
       eligible: ${{ steps.context.outputs.eligible }}
       pr: ${{ steps.context.outputs.pr }}
+      head: ${{ steps.context.outputs.head }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -67,7 +68,7 @@ jobs:
     timeout-minutes: 10
     environment: exitzero-authority
     concurrency:
-      group: permission-authority-${{ needs.context.outputs.pr }}
+      group: permission-authority-${{ needs.context.outputs.head }}
       cancel-in-progress: false
     permissions:
       contents: read
