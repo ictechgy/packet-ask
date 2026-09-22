@@ -1,0 +1,44 @@
+name: Authority spoof control
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  fake-authority:
+    name: permission-authority
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Publish exact-tuple approvals as the wrong App
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          MERGE: ${{ github.sha }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess
+          def policy(commit):
+              return hashlib.sha256(subprocess.check_output(['git','show',commit+':.github/authority.toml'])).hexdigest()
+          for mode in ('protected', 'governance', 'final'):
+              binding = {'repository_id':1349064041,'pr':int(os.environ['PR']),
+                         'base':os.environ['BASE'],'head':os.environ['HEAD'],'merge':os.environ['MERGE'],
+                         'base_policy':policy(os.environ['BASE']),'candidate_policy':policy(os.environ['MERGE']),'mode':mode}
+              external_id = 'exitzero-authority-v1:' + hashlib.sha256(json.dumps(binding,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+              body = {'name':'permission-authority' if mode == 'final' else 'permission-authority-approval','head_sha':os.environ['MERGE'],
+                      'status':'completed','conclusion':'success','external_id':external_id,
+                      'output':{'title':'Wrong-issuer acceptance control','summary':'Intentional fake approval from GitHub Actions; dedicated App must ignore this.'}}
+              result = subprocess.run(['gh','api','--hostname','github.com','--method','POST',
+                        'repos/ictechgy/packet-ask/check-runs','--input','-'],input=json.dumps(body),capture_output=True,text=True)
+              if result.returncode: raise SystemExit('Could not create wrong-issuer control')
+              check=json.loads(result.stdout)
+              if check['app']['id'] != 15368: raise SystemExit('Unexpected control issuer')
+              print(json.dumps({'id':check['id'],'app_id':check['app']['id'],'mode':mode,'merge':check['head_sha']}))
+          PY

@@ -31,3 +31,5 @@ immutable = [
     "src/packet_ask/data/SKILL.md",
     "skills/**",
 ]
+
+# 권한 검사 대조: immutable-spoof
