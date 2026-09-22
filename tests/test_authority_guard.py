@@ -168,3 +168,5 @@ def test_fetch_verifies_merge_ref_instead_of_first_fetch_head(guard, candidate, 
         guard.fetch_candidate(tmp_path / "stale", 1, baseline, baseline)
 
 # 권한 검사 대조: protected-denied
+
+# 권한 검사 대조: protected-new-head
