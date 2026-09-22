@@ -1,0 +1,15 @@
+name: Authority environment control
+on:
+  push:
+    branches: [chore/authority-env-control]
+permissions:
+  contents: read
+jobs:
+  candidate-must-be-denied:
+    runs-on: ubuntu-latest
+    environment: exitzero-authority
+    steps:
+      - name: Reaching this step means the environment restriction failed
+        run: |
+          echo "ERROR environment accepted a candidate branch"
+          exit 1
