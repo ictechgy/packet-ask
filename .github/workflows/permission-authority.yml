@@ -1,0 +1,118 @@
+name: Permission authority
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number
+        required: true
+        type: string
+      mode:
+        description: Exact-commit owner decision
+        required: true
+        type: choice
+        options: [check, protected, governance]
+      head:
+        description: Reviewed PR head SHA
+        required: true
+        type: string
+      base:
+        description: Reviewed main SHA
+        required: true
+        type: string
+      merge:
+        description: Reviewed synthetic merge SHA
+        required: true
+        type: string
+      policy:
+        description: Candidate authority.toml SHA-256 from analysis artifact
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  context:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.event == 'pull_request')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      eligible: ${{ steps.context.outputs.eligible }}
+      pr: ${{ steps.context.outputs.pr }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - id: context
+        env:
+          AUTHORITY_READ_TOKEN: ${{ github.token }}
+          AUTHORITY_WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: python3 -I .github/scripts/authority_app.py context --evidence "$RUNNER_TEMP/authority-context"
+
+  authority:
+    needs: context
+    if: needs.context.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: exitzero-authority
+    concurrency:
+      group: permission-authority-${{ needs.context.outputs.pr }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      checks: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: '3.13'
+          enable-cache: false
+      - name: 고정된 외부 검사기 설치
+        run: |
+          uv venv --no-config "$RUNNER_TEMP/authority-venv"
+          uv pip install --no-config --no-cache --python "$RUNNER_TEMP/authority-venv/bin/python" --require-hashes --only-binary :all: --no-deps --index-url https://pypi.org/simple -r .github/authority-requirements.txt
+      - name: 후보 Git 객체를 데이터로 검사
+        env:
+          AUTHORITY_READ_TOKEN: ${{ github.token }}
+          AUTHORITY_WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: '"$RUNNER_TEMP/authority-venv/bin/python" -I .github/scripts/authority_app.py analyze --evidence "$RUNNER_TEMP/authority-evidence"'
+      - id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.EXITZERO_AUTHORITY_CLIENT_ID }}
+          private-key: ${{ secrets.EXITZERO_AUTHORITY_PRIVATE_KEY }}
+          owner: ictechgy
+          repositories: packet-ask
+          permission-contents: read
+          permission-checks: write
+      - name: 최신 커밋과 승인 재확인 후 App 검사 게시
+        env:
+          AUTHORITY_READ_TOKEN: ${{ github.token }}
+          AUTHORITY_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          AUTHORITY_APP_TOKEN: ${{ steps.app.outputs.token }}
+          AUTHORITY_APP_ID: ${{ vars.EXITZERO_AUTHORITY_APP_ID }}
+        run: '"$RUNNER_TEMP/authority-venv/bin/python" -I .github/scripts/authority_app.py publish --evidence "$RUNNER_TEMP/authority-evidence"'
+      - name: 권한 검사 영수증 보존
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: permission-authority-${{ needs.context.outputs.pr }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/authority-evidence/*.json
+          if-no-files-found: error
+          retention-days: 14

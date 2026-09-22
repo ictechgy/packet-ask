@@ -12,6 +12,15 @@ wheels = [
 ]
 
 [[package]]
+name = "exitzero"
+version = "0.6.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/56/53/46ebb9b9d00775e8a1e21d2ae49f4c135b262a91c85da3799ec238e93efb/exitzero-0.6.1.tar.gz", hash = "sha256:9887625b5849106e103133da1e8c2a09430cfca0e6bf06a4518de51174e4e57f", size = 161047, upload-time = "2026-09-21T07:58:14.963Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7d/79/25bc2b4d5065c6cecbac8b6ab925339fa108e31b4ee6f0412cc238bb908f/exitzero-0.6.1-py3-none-any.whl", hash = "sha256:79d35744089708db194b567395c36d438f71c8e9d34e65975267f0cfc8593344", size = 114253, upload-time = "2026-09-21T07:58:13.605Z" },
+]
+
+[[package]]
 name = "iniconfig"
 version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -36,13 +45,17 @@ source = { editable = "." }
 
 [package.dev-dependencies]
 dev = [
+    { name = "exitzero" },
     { name = "pytest" },
 ]
 
 [package.metadata]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=9.1.1" }]
+dev = [
+    { name = "exitzero", specifier = "==0.6.1" },
+    { name = "pytest", specifier = ">=9.1.1" },
+]
 
 [[package]]
 name = "pluggy"
