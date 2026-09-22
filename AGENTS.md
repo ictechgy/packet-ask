@@ -132,7 +132,8 @@ uv run --isolated --no-project --with "dist/packet_ask-${release_version}.tar.gz
 - GitHub 승인 인원은 0명으로 두지만 위 독립 리뷰 규약은 그대로 따른다.
   검사 이름이나 워크플로를 바꿀 때는 GitHub 보호 설정과의 일치도 확인한다.
 - 필수 검사 설정은 GitHub 서버에 있으며 이 파일만으로 적용되지 않는다.
-  권한 구역·클라이언트 훅은 별도 단계다.
+  아래 로컬 권한 검사는 아직 GitHub 필수 검사로 연결되지 않았다.
+  별도 발급 주체의 서버 권한 검사와 클라이언트 훅은 별도 단계다.
 
 ## 테스트 무결성
 
@@ -149,6 +150,25 @@ uv run --isolated --no-project --with "dist/packet_ask-${release_version}.tar.gz
 - 정당한 테스트 삭제·이름 변경·skip 추가도 차단될 수 있으므로 별도 리뷰로 판단한다.
   정적 개수·이름·일부 표기 비교이며, 새 파일의 skip이나 같은 개수의 약한 단언,
   동적 별칭과 의미적 검증 품질을 증명하지 않는다. 정책/워크플로 자체 보호는 후속이다.
+
+## 로컬 권한 구역
+
+- `.github/authority.toml`은 기존 테스트 정책과 분리된 권한 정책이다. 검토한 Git
+  커밋에 이 파일이 있어야 하며 `--trust-base`로 그 커밋을 명시한다.
+- 소스 Python과 일반 문서는 editable, 테스트·의존성·보안/라이선스 문서는
+  protected, CI·정책·에이전트 지침·공개 경로 목록은 immutable이다. 겹치면
+  더 강한 구역이 우선하고 미분류 경로는 거절한다.
+- 프로젝트 밖에 설치한 검증된 ExitZero 0.6.1을 격리 모드로 실행한다:
+  `TRUSTED_PYTHON -I -m exitzero --root REPO --policy .github/authority.toml check --trust-base REVIEWED_COMMIT --format json`.
+  `TRUSTED_PYTHON`, `REPO`, `REVIEWED_COMMIT`은 실제 경로와 검토 커밋으로 바꾼다.
+  후보 저장소의 `uv run`이나 스크립트로 이 검사를 시작하지 않는다.
+- 이 정책은 파일 권한 비교와 AST 구문 검사만 한다. 후보 코드·테스트를 실행하지
+  않으며 영수증은 후보 밖의 증거 저장소에 즉시 복사한다. 서명된 권한 증명은 아니다.
+- protected 변경은 review_required, immutable 변경은 denied로 실패한다.
+  로컬 승인 파일이나 모델 설명으로 해제하지 않는다. 정당한 변경은 정확한 커밋·
+  tree·변경 경로와 독립 리뷰를 별도 기록한 뒤 운영자가 신뢰 기준을 명시적으로 갱신한다.
+- 이 로컬 기능을 CI 자체의 변경 우회를 막는 서버 장벽으로 표현하지 않는다.
+  기존 GitHub Actions와 구분되는 검사 발급 주체가 준비되기 전에는 필수 검사로 추가하지 않는다.
 
 ## 범위 규율
 
@@ -182,8 +202,8 @@ Run `exitzero lint-config` after changing agent configuration.
 
 Required checks:
 - `test-integrity`: `python.test-integrity` (tests/**/*.py)
-- `regression-suite`: `command` (src/**/*.py, src/packet_ask/data/**, tests/**/*.py, pyproject.toml, uv.lock, .python-version, .gitignore, .packet-ask-surface, .github/**/*.yml, .github/scripts/*.py, AGENTS.md, CLAUDE.md, CONTRIBUTING.md, README.md, README.ko.md, SECURITY.md, SECURITY.ko.md, docs/**/*.md, skills/**, src/**/AGENTS.md, tests/AGENTS.md, .github/AGENTS.md, LICENSE, env.example)
+- `regression-suite`: `command` (src/**/*.py, src/packet_ask/data/**, tests/**/*.py, pyproject.toml, uv.lock, .python-version, .gitignore, .packet-ask-surface, .github/**/*.yml, .github/**/*.toml, .github/scripts/*.py, AGENTS.md, CLAUDE.md, CONTRIBUTING.md, README.md, README.ko.md, SECURITY.md, SECURITY.ko.md, docs/**/*.md, skills/**, src/**/AGENTS.md, tests/AGENTS.md, .github/AGENTS.md, LICENSE, env.example)
 - Rule `ci-receipts`: CI 게이트의 종료 코드와 저장된 영수증을 확인한다. pytest가 생성한 JUnit 보고서로 테스트 실패를 확인한다.
 
-Policy SHA-256: `44aaf765a9da4f3e51ae73b5959490fd09e3fe1ca4db152ad082088c88c0e124`
+Policy SHA-256: `aa5e0cd6392c3923a48880c2510eb2535d4517766089f0f52cd2f50d4714dcba`
 <!-- exitzero:end -->
