@@ -10,6 +10,10 @@
 - `workflow_run`은 실제 CI workflow ID와 PR head를 GitHub API로 확인한다.
   checkout은 `github.workflow_sha`의 main 코드만 사용한다. PR의
   `refs/pull/N/merge`를 별도 Git 객체 저장소에 받아 API의 병합 SHA와 비교한다.
+- PR의 `merge_commit_sha`를 제공하는 REST API `2022-11-28`을 명시한다.
+  `2026-03-10` 응답에서는 해당 필드가 없음을 실제 API로 확인했다. 버전을 바꿀 때는
+  응답 계약과 병합 SHA 결속을 함께 이관한다. [GitHub 지원 일정](https://docs.github.com/en/rest/about-the-rest-api/api-versions)에
+  따른 현재 버전 지원 종료일은 2028-03-10이다. 필드 누락을 다른 SHA로 대체하지 않는다.
 - 후보는 raw blob으로만 복원한다. Git checkout, 후보 모듈 import, 테스트 실행,
   후보 패키지 설치, 후보 artifact/cache 복원은 하지 않는다. 링크·gitlink·비ASCII
   경로·비밀 파일 경로·대소문자 충돌과 파일/바이트 예산 초과는 거절한다.
