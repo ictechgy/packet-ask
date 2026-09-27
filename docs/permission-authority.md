@@ -8,11 +8,13 @@
 ## 신뢰 경계
 
 - `workflow_run`은 실제 CI workflow ID와 PR head를 GitHub API로 확인한다.
-  checkout은 `github.workflow_sha`의 main 코드만 사용한다. PR의
-  `refs/pull/N/merge`를 별도 Git 객체 저장소에 받아 API의 병합 SHA와 비교한다.
-- PR의 `merge_commit_sha`를 제공하는 REST API `2022-11-28`을 명시한다.
-  `2026-03-10` 응답에서는 해당 필드가 없음을 실제 API로 확인했다. 버전을 바꿀 때는
-  응답 계약과 병합 SHA 결속을 함께 이관한다. [GitHub 지원 일정](https://docs.github.com/en/rest/about-the-rest-api/api-versions)에
+  checkout은 `github.workflow_sha`의 main 코드만 사용한다.
+  현재 main ref와 `refs/pull/N/merge`의 Git 객체를 조회하고 부모 순서가 정확히
+  `[base, head]`인지 확인한다. 별도 Git 저장소에 받은 객체의 SHA·부모·tree도 대조한다.
+- REST API 응답 계약은 검증한 `2022-11-28`에 고정한다.
+  PR 응답의 `merge_commit_sha` 대신 실제 Git ref와 commit 객체를 사용한다.
+  `2026-03-10` PR 응답에서 해당 필드가 없음을 확인했으며 버전 변경 때는 전체
+  응답 계약을 다시 검증한다. [GitHub 지원 일정](https://docs.github.com/en/rest/about-the-rest-api/api-versions)에
   따른 현재 버전 지원 종료일은 2028-03-10이다. 필드 누락을 다른 SHA로 대체하지 않는다.
 - 후보는 raw blob으로만 복원한다. Git checkout, 후보 모듈 import, 테스트 실행,
   후보 패키지 설치, 후보 artifact/cache 복원은 하지 않는다. 링크·gitlink·비ASCII
@@ -24,7 +26,7 @@
   private key는 `exitzero-authority` Environment에 두며 deployment branch policy는
   정확히 `main` 타입 `branch` 하나다. repository secret으로 옮기지 않는다.
 - App 토큰은 후보 검사 뒤 발급하고 작업 종료 때 폐기한다. 기본 Actions 토큰은
-  읽기 전용이다. 검사 영수증에는 PR/base/head/merge/정책 해시를 남긴다.
+  읽기 전용이다. 영수증에는 PR/base/head/merge_tree/정책 해시와 관측한 merge SHA를 남긴다.
 
 ## 변경 승인
 
@@ -34,18 +36,21 @@ immutable·미분류 변경에는 `governance` 운영자 판단이 필요하다.
 로컬 승인 파일이나 모델 설명을 권한으로 취급하지 않는다.
 
 1. PR diff와 권한 검사 artifact의 `analysis.json`을 독립 리뷰한다. API로 현재
-   PR의 head SHA, base SHA, synthetic merge SHA를 확인한다. 후보 정책의 SHA-256은
+   PR의 head SHA, base SHA와 병합 Git tree SHA(`context.merge_tree`)를 확인한다. 후보 정책의 SHA-256은
    `inspection.candidate_policy`를 사용한다.
 2. 저장소 소유자가 main의 `Permission authority` 워크플로를 **새로** 실행한다.
-   `pr`, `mode`, `head`, `base`, `merge`, `policy`에 검토한 값을 넣는다.
+   `pr`, `mode`, `head`, `base`, `merge_tree`, `policy`에 검토한 값을 넣는다.
    기존 실행의 Re-run은 승인으로 허용하지 않는다.
 3. 워크플로는 소유자의 숫자 ID, 이벤트 sender, 실행 시도 1회, main ref를 확인한다.
    최신 PR 값과 검토 값이 하나라도 다르면 App 승인을 쓰지 않는다.
 4. 성공한 승인도 별도 App의 `permission-authority-approval` 검사에 정확한
-   repository/PR/base/head/merge/두 정책 해시/mode를 묶는다. 자동 재검사는 이
+   repository/PR/base/head/merge_tree/두 정책 해시/mode를 묶는다. 자동 재검사는 이
    발급 주체와 전체 결속 값을 확인한다. 새 커밋이나 main 변경에는 재승인이 필요하다.
 
-PR별 작업은 직렬화한다. 최종 검사는 같은 결속 값의 기존 기록을 갱신한다.
+같은 head의 작업은 직렬화한다. 최종 필수 검사는 App/name/head마다 하나를 유지하며
+결속 값이 바뀌어도 그 기록을 갱신한다. 승인 기록은 전체 결속 값과 일치해야 한다.
+`exitzero-authority-v2:` 네임스페이스를 사용하고 이전 v1 승인은 재사용하지 않는다.
+게시 직전·직후 main/head/부모/tree를 다시 확인하고 바뀌면 기존 성공을 실패로 갱신한다.
 권한 실패·구문 실패·운영 오류를 neutral/skipped 성공으로 바꾸지 않는다. 충돌,
 삭제된 PR, 오래된 main 검사기 등 검사 불가능 상태는 필수 성공 증거를 만들지 않는다.
 
@@ -75,6 +80,12 @@ App 설치만으로 서버 강제가 켜지지 않는다. GitHub Actions 발급 
 리뷰가 계속 필요하다. 소유자 계정, GitHub 플랫폼, main 검사기, 고정된 공급망과
 Environment 정책은 신뢰 기준이다. 관리자 권한 탈취를 막는 기능은 아니다.
 
-검사 기록은 synthetic merge SHA에 발급하므로 base/head 변경 뒤 기존 성공을
-재사용할 수 없다. GitHub 서버의 실제 필수 검사 선택과 차단 동작은 설치 때 별도로
-실측해야 한다. 로컬 pytest와 모의 API 결과만으로 hosted enforcement를 주장하지 않는다.
+필수 검사와 승인 기록은 PR head에 발급한다. GitHub는 같은 부모·같은 tree라도
+임시 병합 커밋의 시간 정보를 바꿔 SHA를 다시 만들 수 있다. 이 SHA는 관측 증거로만
+보존하고 승인 권한은 base/head/병합 tree/정책에 결속한다. 짧은 fetch 구간에서 ref가
+바뀌면 안전하게 실패하므로 새 검사를 실행해야 한다.
+
+base 변경은 strict 보호의 최신 main 요구로 차단하며 브랜치 갱신 후 새 head에 대한
+검사가 필요하다. GitHub 필수 검사는 commit 단위이므로 같은 head를 공유하는 PR은
+최종 검사도 공유한다. 실제 서버의 발급 주체 선택과 정상·거절 경로를 각각 실측해야
+한다. 로컬 pytest와 모의 API 결과만으로 hosted enforcement를 주장하지 않는다.

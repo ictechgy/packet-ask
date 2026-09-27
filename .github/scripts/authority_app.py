@@ -62,8 +62,20 @@ def pr_context(api, number: int) -> dict:
             or pr["mergeable"] is not True or pr["base"]["ref"] != "main"
             or pr["base"]["repo"]["id"] != REPOSITORY_ID):
         raise guard.GuardError("ineligible-pull-request")
-    return {"repository_id": REPOSITORY_ID, "pr": number, "base": guard.sha(pr["base"]["sha"]),
-            "head": guard.sha(pr["head"]["sha"]), "merge": guard.sha(pr["merge_commit_sha"])}
+    base, head = guard.sha(pr["base"]["sha"]), guard.sha(pr["head"]["sha"])
+    main = api("GET", API_ROOT + "/git/ref/heads/main")
+    if (main["ref"] != "refs/heads/main" or main["object"]["type"] != "commit"
+            or main["object"]["sha"] != base):
+        raise guard.GuardError("main-base-changed")
+    reference = api("GET", API_ROOT + f"/git/ref/pull/{number}/merge")
+    if reference["ref"] != f"refs/pull/{number}/merge" or reference["object"]["type"] != "commit":
+        raise guard.GuardError("invalid-merge-ref")
+    merge = guard.sha(reference["object"]["sha"])
+    commit = api("GET", API_ROOT + "/git/commits/" + merge)
+    if commit["sha"] != merge or [p["sha"] for p in commit["parents"]] != [base, head]:
+        raise guard.GuardError("merge-parents-mismatch")
+    return {"repository_id": REPOSITORY_ID, "pr": number, "base": base, "head": head,
+            "merge": merge, "merge_tree": guard.sha(commit["tree"]["sha"])}
 
 
 def resolve_context(api, event_name: str, event: dict, *, actor: int, attempt: int,
@@ -93,7 +105,7 @@ def resolve_context(api, event_name: str, event: dict, *, actor: int, attempt: i
         if inputs["mode"] not in {"check", "protected", "governance"}:
             raise guard.GuardError("invalid-dispatch-mode")
         ctx = pr_context(api, positive_id(inputs["pr"]))
-        for coordinate in ("base", "head", "merge"):
+        for coordinate in ("base", "head", "merge_tree"):
             if guard.sha(inputs[coordinate]) != ctx[coordinate]:
                 raise guard.GuardError("dispatch-tuple-changed")
         ctx.update(mode=inputs["mode"], requested_policy=digest(inputs["policy"]), dispatch=dispatch)
@@ -108,21 +120,21 @@ def resolve_context(api, event_name: str, event: dict, *, actor: int, attempt: i
 
 def assert_current(api, ctx: dict) -> None:
     current = pr_context(api, positive_id(ctx["pr"]))
-    if any(current[k] != ctx[k] for k in current):
+    if any(current[k] != ctx[k] for k in current if k != "merge"):
         raise guard.GuardError("pull-request-tuple-changed")
 
 
 def binding(analysis: dict, mode: str) -> dict:
     ctx, result = analysis["context"], analysis["inspection"]
-    return {**{k: ctx[k] for k in ("repository_id", "pr", "base", "head", "merge")},
+    return {**{k: ctx[k] for k in ("repository_id", "pr", "base", "head", "merge_tree")},
             "base_policy": digest(result["base_policy"]),
             "candidate_policy": digest(result["candidate_policy"]), "mode": mode}
 
 
-def existing_checks(api, merge_sha: str) -> list[dict]:
+def existing_checks(api, head_sha: str) -> list[dict]:
     checks = []
     for page in range(1, 11):
-        result = api("GET", API_ROOT + f"/commits/{guard.sha(merge_sha)}/check-runs?filter=all&per_page=100&page={page}")
+        result = api("GET", API_ROOT + f"/commits/{guard.sha(head_sha)}/check-runs?filter=all&per_page=100&page={page}")
         checks.extend(result["check_runs"])
         if len(checks) >= result["total_count"]:
             return checks
@@ -130,12 +142,12 @@ def existing_checks(api, merge_sha: str) -> list[dict]:
 
 
 def write_check(api, checks: list[dict], app_id: int, analysis: dict, name: str,
-                mode: str, conclusion: str) -> None:
+                mode: str, conclusion: str) -> dict:
     identity = guard.binding_id(binding(analysis, mode))
-    merge_sha = analysis["context"]["merge"]
+    head_sha = analysis["context"]["head"]
     matches = [c for c in checks if c.get("app", {}).get("id") == app_id
-               and c.get("name") == name and c.get("head_sha") == merge_sha
-               and c.get("external_id") == identity]
+               and c.get("name") == name and c.get("head_sha") == head_sha
+               and (name == guard.CHECK_NAME or c.get("external_id") == identity)]
     if len(matches) > 1:
         raise guard.GuardError("duplicate-authority-check")
     payload = {"name": name, "status": "completed", "conclusion": conclusion,
@@ -145,10 +157,13 @@ def write_check(api, checks: list[dict], app_id: int, analysis: dict, name: str,
     if matches:
         created = api("PATCH", API_ROOT + f"/check-runs/{positive_id(matches[0]['id'])}", payload)
     else:
-        payload["head_sha"] = merge_sha
+        payload["head_sha"] = head_sha
         created = api("POST", API_ROOT + "/check-runs", payload)
     if created.get("app", {}).get("id") != app_id:
+        api("PATCH", API_ROOT + f"/check-runs/{positive_id(created['id'])}",
+            {"name": name, "status": "completed", "conclusion": "failure"})
         raise guard.GuardError("unexpected-check-issuer")
+    return created
 
 
 def eligible_review(inspection: dict, mode: str) -> bool:
@@ -161,11 +176,29 @@ def eligible_review(inspection: dict, mode: str) -> bool:
     return bool(changes) and all(c.get("zone") in allowed for c in changes)
 
 
-def publish(analysis: dict, read_api, app_api, app_id: int) -> str:
+def publish(analysis: dict, read_api, app_api, app_id: int, validate_context=None) -> str:
     positive_id(app_id)
+    ctx = analysis["context"]
+    checks = existing_checks(read_api, ctx["head"])
+    finals = [c for c in checks if c.get("app", {}).get("id") == app_id
+              and c.get("name") == guard.CHECK_NAME and c.get("head_sha") == ctx["head"]]
+    try:
+        if validate_context is not None:
+            validate_context()
+        assert_current(read_api, ctx)
+        return publish_current(analysis, read_api, app_api, app_id, checks, finals)
+    except Exception:
+        # 쓰기 직후 기준이 바뀌어도 이전 성공을 같은 head에 남기지 않는다.
+        for check in finals:
+            app_api("PATCH", API_ROOT + f"/check-runs/{positive_id(check['id'])}",
+                    {"name": guard.CHECK_NAME, "status": "completed", "conclusion": "failure",
+                     "completed_at": datetime.now(timezone.utc).isoformat(),
+                     "output": {"title": "Authority invalidated", "summary": "Authority context changed or publication failed."}})
+        raise
+
+
+def publish_current(analysis: dict, read_api, app_api, app_id: int, checks: list[dict], finals: list[dict]) -> str:
     ctx, inspection = analysis["context"], analysis["inspection"]
-    assert_current(read_api, ctx)
-    checks = existing_checks(read_api, ctx["merge"])
     mode = ctx["mode"]
     approved = False
     if mode in {"protected", "governance"}:
@@ -181,11 +214,14 @@ def publish(analysis: dict, read_api, app_api, app_id: int) -> str:
     for approval_mode in ("protected", "governance"):
         expected = guard.binding_id(binding(analysis, approval_mode))
         if eligible_review(inspection, approval_mode) and any(
-                guard.approval_matches(c, app_id, expected, ctx["merge"]) for c in checks):
+                guard.approval_matches(c, app_id, expected, ctx["head"]) for c in checks):
             approved = True
     conclusion = "success" if inspection["normal"]["exit_code"] == 0 or approved else "failure"
     assert_current(read_api, ctx)
-    write_check(app_api, checks, app_id, analysis, guard.CHECK_NAME, "final", conclusion)
+    final = write_check(app_api, checks, app_id, analysis, guard.CHECK_NAME, "final", conclusion)
+    if not finals:
+        finals.append(final)
+    assert_current(read_api, ctx)
     return conclusion
 
 
@@ -194,6 +230,13 @@ def event_context(api) -> dict:
     return resolve_context(api, os.environ["GITHUB_EVENT_NAME"], event,
         actor=positive_id(os.environ["GITHUB_ACTOR_ID"]), attempt=positive_id(os.environ["GITHUB_RUN_ATTEMPT"]),
         ref=os.environ["GITHUB_REF"], workflow_sha=os.environ["AUTHORITY_WORKFLOW_SHA"])
+
+
+def validate_publication_event(api, expected: dict) -> None:
+    current = event_context(api)
+    if {k: v for k, v in current.items() if k != "merge"} != {
+            k: v for k, v in expected.items() if k != "merge"}:
+        raise guard.GuardError("publication-context-changed")
 
 
 def main() -> int:
@@ -207,21 +250,20 @@ def main() -> int:
         if args.command == "publish":
             analysis = json.loads((args.evidence / "analysis.json").read_text())
             # 로컬 JSON만으로 수동 승인하지 않고 GitHub 이벤트를 다시 확인한다.
-            if event_context(read_api) != analysis["context"]:
-                raise guard.GuardError("publication-context-changed")
             result = publish(analysis, read_api, github_api(os.environ.get("AUTHORITY_APP_TOKEN", "")),
-                             positive_id(os.environ["AUTHORITY_APP_ID"]))
+                             positive_id(os.environ["AUTHORITY_APP_ID"]),
+                             lambda: validate_publication_event(read_api, analysis["context"]))
             (args.evidence / "publication.json").write_text(json.dumps({"conclusion": result}) + "\n")
             print("permission-authority: " + result)
             return 0 if result == "success" else 1
         ctx = event_context(read_api)
         if args.command == "context":
             with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
-                output.write(f"eligible=true\npr={ctx['pr']}\n")
+                output.write(f"eligible=true\npr={ctx['pr']}\nhead={ctx['head']}\n")
         else:
             with tempfile.TemporaryDirectory(prefix="authority-candidate-") as directory:
                 root = Path(directory) / "candidate"
-                guard.fetch_candidate(root, ctx["pr"], ctx["base"], ctx["merge"])
+                guard.fetch_candidate(root, ctx["pr"], ctx["base"], ctx["merge"], ctx["head"], ctx["merge_tree"])
                 inspection = guard.inspect_candidate(root, ctx["base"], ctx["merge"], Path(sys.executable))
                 analysis = {"context": ctx, "inspection": inspection}
                 (args.evidence / "analysis.json").write_text(json.dumps(analysis, indent=2) + "\n")
