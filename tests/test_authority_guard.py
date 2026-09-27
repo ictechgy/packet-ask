@@ -172,3 +172,5 @@ def test_fetch_verifies_merge_ref_instead_of_first_fetch_head(guard, candidate, 
         guard.fetch_candidate(tmp_path / "wrong-head", 1, baseline, merged, baseline, tree)
     with pytest.raises(guard.GuardError, match="tree"):
         guard.fetch_candidate(tmp_path / "wrong-tree", 1, baseline, merged, head, baseline)
+
+# 실제 v2 권한 검사 대조: spoof
