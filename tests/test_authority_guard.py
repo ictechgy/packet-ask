@@ -121,7 +121,7 @@ def test_sensitive_path_is_rejected_before_materialization(guard, candidate, tmp
 
 def test_approval_binding_changes_for_every_authority_coordinate(guard):
     binding = {"repository_id": 1349064041, "pr": 1, "base": "a" * 40,
-               "head": "b" * 40, "merge": "c" * 40, "base_policy": "d" * 64,
+               "head": "b" * 40, "merge_tree": "c" * 40, "base_policy": "d" * 64,
                "candidate_policy": "e" * 64, "mode": "protected"}
     original = guard.binding_id(binding)
     for name in binding:
@@ -152,7 +152,9 @@ def test_fetch_verifies_merge_ref_instead_of_first_fetch_head(guard, candidate, 
     source, baseline = candidate
     (source / "src/app.py").write_text("VALUE = 2\n")
     head = commit(source)
-    git(source, "update-ref", "refs/pull/1/merge", head)
+    tree = git(source, "rev-parse", head + "^{tree}")
+    merged = git(source, "commit-tree", tree, "-p", baseline, "-p", head, "-m", "merge fixture")
+    git(source, "update-ref", "refs/pull/1/merge", merged)
     original_git = guard.git
 
     def local_transport(root, *args, **kwargs):
@@ -161,8 +163,12 @@ def test_fetch_verifies_merge_ref_instead_of_first_fetch_head(guard, candidate, 
 
     monkeypatch.setattr(guard, "git", local_transport)
     target = tmp_path / "fetched"
-    guard.fetch_candidate(target, 1, baseline, head)
-    assert git(target, "rev-parse", "HEAD") == head
+    guard.fetch_candidate(target, 1, baseline, merged, head, tree)
+    assert git(target, "rev-parse", "HEAD") == merged
     assert (target / "src/app.py").read_text() == "VALUE = 2\n"
     with pytest.raises(guard.GuardError, match="merge-ref-changed"):
-        guard.fetch_candidate(tmp_path / "stale", 1, baseline, baseline)
+        guard.fetch_candidate(tmp_path / "stale", 1, baseline, baseline, head, tree)
+    with pytest.raises(guard.GuardError, match="parents"):
+        guard.fetch_candidate(tmp_path / "wrong-head", 1, baseline, merged, baseline, tree)
+    with pytest.raises(guard.GuardError, match="tree"):
+        guard.fetch_candidate(tmp_path / "wrong-tree", 1, baseline, merged, head, baseline)
